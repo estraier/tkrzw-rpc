@@ -1,0 +1,141 @@
+# Makefile for Tkrzw RPC
+
+#================================================================
+# Setting Variables
+#================================================================
+
+# Generic settings
+SHELL := @SHELL@
+
+# Package information
+PACKAGE := @PACKAGE_NAME@
+VERSION := @PACKAGE_VERSION@
+PACKAGEDIR := $(PACKAGE)-$(VERSION)
+PACKAGETGZ := $(PACKAGE)-$(VERSION).tar.gz
+LIBVER := @MYLIBVER@
+LIBREV := @MYLIBREV@
+
+# Targets
+HEADERFILES := @MYHEADERFILES@
+LIBRARYFILES := @MYLIBRARYFILES@
+LIBOBJFILES := @MYLIBOBJFILES@
+COMMANDFILES := @MYCOMMANDFILES@
+
+# Install destinations
+prefix := @prefix@
+exec_prefix := @exec_prefix@
+datarootdir := @datarootdir@
+LIBDIR := @libdir@
+BINDIR := @bindir@
+DESTDIR =
+
+# Building configuration
+PROTOC := @PROTOC@
+GRPCCPP := @GRPCCPP@
+CXX := @CXX@
+CPPFLAGS := @MYCPPFLAGS@ -D_TKSERV_PKG_VERSION="\"$(VERSION)\""
+CXXFLAGS := @MYCXXFLAGS@
+LDFLAGS := @MYLDFLAGS@
+LIBS := @LIBS@
+
+#================================================================
+# Suffix rules
+#================================================================
+
+.SUFFIXES :
+.SUFFIXES : .cc .o
+
+.cc.o :
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $<
+
+#================================================================
+# Actions
+#================================================================
+
+all : $(LIBRARYFILES) $(COMMANDFILES)
+	@printf '\n'
+	@printf '#================================================================\n'
+	@printf '# Ready to install.\n'
+	@printf '#================================================================\n'
+
+clean :
+	rm -rf $(LIBRARYFILES) $(LIBOBJFILES) $(COMMANDFILES) \
+	  *.pb.h *.pb.cc *.o a.out *.class check.in check.out gmon.out *.vlog \
+	  casket* *.tkh *.tkt *.tks *.flat *.log *~ hoge moge tako ika uni
+
+untabify :
+	ls *.cc *.h *.java | while read name ; \
+	  do \
+	    sed -e 's/\t/        /g' -e 's/ *$$//' $$name > $$name~; \
+	    [ -f $$name~ ] && mv -f $$name~ $$name ; \
+	  done
+
+install :
+	mkdir -p $(DESTDIR)$(INCLUDEDIR)
+	[ ! -f tkrzw_lib_commons.h -a -f ../tkrzw_lib_common.h ] && cd .. ; \
+	  cp -Rf $(HEADERFILES) $(DESTDIR)$(INCLUDEDIR)
+	mkdir -p $(DESTDIR)$(LIBDIR)
+	cp -Rf $(LIBRARYFILES) $(DESTDIR)$(LIBDIR)
+	mkdir -p $(DESTDIR)$(BINDIR)
+	cp -Rf $(COMMANDFILES) $(DESTDIR)$(BINDIR)
+	@printf '\n'
+	@printf '#================================================================\n'
+	@printf '# Thanks for using Kyoto Cabinet for Java.\n'
+	@printf '#================================================================\n'
+
+uninstall :
+	-cd $(DESTDIR)$(INCLUDEDIR) && rm -f $(HEADERFILES)
+	-cd $(DESTDIR)$(LIBDIR) && rm -f $(LIBRARYFILES)
+	-cd $(DESTDIR)$(BINDIR) && rm -f $(COMMANDFILES)
+
+dist :
+	$(MAKE) untabify
+	$(MAKE) distclean
+	rm -Rf "../$(PACKAGEDIR)" "../$(PACKAGETGZ)"
+	cd .. && cp -R tkrzw-java $(PACKAGEDIR) && \
+	  tar --exclude=".*" -cvf - $(PACKAGEDIR) | gzip -c > $(PACKAGETGZ)
+	rm -Rf "../$(PACKAGEDIR)"
+	sync ; sync
+
+distclean : clean apidocclean
+	# cd example && $(MAKE) clean
+	rm -rf Makefile config.cache config.log config.status config.tmp autom4te.cache
+
+apidoc :
+	mkdir api-doc
+
+apidocclean :
+	rm -rf api-doc api-doc-tmp
+
+.PHONY : all clean install casket check apidoc apidocclean
+
+#================================================================
+# Building protocol buffers
+#================================================================
+
+tkrzw_rpc.pb.h tkrzw_rpc.pb.cc : tkrzw_rpc.proto
+	$(PROTOC) -I . --cpp_out=. tkrzw_rpc.proto
+
+tkrzw_rpc.grpc.pb.h tkrzw_rpc.grpc.pb.cc : tkrzw_rpc.proto
+	$(PROTOC) -I . --grpc_out=. --plugin=protoc-gen-grpc=$(GRPCCPP) tkrzw_rpc.proto
+
+#================================================================
+# Building libraries
+#================================================================
+
+libtkrzw_rpc.a : $(LIBOBJFILES)
+	$(AR) $(ARFLAGS) $@ $(LIBOBJFILES)
+
+tkrzw_rpc.o : tkrzw_rpc.pb.h tkrzw_rpc.grpc.pb.h
+
+#================================================================
+# Building binaries
+#================================================================
+
+tkrzw_server : tkrzw_server.o libtkrzw_rpc.a
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) -ltkrzw_rpc $(LIBS)
+
+tkrzw_client : tkrzw_client.o libtkrzw_rpc.a
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) -ltkrzw_rpc $(LIBS)
+
+# END OF FILE

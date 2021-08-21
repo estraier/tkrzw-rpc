@@ -1,0 +1,19 @@
+===============================================================
+ RPC interface of Tkrzw
+================================================================
+
+Please read the following documents.
+
+  COPYING           - license
+  CONTRIBUTING.md   - how to contribute
+
+You should install the latest version of Tkrzw to make sure the
+compatibility.
+
+To build the library, progocol buffers and gRPC are required.
+
+This version is still experimental.  Don't use this yet.
+
+Thanks.
+
+== END OF FILE ==

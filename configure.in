@@ -1,0 +1,174 @@
+# Source of configuration for Tkrzw RPC
+
+#================================================================
+# Generic Settings
+#================================================================
+
+# Package name
+AC_INIT([tkrzw-rpc], [0.1.0])
+
+# Package information
+MYLIBVER=0
+MYLIBREV=1
+
+# Targets
+MYHEADERFILES="tkrzw_rpc.h"
+MYLIBRARYFILES="libtkrzw_rpc.a"
+MYLIBOBJFILES="tkrzw_rpc.o tkrzw_rpc.pb.o tkrzw_rpc.grpc.pb.o"
+MYCOMMANDFILES="tkrzw_server tkrzw_client"
+
+# Building flags
+MYCXXFLAGS="-std=c++17 -Wall -fPIC -fsigned-char -O2"
+MYCPPFLAGS="-I. -I\$(INCLUDEDIR) -I$HOME/include -I/usr/local/include -DNDEBUG"
+MYLDFLAGS="-L. -L\$(LIBDIR) -L$HOME/lib -L/usr/local/lib"
+
+# Building paths
+pathtmp="$PATH"
+PATH="$HOME/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+PATH="$PATH:/usr/ccs/bin:/usr/ucb:/usr/xpg4/bin:/usr/xpg6/bin:$pathtmp"
+LIBRARY_PATH="$HOME/lib:/usr/local/lib:$LIBRARY_PATH"
+LD_LIBRARY_PATH="$HOME/lib:/usr/local/lib:$LD_LIBRARY_PATH"
+CPATH="$HOME/include:/usr/local/include:$CPATH"
+PKG_CONFIG_PATH="$HOME/lib/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PATH LIBRARY_PATH LD_LIBRARY_PATH CPATH PKG_CONFIG_PATH
+if type pkg-config >config.tmp 2>&1
+then
+  PATH="$PATH:`pkg-config --variable=bindir tkrzw`"
+  LIBRARY_PATH="$LIBRARY_PATH:`pkg-config --variable=libdir tkrzw`"
+  LD_LIBRARY_PATH="$LD_LIBRARY_PATH:`pkg-config --variable=libdir tkrzw`"
+  CPATH="$CPATH:`pkg-config --variable=includedir tkrzw`"
+  export PATH LIBRARY_PATH LD_LIBRARY_PATH CPATH PKG_CONFIG_PATH
+fi
+
+# Specify the installation path of Tkrzw
+AC_ARG_WITH(tkrzw,
+  AS_HELP_STRING([--with-tkrzw=DIR], [search DIR/include and DIR/lib for Tkrzw]))
+if test -n "$with_tkrzw"
+then
+  MYCPPFLAGS="$MYCPPFLAGS -I$with_tkrzw/include"
+  MYLDFLAGS="$MYLDFLAGS -L$with_tkrzw/lib"
+  CPATH="$CPATH:$with_tkrzw/include"
+  LIBRARY_PATH="$LIBRARY_PATH:$with_tkrzw/lib"
+  LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$with_tkrzw/lib"
+  PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$with_tkrzw/lib/pkgconfig"
+  PATH="$with_tkrzw/bin:$PATH"
+fi
+
+# Specify the installation path of gRPC
+AC_ARG_WITH(grpc,
+  AS_HELP_STRING([--with-grpc=DIR], [search DIR/include and DIR/lib for gRPC]))
+if test -n "$with_grpc"
+then
+  MYCPPFLAGS="$MYCPPFLAGS -I$with_grpc/include"
+  MYLDFLAGS="$MYLDFLAGS -L$with_grpc/lib"
+  CPATH="$CPATH:$with_grpc/include"
+  LIBRARY_PATH="$LIBRARY_PATH:$with_grpc/lib"
+  LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$with_grpc/lib"
+  PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$with_grpc/lib/pkgconfig"
+  PATH="$with_grpc/bin:$PATH"
+fi
+
+# Messages
+printf '#================================================================\n'
+printf '# Configuring Tkrzw RPC.\n' "$PACKAGE_VERSION"
+printf '#================================================================\n'
+
+#================================================================
+# Checking Commands and Libraries
+#================================================================
+
+# Protobuf compiler
+printf 'checking protoc... '
+PROTOC=`which protoc`
+if test -x "$PROTOC"
+then
+  printf '%s\n' "$PROTOC"
+else
+  printf 'no\n'
+  printf '#================================================================\n' 1>&2
+  printf '# WARNING: protc is not found.\n' 1>&2
+  printf '#================================================================\n' 1>&2
+fi
+
+# gRPC plugin
+printf 'checking grpc_cpp_plugin... '
+GRPCCPP=`which grpc_cpp_plugin`
+if test -x "$GRPCCPP"
+then
+  printf '%s\n' "$GRPCCPP"
+else
+  printf 'no\n'
+  printf '#================================================================\n' 1>&2
+  printf '# WARNING: grpc_cpp_plugin is not found.\n' 1>&2
+  printf '#================================================================\n' 1>&2
+fi
+
+# C compiler
+AC_PROG_CC
+AC_PROG_CXX
+AC_LANG(C++)
+
+# Underlying libraries
+AC_CHECK_LIB(c, main)
+AC_CHECK_LIB(m, main)
+AC_CHECK_LIB(pthread, main)
+AC_CHECK_LIB(rt, main)
+AC_CHECK_LIB(stdc++, main)
+AC_CHECK_LIB(z, main)
+AC_CHECK_LIB(zstd, main)
+AC_CHECK_LIB(lz4, main)
+AC_CHECK_LIB(lzma, main)
+AC_CHECK_LIB(tkrzw, main)
+AC_CHECK_LIB(protobuf, main)
+AC_CHECK_LIB(grpc, main)
+AC_CHECK_LIB(grpc++, main)
+AC_CHECK_LIB(grpc++_reflection, main)
+
+# Necessary headers
+AC_CHECK_HEADER(stdlib.h, true, AC_MSG_ERROR([stdlib.h is required]))
+AC_CHECK_HEADER(stdint.h, true, AC_MSG_ERROR([stdint.h is required]))
+AC_CHECK_HEADER(tkrzw_langc.h, true, AC_MSG_ERROR([tkrzw_langc.h is required]))
+
+# Checking the version of Tkrzw with pkg-config
+if type pkg-config >config.tmp 2>&1
+then
+  printf 'checking Tkrzw by pkg-config... '
+  if pkg-config --atleast-version=1.0.2 tkrzw
+  then
+    MYCPPFLAGS="$MYCPPFLAGS -I`pkg-config --variable=includedir tkrzw`"
+    MYLDFLAGS="$MYLDFLAGS -L`pkg-config --variable=libdir tkrzw`"
+    MYRUNPATH="$MYRUNPATH:`pkg-config --variable=libdir tkrzw`"
+    printf 'yes\n'
+  else
+    printf 'no\n'
+    AC_MSG_ERROR([required version of Tkrzw was not detected])
+  fi
+fi
+
+#================================================================
+# Generic Settings
+#================================================================
+
+# Export variables
+AC_SUBST(PROTOC)
+AC_SUBST(GRPCCPP)
+AC_SUBST(MYLIBVER)
+AC_SUBST(MYLIBREV)
+AC_SUBST(MYHEADERFILES)
+AC_SUBST(MYLIBRARYFILES)
+AC_SUBST(MYLIBOBJFILES)
+AC_SUBST(MYCOMMANDFILES)
+AC_SUBST(MYCXXFLAGS)
+AC_SUBST(MYCPPFLAGS)
+AC_SUBST(MYLDFLAGS)
+
+# Targets
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
+
+# Messages
+printf '#================================================================\n'
+printf '# Ready to make.\n'
+printf '#================================================================\n'
+
+# END OF FILE
