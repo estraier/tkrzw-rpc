@@ -69,9 +69,18 @@ class DBMClientImpl final {
 Status DBMClientImpl::Connect(const std::string& host, int32_t port) {
   const std::string server_address(StrCat(host, ":", port));
   auto channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
+  const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
+  while (true) {
+    auto status = channel->GetState(true);
+    if (status == GRPC_CHANNEL_READY) {
+      break;
+    }
+    if ((status != GRPC_CHANNEL_IDLE && status != GRPC_CHANNEL_CONNECTING) ||
+        !channel->WaitForStateChange(status, deadline)) {
+      return Status(Status::NETWORK_ERROR, "connection failed");
+    }
+  }
   stub_ = DBMService::NewStub(channel);
-
-
   return Status(Status::SUCCESS);
 }
 
