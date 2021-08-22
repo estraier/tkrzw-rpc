@@ -83,6 +83,8 @@ static int32_t Process(int32_t argc, const char** args) {
   PrintL("Listening on ", server_address);
   g_server = server.get();
   std::signal(SIGINT, ShutdownServer);
+  std::signal(SIGTERM, ShutdownServer);
+  std::signal(SIGQUIT, ShutdownServer);
   server->Wait();
   PrintL("Done");
   return 0;
