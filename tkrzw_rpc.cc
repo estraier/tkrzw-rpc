@@ -120,26 +120,6 @@ Status DBMClient::GetVersion(std::string* version) {
   return impl_->GetVersion(version);
 }
 
-
-void Hello() {
-  /*
-  grpc::ClientContext context;
-  HelloRequest request;
-  request.set_name("mikio");
-  
-  HelloResponse response;
-  grpc::Status status = stub->Hello(&context, request, &response);
-  if (!status.ok()) {
-    std::cout << "RPC failed a: " << status.error_code()
-              << ":" << status.error_message() << std::endl;
-    return;
-  }
-
-  std::cout << response.Utf8DebugString() << std::endl;
-  */
-  
-}
-
 }  // namespace tkrzw
 
 // END OF FILE
