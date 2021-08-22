@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
 
 class ServerTest : public Test {};
 
-TEST_F(ServerTest, Basic) {
+TEST_F(ServerTest, GetVersion) {
   tkrzw::DBMServiceImpl server;
   grpc::ServerContext context;
   tkrzw::GetVersionRequest request;
