@@ -80,9 +80,9 @@ static int32_t Process(int32_t argc, const char** args) {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
+  PrintL("Listening on ", server_address);
   g_server = server.get();
   std::signal(SIGINT, ShutdownServer);
-  PrintL("Listening on ", server_address);
   server->Wait();
   PrintL("Done");
   return 0;
