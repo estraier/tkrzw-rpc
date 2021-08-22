@@ -39,16 +39,6 @@ LDFLAGS := @MYLDFLAGS@
 LIBS := @LIBS@
 
 #================================================================
-# Suffix rules
-#================================================================
-
-.SUFFIXES :
-.SUFFIXES : .cc .o
-
-.cc.o :
-	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $<
-
-#================================================================
 # Actions
 #================================================================
 
@@ -60,7 +50,7 @@ all : $(LIBRARYFILES) $(COMMANDFILES)
 
 clean :
 	rm -rf $(LIBRARYFILES) $(LIBOBJFILES) $(COMMANDFILES) \
-	  *.pb.h *.pb.cc *.o a.out *.class check.in check.out gmon.out *.vlog \
+	  *.pb.h *.pb.cc *.o *.d a.out *.class check.in check.out gmon.out *.vlog \
 	  casket* *.tkh *.tkt *.tks *.flat *.log *~ hoge moge tako ika uni
 
 untabify :
@@ -108,6 +98,22 @@ apidocclean :
 	rm -rf api-doc api-doc-tmp
 
 .PHONY : all clean install casket check apidoc apidocclean
+
+#================================================================
+# Suffix rules
+#================================================================
+
+OBJS := $(LIBOBJFILES) $(COMMANDFILES:%=%.o) $(TESTFILES:%=%.o)
+SRCS := $(OBJS:%.o=%.c)
+DEPS := $(SRCS:%.c=%.d)
+
+-include $(DEPS)
+
+.SUFFIXES :
+.SUFFIXES : .cc .o
+
+.cc.o :
+	$(CXX) -c $(CPPFLAGS) -MMD $(CXXFLAGS) $<
 
 #================================================================
 # Building protocol buffers

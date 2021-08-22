@@ -21,15 +21,8 @@
 #include <string_view>
 #include <vector>
 
-#include <grpc/grpc.h>
-#include <grpcpp/security/server_credentials.h>
-#include <grpcpp/server.h>
-#include <grpcpp/server_builder.h>
-#include <grpcpp/server_context.h>
-
 #include "tkrzw_cmd_util.h"
-#include "tkrzw_rpc.pb.h"
-#include "tkrzw_rpc.grpc.pb.h"
+#include "tkrzw_server_impl.h"
 
 namespace tkrzw {
 
@@ -52,16 +45,6 @@ static void PrintUsageAndDie() {
   P("\n");
   std::exit(1);
 }
-
-class DBMServiceImpl : public DBMService::Service {
- public:
-  grpc::Status GetVersion(grpc::ServerContext* context,
-                          const tkrzw::GetVersionRequest* request,
-                          tkrzw::GetVersionResponse* response) override {
-    response->set_version(_TKSERV_PKG_VERSION);
-    return grpc::Status::OK;
-  }
-};
 
 // Processes the command.
 static int32_t Process(int32_t argc, const char** args) {
