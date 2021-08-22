@@ -620,9 +620,15 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+MYLDLIBPATHENV
+MYLDLIBPATH
+MYTESTLIBS
+MYCMDLIBS
+MYCMDLDFLAGS
 MYLDFLAGS
 MYCPPFLAGS
 MYCXXFLAGS
+MYTESTFILES
 MYCOMMANDFILES
 MYLIBOBJFILES
 MYLIBRARYFILES
@@ -2095,11 +2101,18 @@ MYHEADERFILES="tkrzw_rpc.h"
 MYLIBRARYFILES="libtkrzw_rpc.a"
 MYLIBOBJFILES="tkrzw_rpc.o tkrzw_rpc.pb.o tkrzw_rpc.grpc.pb.o"
 MYCOMMANDFILES="tkrzw_server tkrzw_client"
+MYTESTFILES="tkrzw_server_test tkrzw_rpc_test"
+MYPCFILES="tkrzw-rpc.pc"
 
 # Building flags
 MYCXXFLAGS="-std=c++17 -Wall -fPIC -fsigned-char -O2"
 MYCPPFLAGS="-I. -I\$(INCLUDEDIR) -I$HOME/include -I/usr/local/include -DNDEBUG"
 MYLDFLAGS="-L. -L\$(LIBDIR) -L$HOME/lib -L/usr/local/lib"
+MYCMDLDFLAGS="-L. -L\$(LIBDIR)"
+MYCMDLIBS="-ltkrzw_rpc"
+MYTESTLIBS="-lgtest -lgmock -lpthread"
+MYLDLIBPATH=""
+MYLDLIBPATHENV="LD_LIBRARY_PATH"
 
 # Building paths
 pathtmp="$PATH"
@@ -3244,6 +3257,19 @@ ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ex
 ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
 
 
+# Reset variables
+if test "$GCC" != "yes"
+then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: another compiler except for GCC was detected" >&5
+$as_echo "$as_me: WARNING: another compiler except for GCC was detected" >&2;}
+  MYCFLAGS=""
+  MYCXXFLAGS=""
+fi
+test -n "$CFLAGS" && MYCFLAGS="$CFLAGS $MYCFLAGS"
+test -n "$CXXFLAGS" && MYCXXFLAGS="$CXXFLAGS $MYCXXFLAGS"
+test -n "$CPPFLAGS" && MYCPPFLAGS="$CPPFLAGS $MYCPPFLAGS"
+test -n "$LDFLAGS" && MYLDFLAGS="$LDFLAGS $MYLDFLAGS"
+
 # Underlying libraries
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lc" >&5
@@ -3792,6 +3818,42 @@ _ACEOF
 
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -ltkrzw-rpc" >&5
+$as_echo_n "checking for main in -ltkrzw-rpc... " >&6; }
+if ${ac_cv_lib_tkrzw_rpc_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-ltkrzw-rpc  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_link "$LINENO"; then :
+  ac_cv_lib_tkrzw_rpc_main=yes
+else
+  ac_cv_lib_tkrzw_rpc_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_tkrzw_rpc_main" >&5
+$as_echo "$ac_cv_lib_tkrzw_rpc_main" >&6; }
+if test "x$ac_cv_lib_tkrzw_rpc_main" = xyes; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: old version of Tkrzw-RPC was detected" >&5
+$as_echo "$as_me: WARNING: old version of Tkrzw-RPC was detected" >&2;}
+fi
+
+MYLDLIBPATH="$LD_LIBRARY_PATH"
 
 # Necessary headers
 ac_ext=cpp
@@ -4245,8 +4307,14 @@ fi
 
 
 
+
+
+
+
+
+
 # Targets
-ac_config_files="$ac_config_files Makefile"
+ac_config_files="$ac_config_files Makefile tkrzw-rpc.pc"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -4954,6 +5022,7 @@ for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
+    "tkrzw-rpc.pc") CONFIG_FILES="$CONFIG_FILES tkrzw-rpc.pc" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac

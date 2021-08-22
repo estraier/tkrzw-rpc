@@ -1,0 +1,14 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+datarootdir = @datarootdir@
+bindir=@bindir@
+libdir=@libdir@
+libexecdir=@libexecdir@
+includedir=@includedir@
+datadir=@datadir@
+
+Name: Tkrzw-RPC
+Description: RPC interface of Tkrzw
+Version: @PACKAGE_VERSION@
+Libs: -L${libdir} -ltkrzw_rpc @LIBS@
+Cflags: -I${includedir}

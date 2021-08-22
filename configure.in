@@ -16,11 +16,18 @@ MYHEADERFILES="tkrzw_rpc.h"
 MYLIBRARYFILES="libtkrzw_rpc.a"
 MYLIBOBJFILES="tkrzw_rpc.o tkrzw_rpc.pb.o tkrzw_rpc.grpc.pb.o"
 MYCOMMANDFILES="tkrzw_server tkrzw_client"
+MYTESTFILES="tkrzw_server_test tkrzw_rpc_test"
+MYPCFILES="tkrzw-rpc.pc"
 
 # Building flags
 MYCXXFLAGS="-std=c++17 -Wall -fPIC -fsigned-char -O2"
 MYCPPFLAGS="-I. -I\$(INCLUDEDIR) -I$HOME/include -I/usr/local/include -DNDEBUG"
 MYLDFLAGS="-L. -L\$(LIBDIR) -L$HOME/lib -L/usr/local/lib"
+MYCMDLDFLAGS="-L. -L\$(LIBDIR)"
+MYCMDLIBS="-ltkrzw_rpc"
+MYTESTLIBS="-lgtest -lgmock -lpthread"
+MYLDLIBPATH=""
+MYLDLIBPATHENV="LD_LIBRARY_PATH"
 
 # Building paths
 pathtmp="$PATH"
@@ -108,6 +115,18 @@ AC_PROG_CC
 AC_PROG_CXX
 AC_LANG(C++)
 
+# Reset variables
+if test "$GCC" != "yes"
+then
+  AC_MSG_WARN([another compiler except for GCC was detected])
+  MYCFLAGS=""
+  MYCXXFLAGS=""
+fi
+test -n "$CFLAGS" && MYCFLAGS="$CFLAGS $MYCFLAGS"
+test -n "$CXXFLAGS" && MYCXXFLAGS="$CXXFLAGS $MYCXXFLAGS"
+test -n "$CPPFLAGS" && MYCPPFLAGS="$CPPFLAGS $MYCPPFLAGS"
+test -n "$LDFLAGS" && MYLDFLAGS="$LDFLAGS $MYLDFLAGS"
+
 # Underlying libraries
 AC_CHECK_LIB(c, main)
 AC_CHECK_LIB(m, main)
@@ -123,6 +142,8 @@ AC_CHECK_LIB(protobuf, main)
 AC_CHECK_LIB(grpc, main)
 AC_CHECK_LIB(grpc++, main)
 AC_CHECK_LIB(grpc++_reflection, main)
+AC_CHECK_LIB(tkrzw-rpc, main, AC_MSG_WARN([old version of Tkrzw-RPC was detected]))
+MYLDLIBPATH="$LD_LIBRARY_PATH"
 
 # Necessary headers
 AC_CHECK_HEADER(stdlib.h, true, AC_MSG_ERROR([stdlib.h is required]))
@@ -158,12 +179,18 @@ AC_SUBST(MYHEADERFILES)
 AC_SUBST(MYLIBRARYFILES)
 AC_SUBST(MYLIBOBJFILES)
 AC_SUBST(MYCOMMANDFILES)
+AC_SUBST(MYTESTFILES)
 AC_SUBST(MYCXXFLAGS)
 AC_SUBST(MYCPPFLAGS)
 AC_SUBST(MYLDFLAGS)
+AC_SUBST(MYCMDLDFLAGS)
+AC_SUBST(MYCMDLIBS)
+AC_SUBST(MYTESTLIBS)
+AC_SUBST(MYLDLIBPATH)
+AC_SUBST(MYLDLIBPATHENV)
 
 # Targets
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile tkrzw-rpc.pc])
 AC_OUTPUT
 
 # Messages

@@ -42,13 +42,12 @@ class DBMServiceImpl : public DBMService::Service {
                           const tkrzw::GetVersionRequest* request,
                           tkrzw::GetVersionResponse* response) override {
     response->set_version(_TKSERV_PKG_VERSION);
-    std::cout << "HOGE" << std::endl;
     return grpc::Status::OK;
   }
 };
 
 }  // namespace tkrzw
 
-#endif  // _TKRZW_IMPL_H
+#endif  // _TKRZW_SERVER_IMPL_H
 
 // END OF FILE

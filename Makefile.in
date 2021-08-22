@@ -20,6 +20,7 @@ HEADERFILES := @MYHEADERFILES@
 LIBRARYFILES := @MYLIBRARYFILES@
 LIBOBJFILES := @MYLIBOBJFILES@
 COMMANDFILES := @MYCOMMANDFILES@
+TESTFILES := @MYTESTFILES@
 
 # Install destinations
 prefix := @prefix@
@@ -27,6 +28,8 @@ exec_prefix := @exec_prefix@
 datarootdir := @datarootdir@
 LIBDIR := @libdir@
 BINDIR := @bindir@
+LIBEXECDIR := @libexecdir@
+PCDIR := @libdir@/pkgconfig
 DESTDIR =
 
 # Building configuration
@@ -36,6 +39,9 @@ CXX := @CXX@
 CPPFLAGS := @MYCPPFLAGS@ -D_TKSERV_PKG_VERSION="\"$(VERSION)\""
 CXXFLAGS := @MYCXXFLAGS@
 LDFLAGS := @MYLDFLAGS@
+CMDLDFLAGS := @MYCMDLDFLAGS@
+CMDLIBS := @MYCMDLIBS@
+TESTLIBS := @MYTESTLIBS@
 LIBS := @LIBS@
 
 #================================================================
@@ -49,8 +55,8 @@ all : $(LIBRARYFILES) $(COMMANDFILES)
 	@printf '#================================================================\n'
 
 clean :
-	rm -rf $(LIBRARYFILES) $(LIBOBJFILES) $(COMMANDFILES) \
-	  *.pb.h *.pb.cc *.o *.d a.out *.class check.in check.out gmon.out *.vlog \
+	rm -rf $(LIBRARYFILES) $(LIBOBJFILES) $(COMMANDFILES) $(TESTFILES)
+	rm -rf *.pb.h *.pb.cc *.o *.d a.out *.class check.in check.out gmon.out *.vlog \
 	  casket* *.tkh *.tkt *.tks *.flat *.log *~ hoge moge tako ika uni
 
 untabify :
@@ -88,8 +94,11 @@ dist :
 	sync ; sync
 
 distclean : clean apidocclean
-	# cd example && $(MAKE) clean
-	rm -rf Makefile config.cache config.log config.status config.tmp autom4te.cache
+	[ ! -f example/Makefile ] || cd example && $(MAKE) clean
+	rm -Rf Makefile tkrzw-rpc.pc \
+	  config.cache config.log config.status config.tmp autom4te.cache build
+
+test : $(TESTFILES)
 
 apidoc :
 	mkdir api-doc
@@ -139,9 +148,21 @@ tkrzw_rpc.o : tkrzw_rpc.pb.h tkrzw_rpc.grpc.pb.h
 #================================================================
 
 tkrzw_server : tkrzw_server.o $(LIBRARYFILES)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) -ltkrzw_rpc $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
 tkrzw_client : tkrzw_client.o $(LIBRARYFILES)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) -ltkrzw_rpc $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
+
+#================================================================
+# Building tests
+#================================================================
+
+tkrzw_server_test.o : tkrzw_server_impl.h tkrzw_rpc.pb.h tkrzw_rpc.grpc.pb.h
+
+tkrzw_server_test : tkrzw_server_test.o $(LIBRARYFILES) 
+	$(CXX) $(CXXFLAGS) -o $@ $< $(CMDLDFLAGS) $(CMDLIBS) $(TESTLIBS) $(LIBS)
+
+tkrzw_rpc_test : tkrzw_rpc_test.o $(LIBRARYFILES)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(CMDLDFLAGS) $(CMDLIBS) $(TESTLIBS) $(LIBS)
 
 # END OF FILE
