@@ -12,6 +12,7 @@
  *************************************************************************************************/
 
 #include <cassert>
+#include <csignal>
 #include <cstdarg>
 #include <cstdint>
 
@@ -46,6 +47,16 @@ static void PrintUsageAndDie() {
   std::exit(1);
 }
 
+// Shutdowns the server.
+grpc::Server* g_server = nullptr;
+void ShutdownServer(int signum) {
+  if (g_server != nullptr) {
+    PrintL("Shutting down");
+    g_server->Shutdown();
+    g_server = nullptr;
+  }
+}
+
 // Processes the command.
 static int32_t Process(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
@@ -69,8 +80,11 @@ static int32_t Process(int32_t argc, const char** args) {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
+  g_server = server.get();
+  std::signal(SIGINT, ShutdownServer);
   PrintL("Listening on ", server_address);
   server->Wait();
+  PrintL("Done");
   return 0;
 }
 
