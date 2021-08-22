@@ -16,6 +16,7 @@
 #include <cstdarg>
 #include <cstdint>
 
+#include <atomic>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -48,12 +49,13 @@ static void PrintUsageAndDie() {
 }
 
 // Shutdowns the server.
-grpc::Server* g_server = nullptr;
+std::atomic<grpc::Server*> g_server = nullptr;
 void ShutdownServer(int signum) {
-  if (g_server != nullptr) {
+  grpc::Server* server = g_server.load();
+  if (server != nullptr && g_server.compare_exchange_strong(server, nullptr)) {
     PrintL("Shutting down");
-    g_server->Shutdown();
-    g_server = nullptr;
+    server->Shutdown();
+    tkrzw::Sleep(10);
   }
 }
 
@@ -81,7 +83,7 @@ static int32_t Process(int32_t argc, const char** args) {
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
   PrintL("Listening on ", server_address);
-  g_server = server.get();
+  g_server.store(server.get());
   std::signal(SIGINT, ShutdownServer);
   std::signal(SIGTERM, ShutdownServer);
   std::signal(SIGQUIT, ShutdownServer);
