@@ -55,7 +55,6 @@ void ShutdownServer(int signum) {
   if (server != nullptr && g_server.compare_exchange_strong(server, nullptr)) {
     PrintL("Shutting down");
     server->Shutdown();
-    tkrzw::Sleep(10);
   }
 }
 
