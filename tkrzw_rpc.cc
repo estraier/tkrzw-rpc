@@ -58,13 +58,18 @@ std::string GRPCStatusString(const grpc::Status& status) {
 
 class DBMClientImpl final {
  public:
+  void InfectStub(void* stub);
   Status Connect(const std::string& host, int32_t port);
   void Disconnect();
   Status GetVersion(std::string* version);
 
  private:
-  std::unique_ptr<DBMService::Stub> stub_;
+  std::unique_ptr<DBMService::StubInterface> stub_;
 };
+
+void DBMClientImpl::InfectStub(void* stub) {
+  stub_.reset(reinterpret_cast<DBMService::StubInterface*>(stub));
+}
 
 Status DBMClientImpl::Connect(const std::string& host, int32_t port) {
   const std::string server_address(StrCat(host, ":", port));
@@ -106,6 +111,10 @@ DBMClient::DBMClient() : impl_(nullptr) {
 
 DBMClient::~DBMClient() {
   delete impl_;
+}
+
+void DBMClient::InjectStub(void* stub) {
+  impl_->InfectStub(stub);
 }
 
 Status DBMClient::Connect(const std::string& host, int32_t port) {

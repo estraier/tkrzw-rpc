@@ -37,6 +37,12 @@ class DBMClient final {
   ~DBMClient();
 
   /**
+   * Injects a stub for testing.
+   * @param stub The pointer to the DBMService::StubInterface object.  The ownership is taken.
+   */
+  void InjectStub(void* stub);
+
+  /**
    * Connects to the server.
    * @param host The host name of the server.
    * @param port The port number of the server.

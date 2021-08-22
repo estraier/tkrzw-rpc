@@ -26,13 +26,14 @@ int main(int argc, char** argv) {
   return RUN_ALL_TESTS();
 }
 
-class ServerTest : public Test {
- protected:
-  void SetUp() {
-    std::cout << "HELLO" << std::endl;
-  }
-};
+class ServerTest : public Test {};
 
 TEST_F(ServerTest, Basic) {
-  std::cout << "YAHOO" << std::endl;
+  tkrzw::DBMServiceImpl server;
+  grpc::ServerContext context;
+  tkrzw::GetVersionRequest request;
+  tkrzw::GetVersionResponse response;
+  grpc::Status status = server.GetVersion(&context, &request, &response);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(_TKSERV_PKG_VERSION, response.version());
 }

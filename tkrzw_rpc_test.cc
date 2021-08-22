@@ -15,6 +15,8 @@
 #include "gmock/gmock.h"
 
 #include "tkrzw_rpc.h"
+#include "tkrzw_rpc_mock.grpc.pb.h"
+#include "tkrzw_rpc.pb.h"
 #include "tkrzw_lib_common.h"
 #include "tkrzw_str_util.h"
 
@@ -26,13 +28,18 @@ int main(int argc, char** argv) {
   return RUN_ALL_TESTS();
 }
 
-class ClientTest : public Test {
- protected:
-  void SetUp() {
-    std::cout << "HELLO" << std::endl;
-  }
-};
+class ClientTest : public Test {};
 
 TEST_F(ClientTest, Basic) {
-  std::cout << "YAHOO" << std::endl;
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::GetVersionResponse response;
+  response.set_version("1.2.3");
+  EXPECT_CALL(*stub, GetVersion(_, _, _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  std::string version;
+  const tkrzw::Status status = client.GetVersion(&version);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ("1.2.3", version);
 }

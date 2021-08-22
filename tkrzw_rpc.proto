@@ -58,8 +58,8 @@ message RemoveResponse {
 
 service DBMService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
-  rpc Report(ReportRequest) returns (ReportResponse);
-  rpc Get(GetRequest) returns (GetResponse);
-  rpc Set(SetRequest) returns (SetResponse);
-  rpc Remove(GetRequest) returns (RemoveResponse);
+  //rpc Report(ReportRequest) returns (ReportResponse);
+  //rpc Get(GetRequest) returns (GetResponse);
+  //rpc Set(SetRequest) returns (SetResponse);
+  //rpc Remove(GetRequest) returns (RemoveResponse);
 }

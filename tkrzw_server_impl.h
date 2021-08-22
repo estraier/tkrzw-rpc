@@ -31,8 +31,8 @@
 #include <grpcpp/server_context.h>
 
 #include "tkrzw_cmd_util.h"
-#include "tkrzw_rpc.pb.h"
 #include "tkrzw_rpc.grpc.pb.h"
+#include "tkrzw_rpc.pb.h"
 
 namespace tkrzw {
 
