@@ -11,6 +11,16 @@
  * and limitations under the License.
  *************************************************************************************************/
 
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/times.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+
 #include <grpc/grpc.h>
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
@@ -127,6 +137,55 @@ void DBMClient::Disconnect() {
 
 Status DBMClient::GetVersion(std::string* version) {
   return impl_->GetVersion(version);
+}
+
+Status DaemonizeProcess() {
+  std::cout << std::flush;
+  std::cerr << std::flush;
+  switch (fork()) {
+    case -1: {
+      return GetErrnoStatus("fork", errno);
+    }
+    case 0: {
+      break;
+    }
+    default: {
+      _exit(0);
+    }
+  }
+  if (setsid() == -1) {
+    return GetErrnoStatus("setsid", errno);
+  }
+  signal(SIGHUP, SIG_IGN);
+  signal(SIGCHLD, SIG_IGN);
+  switch (fork()) {
+    case -1: {
+      return GetErrnoStatus("fork", errno);
+    }
+    case 0: {
+      break;
+    }
+    default: {
+      _exit(0);
+    }
+  }
+  umask(0);
+  if (chdir("/") == -1) {
+    return GetErrnoStatus("chdir", errno);
+  }
+  close(0);
+  close(1);
+  close(2);
+  const int32_t fd = open("/dev/null", O_RDWR, 0);
+  if (fd != -1) {
+    dup2(fd, 0);
+    dup2(fd, 1);
+    dup2(fd, 2);
+    if (fd > 2) {
+      close(fd);
+    }
+  }
+  return Status(Status::SUCCESS);
 }
 
 }  // namespace tkrzw

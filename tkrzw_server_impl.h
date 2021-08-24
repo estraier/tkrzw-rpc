@@ -32,18 +32,27 @@
 
 #include "tkrzw_cmd_util.h"
 #include "tkrzw_rpc.grpc.pb.h"
+#include "tkrzw_rpc.h"
 #include "tkrzw_rpc.pb.h"
 
 namespace tkrzw {
 
 class DBMServiceImpl : public DBMService::Service {
  public:
+
+  DBMServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms)
+      : dbms_(dbms) {}
+
+
   grpc::Status GetVersion(grpc::ServerContext* context,
-                          const tkrzw::GetVersionRequest* request,
-                          tkrzw::GetVersionResponse* response) override {
+                          const GetVersionRequest* request,
+                          GetVersionResponse* response) override {
     response->set_version(_TKSERV_PKG_VERSION);
     return grpc::Status::OK;
   }
+
+ private:
+  const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
 };
 
 }  // namespace tkrzw
