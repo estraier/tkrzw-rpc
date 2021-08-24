@@ -66,16 +66,34 @@ std::string GRPCStatusString(const grpc::Status& status) {
   return StrCat(GRPCStatusCodeName(status.error_code()), ": ", msg);
 }
 
+Status MakeStatusFromProto(const tkrzw::StatusProto& proto) {
+  const auto& message = proto.message();
+  if (message.empty()) {
+    return Status(tkrzw::Status::Code(proto.code()));
+  }
+  return Status(tkrzw::Status::Code(proto.code()), message);
+}
+
 class DBMClientImpl final {
  public:
+  DBMClientImpl();
   void InfectStub(void* stub);
   Status Connect(const std::string& host, int32_t port);
   void Disconnect();
+  void SetDBMIndex(int32_t dbm_index);
   Status GetVersion(std::string* version);
+  Status Inspect(std::vector<std::pair<std::string, std::string>>* records);
+  Status Get(std::string_view key, std::string* value);
+  Status Set(std::string_view key, std::string_view value, bool overwrite);
+  Status Remove(std::string_view key);
+  Status Count(int64_t* count);
 
  private:
   std::unique_ptr<DBMService::StubInterface> stub_;
+  int32_t dbm_index_;
 };
+
+DBMClientImpl::DBMClientImpl() : stub_(nullptr), dbm_index_(0) {}
 
 void DBMClientImpl::InfectStub(void* stub) {
   stub_.reset(reinterpret_cast<DBMService::StubInterface*>(stub));
@@ -103,6 +121,10 @@ void DBMClientImpl::Disconnect() {
   stub_.reset(nullptr);
 }
 
+void DBMClientImpl::SetDBMIndex(int32_t dbm_index) {
+  dbm_index_ = dbm_index;
+}
+
 Status DBMClientImpl::GetVersion(std::string* version) {
   grpc::ClientContext context;
   GetVersionRequest request;
@@ -113,6 +135,79 @@ Status DBMClientImpl::GetVersion(std::string* version) {
   }
   *version = response.version();
   return Status(Status::SUCCESS);
+}
+
+Status DBMClientImpl::Inspect(std::vector<std::pair<std::string, std::string>>* records) {
+  grpc::ClientContext context;
+  InspectRequest request;
+  request.set_dbm_index(dbm_index_);
+  InspectResponse response;
+  grpc::Status status = stub_->Inspect(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  for (const auto& record : response.records()) {
+    records->emplace_back(std::make_pair(record.first(), record.second()));
+  }
+  return Status(Status::SUCCESS);
+}
+
+Status DBMClientImpl::Get(std::string_view key, std::string* value) {
+  grpc::ClientContext context;
+  GetRequest request;
+  request.set_dbm_index(dbm_index_);
+  request.set_key(key.data(), key.size());
+  GetResponse response;
+  grpc::Status status = stub_->Get(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  if (response.status().code() == 0) {
+    *value = response.value();
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status DBMClientImpl::Set(std::string_view key, std::string_view value, bool overwrite) {
+  grpc::ClientContext context;
+  SetRequest request;
+  request.set_dbm_index(dbm_index_);
+  request.set_key(key.data(), key.size());
+  request.set_value(value.data(), value.size());
+  request.set_overwrite(overwrite);
+  SetResponse response;
+  grpc::Status status = stub_->Set(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status DBMClientImpl::Remove(std::string_view key) {
+  grpc::ClientContext context;
+  RemoveRequest request;
+  request.set_dbm_index(dbm_index_);
+  request.set_key(key.data(), key.size());
+  RemoveResponse response;
+  grpc::Status status = stub_->Remove(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status DBMClientImpl::Count(int64_t* count) {
+  grpc::ClientContext context;
+  CountRequest request;
+  CountResponse response;
+  grpc::Status status = stub_->Count(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  if (response.status().code() == 0) {
+    *count = response.count();
+  }
+  return MakeStatusFromProto(response.status());
 }
 
 DBMClient::DBMClient() : impl_(nullptr) {
@@ -135,8 +230,32 @@ void DBMClient::Disconnect() {
   return impl_->Disconnect();
 }
 
+void DBMClient::SetDBMIndex(int32_t dbm_index) {
+  return impl_->SetDBMIndex(dbm_index);
+}
+
 Status DBMClient::GetVersion(std::string* version) {
   return impl_->GetVersion(version);
+}
+
+Status DBMClient::Inspect(std::vector<std::pair<std::string, std::string>>* records) {
+  return impl_->Inspect(records);
+}
+
+Status DBMClient::Get(std::string_view key, std::string* value) {
+  return impl_->Get(key, value);
+}
+
+Status DBMClient::Set(std::string_view key, std::string_view value, bool overwrite) {
+  return impl_->Set(key, value, overwrite);
+}
+
+Status DBMClient::Remove(std::string_view key) {
+  return impl_->Remove(key);
+}
+
+Status DBMClient::Count(int64_t* count) {
+  return impl_->Count(count);
 }
 
 Status DaemonizeProcess() {

@@ -197,7 +197,7 @@ static int32_t Process(int32_t argc, const char** args) {
     dbms.emplace_back(std::move(dbm));
   }
   const std::string server_address(StrCat(host, ":", port));
-  DBMServiceImpl service(dbms);
+  DBMServiceImpl service(dbms, &logger);
   grpc::ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);

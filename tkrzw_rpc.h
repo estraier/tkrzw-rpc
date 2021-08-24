@@ -56,11 +56,81 @@ class DBMClient final {
   void Disconnect();
 
   /**
+   * Sets the index of the DBM to access.
+   * @param index The index of the DBM to access.
+   */
+  void SetDBMIndex(int32_t dbm_index);
+
+  /**
    * Get the version numbers of the server.
    * @param key The pointer to a string object to contain the version number.
    * @return The result status.
    */
   Status GetVersion(std::string* version);
+
+  /**
+   * Inspects a database.
+   * @param records The pointer to a map to store retrieved records.
+   * @return The result status.
+   * @details If the DBM index is negative, basic metadata of all DBMs are obtained.
+   */
+  Status Inspect(std::vector<std::pair<std::string, std::string>>* records);
+
+  /**
+   * Gets the value of a record of a key.
+   * @param key The key of the record.
+   * @param value The pointer to a string object to contain the result value.  If it is nullptr,
+   * the value data is ignored.
+   * @return The result status.  If there's no matching record, NOT_FOUND_ERROR is returned.
+   */
+  Status Get(std::string_view key, std::string* value);
+
+  /**
+   * Gets the value of a record of a key, in a simple way.
+   * @param key The key of the record.
+   * @param default_value The value to be returned on failure.
+   * @return The value of the matching record on success, or the default value on failure.
+   */
+  std::string GetSimple(std::string_view key, std::string_view default_value = "") {
+    std::string value;
+    return Get(key, &value) == Status::SUCCESS ? value : std::string(default_value);
+  }
+
+  /**
+   * Sets a record of a key and a value.
+   * @param key The key of the record.
+   * @param value The value of the record.
+   * @param overwrite Whether to overwrite the existing value if there's a record with the same
+   * key.  If true, the existing value is overwritten by the new value.  If false, the operation
+   * is given up and an error status is returned.
+   * @return The result status.  If overwriting is abandoned, DUPLICATION_ERROR is returned.
+   */
+  Status Set(std::string_view key, std::string_view value, bool overwrite = true);
+
+  /**
+   * Removes a record of a key.
+   * @param key The key of the record.
+   * @param old_value The pointer to a string object to contain the old value.  If it is nullptr,
+   * it is ignored.
+   * @return The result status.  If there's no matching record, NOT_FOUND_ERROR is returned.
+   */
+  Status Remove(std::string_view key);
+
+  /**
+   * Gets the number of records.
+   * @param count The pointer to an integer object to contain the result count.
+   * @return The result status.
+   */
+  Status Count(int64_t* count);
+
+  /**
+   * Gets the number of records, in a simple way.
+   * @return The number of records on success, or -1 on failure.
+   */
+  int64_t CountSimple() {
+    int64_t count = 0;
+    return Count(&count) == Status::SUCCESS ? count : -1;
+  }
 
  private:
   /** Pointer to the actual implementation. */

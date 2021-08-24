@@ -43,6 +43,7 @@ CMDLDFLAGS := @MYCMDLDFLAGS@
 CMDLIBS := @MYCMDLIBS@
 TESTLIBS := @MYTESTLIBS@
 LIBS := @LIBS@
+RUNENV := @MYLDLIBPATHENV@=@MYLDLIBPATH@
 
 #================================================================
 # Actions
@@ -99,6 +100,10 @@ distclean : clean apidocclean
 	  config.cache config.log config.status config.tmp autom4te.cache build
 
 test : $(TESTFILES)
+
+testrun :
+	$(RUNENV) ./tkrzw_server_test
+	$(RUNENV) ./tkrzw_rpc_test
 
 apidoc :
 	mkdir api-doc

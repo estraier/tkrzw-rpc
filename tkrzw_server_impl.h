@@ -39,20 +39,106 @@ namespace tkrzw {
 
 class DBMServiceImpl : public DBMService::Service {
  public:
+  DBMServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
+      : dbms_(dbms), logger_(logger) {}
 
-  DBMServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms)
-      : dbms_(dbms) {}
-
-
-  grpc::Status GetVersion(grpc::ServerContext* context,
-                          const GetVersionRequest* request,
-                          GetVersionResponse* response) override {
+  grpc::Status GetVersion(
+      grpc::ServerContext* context, const GetVersionRequest* request,
+      GetVersionResponse* response) override {
     response->set_version(_TKSERV_PKG_VERSION);
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Inspect(
+      grpc::ServerContext* context, const InspectRequest* request,
+      InspectResponse* response) override {
+    if (request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    if (request->dbm_index() >= 0) {
+      auto& dbm = *dbms_[request->dbm_index()];
+      for (const auto& record : dbm.Inspect()) {
+        auto* out_rec = response->add_records();
+        out_rec->set_first(record.first);
+        out_rec->set_second(record.second);
+      }
+    } else {
+      for (int32_t i = 0; i < static_cast<int32_t>(dbms_.size()); i++) {
+        auto& dbm = *dbms_[i];
+        auto* out_record = response->add_records();
+        out_record->set_first(StrCat("dbm_", i, "_path"));
+        out_record->set_second(ToString(dbm.GetFilePathSimple()));
+        out_record = response->add_records();
+        out_record->set_first(StrCat("dbm_", i, "_count"));
+        out_record->set_second(ToString(dbm.CountSimple()));
+      }
+    }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Get(
+      grpc::ServerContext* context, const GetRequest* request,
+      GetResponse* response) override {
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::string value;
+    const Status status = dbm.Get(request->key(), &value);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    if (status == Status::SUCCESS) {
+      response->set_value(value);
+    }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Set(
+      grpc::ServerContext* context, const SetRequest* request,
+      SetResponse* response) override {
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    const Status status = dbm.Set(request->key(), request->value(), request->overwrite());
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Remove(
+      grpc::ServerContext* context, const RemoveRequest* request,
+      RemoveResponse* response) override {
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    const Status status = dbm.Remove(request->key());
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Count(
+      grpc::ServerContext* context, const CountRequest* request,
+      CountResponse* response) override {
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    int64_t count = 0;
+    const Status status = dbm.Count(&count);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    if (status == Status::SUCCESS) {
+      response->set_count(count);
+    }
     return grpc::Status::OK;
   }
 
  private:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
+  Logger* logger_;
 };
 
 }  // namespace tkrzw

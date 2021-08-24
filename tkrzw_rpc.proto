@@ -3,7 +3,7 @@ syntax = "proto3";
 package tkrzw;
 
 message StatusProto {
-  uint32 code = 1;
+  int32 code = 1;
   string message = 2;
 }
 
@@ -19,15 +19,16 @@ message GetVersionResponse {
   string version = 1;
 }
 
-message ReportRequest {
+message InspectRequest {
+  int32 dbm_index = 1;
 }
 
-message ReportResponse {
+message InspectResponse {
   repeated StringPair records = 1;
 }
 
 message GetRequest {
-  uint32 db_index = 1;
+  int32 dbm_index = 1;
   bytes key = 2;
 }
 
@@ -37,7 +38,7 @@ message GetResponse {
 }
 
 message SetRequest {
-  uint32 db_index = 1;
+  int32 dbm_index = 1;
   bytes key = 2;
   bytes value = 3;
   bool overwrite = 4;
@@ -48,7 +49,7 @@ message SetResponse {
 }
 
 message RemoveRequest {
-  uint32 db_index = 1;
+  int32 dbm_index = 1;
   bytes key = 2;
 }
 
@@ -56,10 +57,20 @@ message RemoveResponse {
   StatusProto status = 1;
 }
 
+message CountRequest {
+  int32 dbm_index = 1;
+}
+
+message CountResponse {
+  StatusProto status = 1;
+  int64 count = 2;
+}
+
 service DBMService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
-  //rpc Report(ReportRequest) returns (ReportResponse);
-  //rpc Get(GetRequest) returns (GetResponse);
-  //rpc Set(SetRequest) returns (SetResponse);
-  //rpc Remove(GetRequest) returns (RemoveResponse);
+  rpc Inspect(InspectRequest) returns (InspectResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Set(SetRequest) returns (SetResponse);
+  rpc Remove(RemoveRequest) returns (RemoveResponse);
+  rpc Count(CountRequest) returns (CountResponse);
 }

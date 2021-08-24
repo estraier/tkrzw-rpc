@@ -37,6 +37,7 @@ static void PrintUsageAndDie() {
   P("Common options:\n");
   P("  --host : The binding address/hostname of the service (default: localhost)\n");
   P("  --port : The port number of the service. (default: 1978)\n");
+  P("  --index : The index of the DBM to access. (default: 0)\n");
   P("\n");
   std::exit(1);
 }
@@ -60,15 +61,157 @@ static int32_t ProcessGetVersion(int32_t argc, const char** args) {
     EPrintL("Connect failed: ", status);
     return 1;
   }
+  bool ok = false;
   std::string version;
   status = client.GetVersion(&version);
-  if (status != Status::SUCCESS) {
+  if (status == Status::SUCCESS) {
+    PrintL(version);
+    ok = true;
+  } else {
     EPrintL("GetVersion failed: ", status);
+  }
+  client.Disconnect();
+  return ok ? 0 : 1;
+}
+
+// Processes the inspect subcommand.
+static int32_t ProcessInspect(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"--host", 1}, {"--port", 1}, {"--index", 1}
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
+  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  DBMClient client;
+  Status status = client.Connect(host, port);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
     return 1;
   }
-  PrintL(version);
+  client.SetDBMIndex(dbm_index);
+  bool ok = false;
+  std::vector<std::pair<std::string, std::string>> records;
+  status = client.Inspect(&records);
+  if (status == Status::SUCCESS) {
+    for (const auto& record : records) {
+      PrintL(StrCat(record.first, "=", record.second));
+    }
+    ok = true;
+  } else {
+    EPrintL("Inspect failed: ", status);
+  }
   client.Disconnect();
-  return 0;
+  return ok ? 0 : 1;
+}
+
+// Processes the get subcommand.
+static int32_t ProcessGet(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"", 1}, {"--host", 1}, {"--port", 1}, {"--index", 1}
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string key = GetStringArgument(cmd_args, "", 0, "");
+  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
+  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  DBMClient client;
+  Status status = client.Connect(host, port);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  client.SetDBMIndex(dbm_index);
+  bool ok = false;
+  std::string value;
+  status = client.Get(key, &value);
+  if (status == Status::SUCCESS) {
+    PrintL(value);
+    ok = true;
+  } else {
+    EPrintL("Get failed: ", status);
+  }
+  client.Disconnect();
+  return ok ? 0 : 1;
+}
+
+// Processes the set subcommand.
+static int32_t ProcessSet(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"", 2}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"--no_overwrite", 0},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string key = GetStringArgument(cmd_args, "", 0, "");
+  const std::string value = GetStringArgument(cmd_args, "", 1, "");
+  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
+  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const bool with_no_overwrite = CheckMap(cmd_args, "--no_overwrite");
+  DBMClient client;
+  Status status = client.Connect(host, port);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  client.SetDBMIndex(dbm_index);
+  bool ok = false;
+  status = client.Set(key, value, !with_no_overwrite);
+  if (status == Status::SUCCESS) {
+    ok = true;
+  } else {
+    EPrintL("Set failed: ", status);
+  }
+  client.Disconnect();
+  return ok ? 0 : 1;
+}
+
+// Processes the remove subcommand.
+static int32_t ProcessRemove(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"", 1}, {"--host", 1}, {"--port", 1}, {"--index", 1}
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string key = GetStringArgument(cmd_args, "", 0, "");
+  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
+  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  DBMClient client;
+  Status status = client.Connect(host, port);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  client.SetDBMIndex(dbm_index);
+  bool ok = false;
+  status = client.Remove(key);
+  if (status == Status::SUCCESS) {
+    ok = true;
+  } else {
+    EPrintL("Remove failed: ", status);
+  }
+  client.Disconnect();
+  return ok ? 0 : 1;
 }
 
 }  // namespace tkrzw
@@ -83,6 +226,14 @@ int main(int argc, char** argv) {
   try {
     if (std::strcmp(args[1], "getversion") == 0) {
       rv = tkrzw::ProcessGetVersion(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "inspect") == 0) {
+      rv = tkrzw::ProcessInspect(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "get") == 0) {
+      rv = tkrzw::ProcessGet(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "set") == 0) {
+      rv = tkrzw::ProcessSet(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "remove") == 0) {
+      rv = tkrzw::ProcessRemove(argc - 1, args + 1);
     } else {
       tkrzw::PrintUsageAndDie();
     }
