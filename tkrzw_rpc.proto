@@ -53,7 +53,7 @@ message InspectResponse {
 message GetRequest {
   // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
-  // The key of the record to get.
+  // The key of the record.
   bytes key = 2;
 }
 
@@ -69,9 +69,9 @@ message GetResponse {
 message SetRequest {
   // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
-  // The key of the record to set.
+  // The key of the record.
   bytes key = 2;
-  // The value of the record to set.
+  // The value of the record.
   bytes value = 3;
   // True to overwrite the existing record.
   bool overwrite = 4;
@@ -87,12 +87,30 @@ message SetResponse {
 message RemoveRequest {
   // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
-  // The key of the record to remove.
+  // The key of the record.
   bytes key = 2;
 }
 
 // Response of the Remove method.
 message RemoveResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
+// Request of the Append method.
+message AppendRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The key of the record.
+  bytes key = 2;
+  // The value of the record.
+  bytes value = 3;
+  // The delimiter to put after the existing record.
+  bytes delim = 4;
+}
+
+// Response of the Append method.
+message AppendResponse {
   // The result status.
   StatusProto status = 1;
 }
@@ -111,12 +129,28 @@ message CountResponse {
   int64 count = 2;
 }
 
+// Request of the GetFileSize method.
+message GetFileSizeRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+}
+
+// Response of the GetFileSize method.
+message GetFileSizeResponse {
+  // The result status.
+  StatusProto status = 1;
+  // The current file size.
+  int64 file_size = 2;
+}
+
 // Definition of the database service.
 service DBMService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
   rpc Inspect(InspectRequest) returns (InspectResponse);
   rpc Get(GetRequest) returns (GetResponse);
   rpc Set(SetRequest) returns (SetResponse);
+  rpc Append(AppendRequest) returns (AppendResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
   rpc Count(CountRequest) returns (CountResponse);
+  rpc GetFileSize(GetFileSizeRequest) returns (GetFileSizeResponse);
 }

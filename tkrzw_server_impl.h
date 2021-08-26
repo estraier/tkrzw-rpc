@@ -144,6 +144,20 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
+  grpc::Status Append(
+      grpc::ServerContext* context, const AppendRequest* request,
+      AppendResponse* response) override {
+    LogRequest(context, "Append", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    const Status status = dbm.Append(request->key(), request->value(), request->delim());
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
   grpc::Status Count(
       grpc::ServerContext* context, const CountRequest* request,
       CountResponse* response) override {
@@ -158,6 +172,24 @@ class DBMServiceImpl : public DBMService::Service {
     response->mutable_status()->set_message(status.GetMessage());
     if (status == Status::SUCCESS) {
       response->set_count(count);
+    }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status GetFileSize(
+      grpc::ServerContext* context, const GetFileSizeRequest* request,
+      GetFileSizeResponse* response) override {
+    LogRequest(context, "GetFileSize", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    int64_t file_size = 0;
+    const Status status = dbm.GetFileSize(&file_size);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    if (status == Status::SUCCESS) {
+      response->set_file_size(file_size);
     }
     return grpc::Status::OK;
   }

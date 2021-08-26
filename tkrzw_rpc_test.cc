@@ -11,6 +11,8 @@
  * and limitations under the License.
  *************************************************************************************************/
 
+
+#include "google/protobuf/util/message_differencer.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -30,11 +32,16 @@ int main(int argc, char** argv) {
 
 class ClientTest : public Test {};
 
+MATCHER_P(EqualsProto, rhs, "Equality matcher for protos") {
+  return google::protobuf::util::MessageDifferencer::Equivalent(arg, rhs);
+}
+
 TEST_F(ClientTest, GetVersion) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::GetVersionRequest request;
   tkrzw::GetVersionResponse response;
   response.set_version("1.2.3");
-  EXPECT_CALL(*stub, GetVersion(_, _, _)).WillOnce(
+  EXPECT_CALL(*stub, GetVersion(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::DBMClient client;
   client.InjectStub(stub.release());
@@ -46,11 +53,12 @@ TEST_F(ClientTest, GetVersion) {
 
 TEST_F(ClientTest, Inspect) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::InspectRequest request;
   tkrzw::InspectResponse response;
   auto* res_record = response.add_records();
   res_record->set_first("name");
   res_record->set_second("value");
-  EXPECT_CALL(*stub, Inspect(_, _, _)).WillOnce(
+  EXPECT_CALL(*stub, Inspect(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::DBMClient client;
   client.InjectStub(stub.release());
@@ -62,11 +70,34 @@ TEST_F(ClientTest, Inspect) {
   EXPECT_EQ("value", records[0].second);
 }
 
+TEST_F(ClientTest, InspectServer) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::InspectRequest request;
+  request.set_dbm_index(-1);
+  tkrzw::InspectResponse response;
+  auto* res_record = response.add_records();
+  res_record->set_first("name");
+  res_record->set_second("value");
+  EXPECT_CALL(*stub, Inspect(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  client.SetDBMIndex(-1);
+  std::vector<std::pair<std::string, std::string>> records;
+  const tkrzw::Status status = client.Inspect(&records);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  ASSERT_EQ(1, records.size());
+  EXPECT_EQ("name", records[0].first);
+  EXPECT_EQ("value", records[0].second);
+}
+
 TEST_F(ClientTest, Get) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::GetRequest request;
+  request.set_key("key");
   tkrzw::GetResponse response;
   response.set_value("value");
-  EXPECT_CALL(*stub, Get(_, _, _)).WillOnce(
+  EXPECT_CALL(*stub, Get(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::DBMClient client;
   client.InjectStub(stub.release());
@@ -78,8 +109,12 @@ TEST_F(ClientTest, Get) {
 
 TEST_F(ClientTest, Set) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::SetRequest request;
+  request.set_key("key");
+  request.set_value("value");
+  request.set_overwrite(true);
   tkrzw::SetResponse response;
-  EXPECT_CALL(*stub, Set(_, _, _)).WillOnce(
+  EXPECT_CALL(*stub, Set(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::DBMClient client;
   client.InjectStub(stub.release());
@@ -90,8 +125,10 @@ TEST_F(ClientTest, Set) {
 
 TEST_F(ClientTest, Remove) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::RemoveRequest request;
+  request.set_key("key");
   tkrzw::RemoveResponse response;
-  EXPECT_CALL(*stub, Remove(_, _, _)).WillOnce(
+  EXPECT_CALL(*stub, Remove(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::DBMClient client;
   client.InjectStub(stub.release());
@@ -99,11 +136,28 @@ TEST_F(ClientTest, Remove) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
 }
 
+TEST_F(ClientTest, Append) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::AppendRequest request;
+  request.set_key("key");
+  request.set_value("value");
+  request.set_delim(":");
+  tkrzw::AppendResponse response;
+  EXPECT_CALL(*stub, Append(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  std::string value;
+  const tkrzw::Status status = client.Append("key", "value", ":");
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+}
+
 TEST_F(ClientTest, Count) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::CountRequest request;
   tkrzw::CountResponse response;
   response.set_count(123);
-  EXPECT_CALL(*stub, Count(_, _, _)).WillOnce(
+  EXPECT_CALL(*stub, Count(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::DBMClient client;
   client.InjectStub(stub.release());
@@ -111,4 +165,19 @@ TEST_F(ClientTest, Count) {
   const tkrzw::Status status = client.Count(&count);
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
   EXPECT_EQ(123, count);
+}
+
+TEST_F(ClientTest, GetFileSize) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::GetFileSizeRequest request;
+  tkrzw::GetFileSizeResponse response;
+  response.set_file_size(1234);
+  EXPECT_CALL(*stub, GetFileSize(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  int64_t file_size = 0;
+  const tkrzw::Status status = client.GetFileSize(&file_size);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(1234, file_size);
 }

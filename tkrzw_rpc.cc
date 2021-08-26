@@ -86,7 +86,9 @@ class DBMClientImpl final {
   Status Get(std::string_view key, std::string* value);
   Status Set(std::string_view key, std::string_view value, bool overwrite);
   Status Remove(std::string_view key);
+  Status Append(std::string_view key, std::string_view value, std::string_view delim);
   Status Count(int64_t* count);
+  Status GetFileSize(int64_t* file_size);
 
  private:
   std::unique_ptr<DBMService::StubInterface> stub_;
@@ -196,6 +198,22 @@ Status DBMClientImpl::Remove(std::string_view key) {
   return MakeStatusFromProto(response.status());
 }
 
+Status DBMClientImpl::Append(
+    std::string_view key, std::string_view value, std::string_view delim) {
+  grpc::ClientContext context;
+  AppendRequest request;
+  request.set_dbm_index(dbm_index_);
+  request.set_key(key.data(), key.size());
+  request.set_value(value.data(), value.size());
+  request.set_delim(delim.data(), delim.size());
+  AppendResponse response;
+  grpc::Status status = stub_->Append(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
 Status DBMClientImpl::Count(int64_t* count) {
   grpc::ClientContext context;
   CountRequest request;
@@ -206,6 +224,20 @@ Status DBMClientImpl::Count(int64_t* count) {
   }
   if (response.status().code() == 0) {
     *count = response.count();
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status DBMClientImpl::GetFileSize(int64_t* file_size) {
+  grpc::ClientContext context;
+  GetFileSizeRequest request;
+  GetFileSizeResponse response;
+  grpc::Status status = stub_->GetFileSize(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  if (response.status().code() == 0) {
+    *file_size = response.file_size();
   }
   return MakeStatusFromProto(response.status());
 }
@@ -254,8 +286,16 @@ Status DBMClient::Remove(std::string_view key) {
   return impl_->Remove(key);
 }
 
+Status DBMClient::Append(std::string_view key, std::string_view value, std::string_view delim) {
+  return impl_->Append(key, value, delim);
+}
+
 Status DBMClient::Count(int64_t* count) {
   return impl_->Count(count);
+}
+
+Status DBMClient::GetFileSize(int64_t* file_size) {
+  return impl_->GetFileSize(file_size);
 }
 
 Status DaemonizeProcess() {

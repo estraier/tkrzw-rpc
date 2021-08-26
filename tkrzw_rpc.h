@@ -117,6 +117,16 @@ class DBMClient final {
   Status Remove(std::string_view key);
 
   /**
+   * Appends data at the end of a record of a key.
+   * @param key The key of the record.
+   * @param value The value to append.
+   * @param delim The delimiter to put after the existing record.
+   * @return The result status.
+   * @details If there's no existing record, the value is set without the delimiter.
+   */
+  Status Append(std::string_view key, std::string_view value, std::string_view delim = "");
+
+  /**
    * Gets the number of records.
    * @param count The pointer to an integer object to contain the result count.
    * @return The result status.
@@ -130,6 +140,22 @@ class DBMClient final {
   int64_t CountSimple() {
     int64_t count = 0;
     return Count(&count) == Status::SUCCESS ? count : -1;
+  }
+
+  /**
+   * Gets the current file size of the database.
+   * @param size The pointer to an integer object to contain the result size.
+   * @return The result status.
+   */
+  Status GetFileSize(int64_t* size);
+
+  /**
+   * Gets the current file size of the database, in a simple way.
+   * @return The current file size of the database, or -1 on failure.
+   */
+  int64_t GetFileSizeSimple() {
+    int64_t size = 0;
+    return GetFileSize(&size) == Status::SUCCESS ? size : -1;
   }
 
  private:

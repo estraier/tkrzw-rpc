@@ -29,11 +29,13 @@ int main(int argc, char** argv) {
 class ServerTest : public Test {};
 
 TEST_F(ServerTest, Basic) {
+  tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
+  const std::string file_path = tmp_dir.MakeUniquePath();
   std::vector<std::unique_ptr<tkrzw::ParamDBM>> dbms(1);;
   dbms[0] = std::make_unique<tkrzw::PolyDBM>();
-  const std::map<std::string, std::string> params = {{"dbm", "tiny"}, {"num_buckets", "10"}};
+  const std::map<std::string, std::string> params = {{"dbm", "HashDBM"}, {"num_buckets", "10"}};
   EXPECT_EQ(tkrzw::Status::SUCCESS,
-            dbms[0]->OpenAdvanced("", true, tkrzw::File::OPEN_DEFAULT, params));
+            dbms[0]->OpenAdvanced(file_path, true, tkrzw::File::OPEN_DEFAULT, params));
   tkrzw::StreamLogger logger;
   tkrzw::DBMServiceImpl server(dbms, &logger);
   grpc::ServerContext context;
@@ -51,7 +53,7 @@ TEST_F(ServerTest, Basic) {
     EXPECT_TRUE(status.ok());
     bool ok = false;
     for (const auto& record : response.records()) {
-      if (record.first() == "class" && record.second() == "TinyDBM") {
+      if (record.first() == "class" && record.second() == "HashDBM") {
         ok = true;
       }
     }
@@ -66,6 +68,15 @@ TEST_F(ServerTest, Basic) {
     EXPECT_TRUE(status.ok());
   }
   {
+    tkrzw::AppendRequest request;
+    request.set_key("one");
+    request.set_value("1");
+    request.set_delim(":");
+    tkrzw::AppendResponse response;
+    grpc::Status status = server.Append(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+  }
+  {
     tkrzw::CountRequest request;
     tkrzw::CountResponse response;
     grpc::Status status = server.Count(&context, &request, &response);
@@ -73,12 +84,19 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(1, response.count());
   }
   {
+    tkrzw::GetFileSizeRequest request;
+    tkrzw::GetFileSizeResponse response;
+    grpc::Status status = server.GetFileSize(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_GT(response.file_size(), 4096);
+  }
+  {
     tkrzw::GetRequest request;
     request.set_key("one");
     tkrzw::GetResponse response;
     grpc::Status status = server.Get(&context, &request, &response);
     EXPECT_TRUE(status.ok());
-    EXPECT_EQ("first", response.value());
+    EXPECT_EQ("first:1", response.value());
   }
   {
     tkrzw::RemoveRequest request;
