@@ -20,10 +20,12 @@
 
 #include <iostream>
 #include <memory>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <google/protobuf/message.h>
 #include <grpc/grpc.h>
 #include <grpcpp/security/server_credentials.h>
 #include <grpcpp/server.h>
@@ -42,9 +44,28 @@ class DBMServiceImpl : public DBMService::Service {
   DBMServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
       : dbms_(dbms), logger_(logger) {}
 
+  void LogRequest(grpc::ServerContext* context, const char* name,
+                  const google::protobuf::Message* proto) {
+    if (!logger_->CheckLevel(Logger::DEBUG)) {
+      return;
+    }
+    static std::regex regex_linehead("\\n\\s*");
+    std::string proto_text =  std::regex_replace(proto->Utf8DebugString(), regex_linehead, " ");
+    while (!proto_text.empty() && proto_text.back() == ' ') {
+      proto_text.resize(proto_text.size() - 1);
+    }
+    std::string message = StrCat(context->peer(), " [", name, "]");
+    if (!proto_text.empty()) {
+      message += " ";
+      message += proto_text;
+    }
+    logger_->Log(Logger::DEBUG, message);
+  }
+
   grpc::Status GetVersion(
       grpc::ServerContext* context, const GetVersionRequest* request,
       GetVersionResponse* response) override {
+    LogRequest(context, "GetVersion", request);
     response->set_version(_TKSERV_PKG_VERSION);
     return grpc::Status::OK;
   }
@@ -52,6 +73,7 @@ class DBMServiceImpl : public DBMService::Service {
   grpc::Status Inspect(
       grpc::ServerContext* context, const InspectRequest* request,
       InspectResponse* response) override {
+    LogRequest(context, "Inspect", request);
     if (request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
@@ -79,6 +101,7 @@ class DBMServiceImpl : public DBMService::Service {
   grpc::Status Get(
       grpc::ServerContext* context, const GetRequest* request,
       GetResponse* response) override {
+    LogRequest(context, "Get", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
@@ -96,6 +119,7 @@ class DBMServiceImpl : public DBMService::Service {
   grpc::Status Set(
       grpc::ServerContext* context, const SetRequest* request,
       SetResponse* response) override {
+    LogRequest(context, "Set", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
@@ -109,6 +133,7 @@ class DBMServiceImpl : public DBMService::Service {
   grpc::Status Remove(
       grpc::ServerContext* context, const RemoveRequest* request,
       RemoveResponse* response) override {
+    LogRequest(context, "Remove", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
@@ -122,6 +147,7 @@ class DBMServiceImpl : public DBMService::Service {
   grpc::Status Count(
       grpc::ServerContext* context, const CountRequest* request,
       CountResponse* response) override {
+    LogRequest(context, "Count", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }

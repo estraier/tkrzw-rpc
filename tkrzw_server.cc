@@ -40,12 +40,15 @@ static void PrintUsageAndDie() {
   P("\n");
   P("Options:\n");
   P("  --version : Prints the version number and exit.\n");
-  P("  --host : The binding address/hostname of the service (default: 0.0.0.0)\n");
-  P("  --port : The port number of the service. (default: 1978)\n");
-  P("  --log_file : The file path of the log file. (default: /dev/stdout)\n");
-  P("  --log_level : The minimum log level to be stored:"
+  P("  --host str : The binding address/hostname of the service (default: 0.0.0.0)\n");
+  P("  --port num : The port number of the service. (default: 1978)\n");
+  P("  --log_file str : The file path of the log file. (default: /dev/stdout)\n");
+  P("  --log_level str : The minimum log level to be stored:"
     " debug, info, warn, error, fatal. (default: info)\n");
-  P("  --pid_file : The file path of the store the process ID.\n");
+  P("  --log_date str : The log date format: simple, simple_micro, w3cdtf, w3cdtf_micro,"
+    " rfc1123, epoch, epoch_micro. (default: simple)\n");
+  P("  --log_td num : The log time difference in seconds. (default: 99999=local)\n");
+  P("  --pid_file str : The file path of the store the process ID.\n");
   P("  --daemon : Runs the process as a daemon process.\n");
   P("  --read_only : Opens the databases in the read-only mode.\n");
   P("\n");
@@ -59,6 +62,8 @@ static void PrintUsageAndDie() {
 StreamLogger* g_logger = nullptr;
 std::string_view g_log_file;
 std::string_view g_log_level;
+std::string_view g_log_date;
+int32_t g_log_td = 0;
 std::ofstream* g_log_stream = nullptr;
 std::atomic<grpc::Server*> g_server(nullptr);
 
@@ -72,24 +77,15 @@ Status ConfigLogger() {
   }
   if (g_log_file.empty()) {
     g_logger->SetStream(nullptr);
-    g_logger->SetMinLevel(Logger::FATAL);
+    g_logger->SetMinLevel(Logger::NONE);
   } else {
     g_log_stream->open(std::string(g_log_file), std::ios::app);
     if (!g_log_stream->good()) {
       return Status(Status::SYSTEM_ERROR, "log open failed");
     }
     g_logger->SetStream(g_log_stream);
-    if (g_log_level == "debug") {
-      g_logger->SetMinLevel(Logger::DEBUG);
-    } else if (g_log_level == "info") {
-      g_logger->SetMinLevel(Logger::INFO);
-    } else if (g_log_level == "warn") {
-      g_logger->SetMinLevel(Logger::WARN);
-    } else if (g_log_level == "error") {
-      g_logger->SetMinLevel(Logger::ERROR);
-    } else if (g_log_level == "fatal") {
-      g_logger->SetMinLevel(Logger::FATAL);
-    }
+    g_logger->SetMinLevel(Logger::ParseLevelStr(g_log_level));
+    g_logger->SetDateFormat(BaseLogger::ParseDateFormatStr(g_log_date), g_log_td);
   }
   return Status(Status::SUCCESS);
 }
@@ -98,10 +94,10 @@ Status ConfigLogger() {
 void ReconfigServer(int signum) {
   grpc::Server* server = g_server.load();
   if (server != nullptr) {
-    g_logger->Log(Logger::INFO, StrCat("Reconfiguring by signal: ", signum));
+    g_logger->LogCat(Logger::INFO, "Reconfiguring by signal: ", signum);
     const Status status = ConfigLogger();
     if (status != Status::SUCCESS) {
-      g_logger->Log(Logger::ERROR, StrCat("ConfigLogger failed: ", status));
+      g_logger->LogCat(Logger::ERROR, "ConfigLogger failed: ", status);
     }
   }
 }
@@ -110,7 +106,7 @@ void ReconfigServer(int signum) {
 void ShutdownServer(int signum) {
   grpc::Server* server = g_server.load();
   if (server != nullptr && g_server.compare_exchange_strong(server, nullptr)) {
-    g_logger->Log(Logger::INFO, StrCat("Shutting down by signal: ", signum));
+    g_logger->LogCat(Logger::INFO, "Shutting down by signal: ", signum);
     const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
     server->Shutdown(deadline);
   }
@@ -120,8 +116,8 @@ void ShutdownServer(int signum) {
 static int32_t Process(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"--version", 0}, {"--host", 1}, {"--port", 1},
-    {"--log_file", 1}, {"--log_level", 1}, {"--pid_file", 1},
-    {"--daemon", 0},
+    {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
+    {"--pid_file", 1}, {"--daemon", 0},
     {"--read_only", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
@@ -138,6 +134,8 @@ static int32_t Process(int32_t argc, const char** args) {
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const std::string log_file = GetStringArgument(cmd_args, "--log_file", 0, "/dev/stdout");
   const std::string log_level = GetStringArgument(cmd_args, "--log_level", 0, "info");
+  const std::string log_date = GetStringArgument(cmd_args, "--log_date", 0, "simple");
+  const int32_t log_td = GetIntegerArgument(cmd_args, "--log_td", 0, 99999);
   const std::string pid_file = GetStringArgument(cmd_args, "--pid_file", 0, "");
   const bool as_daemon = CheckMap(cmd_args, "--daemon");
   const bool read_only = CheckMap(cmd_args, "--read_only");
@@ -156,6 +154,8 @@ static int32_t Process(int32_t argc, const char** args) {
   g_logger = &logger;
   g_log_file = std::string_view(log_file);
   g_log_level = std::string_view(log_level);
+  g_log_date = std::string_view(log_date);
+  g_log_td = log_td < 99999 ? log_td : INT32MIN;
   std::ofstream log_stream;
   g_log_stream = &log_stream;
   ConfigLogger();
@@ -164,17 +164,17 @@ static int32_t Process(int32_t argc, const char** args) {
   logger.LogF(Logger::INFO, "==== Starting the process %s ====",
               (as_daemon ? "as a daemon" : "as a command"));
   if (!pid_file.empty()) {
-    logger.Log(Logger::INFO, StrCat("Writing the PID file: ", pid_file));
+    logger.LogCat(Logger::INFO, "Writing the PID file: ", pid_file);
     const Status status = WriteFile(pid_file, StrCat(pid, "\n"));
     if (status != Status::SUCCESS) {
-      logger.Log(Logger::ERROR, StrCat("WriteFile failed: ", pid_file, ": ", status));
+      logger.LogCat(Logger::ERROR, "WriteFile failed: ", pid_file, ": ", status);
       has_error = true;
     }
   }
   std::vector<std::unique_ptr<ParamDBM>> dbms;
   dbms.reserve(dbm_exprs.size());
   for (const auto& dbm_expr : dbm_exprs) {
-    logger.Log(Logger::INFO, StrCat("Opening a database: ", dbm_expr));
+    logger.LogCat(Logger::INFO, "Opening a database: ", dbm_expr);
     const std::vector<std::string> fields = StrSplit(dbm_expr, "#");
     const std::string path = fields.front();
     std::map<std::string, std::string> params;
@@ -191,7 +191,7 @@ static int32_t Process(int32_t argc, const char** args) {
     const bool writable = read_only ? false : true;
     const Status status = dbm->OpenAdvanced(path, writable, File::OPEN_DEFAULT, params);
     if (status != Status::SUCCESS) {
-      logger.Log(Logger::ERROR, StrCat("Open failed: ", path, ": ", status));
+      logger.LogCat(Logger::ERROR, "Open failed: ", path, ": ", status);
       has_error = true;
     }
     dbms.emplace_back(std::move(dbm));
@@ -202,7 +202,7 @@ static int32_t Process(int32_t argc, const char** args) {
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
-  logger.Log(Logger::INFO, StrCat("address=", server_address, ", pid=", pid));
+  logger.LogCat(Logger::INFO, "address=", server_address, ", pid=", pid);
   g_server.store(server.get());
   std::signal(SIGHUP, ReconfigServer);
   std::signal(SIGINT, ShutdownServer);
@@ -214,7 +214,7 @@ static int32_t Process(int32_t argc, const char** args) {
     logger.Log(Logger::INFO, "Closing a database");
     const Status status = dbm->Close();
     if (status != Status::SUCCESS) {
-      logger.Log(Logger::ERROR, StrCat("Close failed: ", status));
+      logger.LogCat(Logger::ERROR, "Close failed: ", status);
       has_error = true;
     }
   }

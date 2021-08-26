@@ -33,11 +33,17 @@ static void PrintUsageAndDie() {
   P("\n");
   P("Usage:\n");
   P("  %s getversion [options]\n", progname);
+  P("  %s get [options] key\n", progname);
+  P("  %s set [options] key value\n", progname);
+  P("  %s remove [options] key\n", progname);
   P("\n");
   P("Common options:\n");
   P("  --host : The binding address/hostname of the service (default: localhost)\n");
   P("  --port : The port number of the service. (default: 1978)\n");
   P("  --index : The index of the DBM to access. (default: 0)\n");
+  P("\n");
+  P("Options for the set subcommand:\n");
+  P("  --no_overwrite : Fails if there's an existing record wit the same key.\n");
   P("\n");
   std::exit(1);
 }
