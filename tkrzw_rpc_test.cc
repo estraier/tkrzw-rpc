@@ -44,7 +44,7 @@ TEST_F(ClientTest, GetVersion) {
   EXPECT_EQ("1.2.3", version);
 }
 
-TEST_F(ClientTest, GetInspect) {
+TEST_F(ClientTest, Inspect) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::InspectResponse response;
   auto* res_record = response.add_records();

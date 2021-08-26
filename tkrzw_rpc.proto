@@ -2,70 +2,116 @@ syntax = "proto3";
 
 package tkrzw;
 
+// Status data corresponding to the Status class.
 message StatusProto {
+  // The message code.
   int32 code = 1;
+  // The additional status message.
   string message = 2;
 }
 
+// Generic key-value pair of strings.
 message StringPair {
+  // The first value, aka. record key.
   string first = 1;
+  // The second value aka. record value.
   string second = 2;
 }
 
+// Generic key-value pair of byte arrays.
+message BytesPair {
+  // The first value, aka. record key.
+  bytes first = 1;
+  // The second value aka. record value.
+  bytes second = 2;
+}
+
+// Request of the GetVersion method.
 message GetVersionRequest {
 }
 
+// Response of the GetVersion method.
 message GetVersionResponse {
+  // The verson numbers.
   string version = 1;
 }
 
+// Request of the Inspect method.
 message InspectRequest {
+  // The index of the DBM object.  The origin is 0.
+  // If it is negative, metadata of the server is retrieved.
   int32 dbm_index = 1;
 }
 
+// Response of the Inspect method.
 message InspectResponse {
+  // Key-value pairs of the attributes.
   repeated StringPair records = 1;
 }
 
+// Request of the Get method.
 message GetRequest {
+  // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
+  // The key of the record to get.
   bytes key = 2;
 }
 
+// Response of the Get method.
 message GetResponse {
+  // The result status.
   StatusProto status = 1;
+  // The value of the record.
   bytes value = 2;
 }
 
+// Request of the Set method.
 message SetRequest {
+  // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
+  // The key of the record to set.
   bytes key = 2;
+  // The value of the record to set.
   bytes value = 3;
+  // True to overwrite the existing record.
   bool overwrite = 4;
 }
 
+// Response of the Set method.
 message SetResponse {
+  // The result status.
   StatusProto status = 1;
 }
 
+// Request of the Remove method.
 message RemoveRequest {
+  // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
+  // The key of the record to remove.
   bytes key = 2;
 }
 
+// Response of the Remove method.
 message RemoveResponse {
+  // The result status.
   StatusProto status = 1;
 }
 
+// Request of the Count method.
 message CountRequest {
+  // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
 }
 
+// Response of the Count method.
 message CountResponse {
+  // The result status.
   StatusProto status = 1;
+  // The number of records.
   int64 count = 2;
 }
 
+// Definition of the database service.
 service DBMService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
   rpc Inspect(InspectRequest) returns (InspectResponse);
