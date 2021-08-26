@@ -163,12 +163,6 @@ class DBMClient final {
   DBMClientImpl* impl_;
 };
 
-/**
- * Switches the process into the background.
- * @return The result status.
- */
-Status DaemonizeProcess();
-
 }  // namespace tkrzw
 
 #endif  // _TKRZW_RPC_H

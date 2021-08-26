@@ -26,6 +26,7 @@
 #include "tkrzw_cmd_util.h"
 #include "tkrzw_rpc.h"
 #include "tkrzw_server_impl.h"
+#include "tkrzw_server_util.h"
 
 namespace tkrzw {
 
