@@ -44,6 +44,8 @@ static void PrintUsageAndDie() {
   P("\n");
   P("Options for the set subcommand:\n");
   P("  --no_overwrite : Fails if there's an existing record wit the same key.\n");
+  P("  --append str : Appends the value at the end after the given delimiter.\n");
+  P("  --incr num : Increments the value with the given initial value.\n");
   P("\n");
   std::exit(1);
 }
@@ -155,7 +157,7 @@ static int32_t ProcessGet(int32_t argc, const char** args) {
 static int32_t ProcessSet(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"", 2}, {"--host", 1}, {"--port", 1}, {"--index", 1},
-    {"--no_overwrite", 0},
+    {"--no_overwrite", 0}, {"--append", 1}, {"--incr", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -169,6 +171,8 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const bool with_no_overwrite = CheckMap(cmd_args, "--no_overwrite");
+  const std::string append_delim = GetStringArgument(cmd_args, "--append", 0, "[\xFF|\xFF|\xFF]");
+  const int64_t incr_init = GetIntegerArgument(cmd_args, "--incr", 0, INT64MIN);
   DBMClient client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
@@ -177,11 +181,29 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
   }
   client.SetDBMIndex(dbm_index);
   bool ok = false;
-  status = client.Set(key, value, !with_no_overwrite);
-  if (status == Status::SUCCESS) {
-    ok = true;
+  if (incr_init != INT64MIN) {
+    int64_t current = 0;
+    status = client.Increment(key, StrToInt(value), &current, incr_init);
+    if (status == Status::SUCCESS) {
+      PrintL(current);
+      ok = true;
+    } else {
+      EPrintL("Increment failed: ", status);
+    }
+  } else if (append_delim != "[\xFF|\xFF|\xFF]") {
+    status = client.Append(key, value, append_delim);
+    if (status == Status::SUCCESS) {
+      ok = true;
+    } else {
+      EPrintL("Append failed: ", status);
+    }
   } else {
-    EPrintL("Set failed: ", status);
+    status = client.Set(key, value, !with_no_overwrite);
+    if (status == Status::SUCCESS) {
+      ok = true;
+    } else {
+      EPrintL("Set failed: ", status);
+    }
   }
   client.Disconnect();
   return ok ? 0 : 1;
@@ -238,6 +260,8 @@ int main(int argc, char** argv) {
       rv = tkrzw::ProcessGet(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "set") == 0) {
       rv = tkrzw::ProcessSet(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "remove") == 0) {
+      rv = tkrzw::ProcessRemove(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "remove") == 0) {
       rv = tkrzw::ProcessRemove(argc - 1, args + 1);
     } else {

@@ -151,6 +151,24 @@ TEST_F(ClientTest, Append) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
 }
 
+TEST_F(ClientTest, Increment) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::IncrementRequest request;
+  request.set_key("key");
+  request.set_increment(5);
+  request.set_initial(100);
+  tkrzw::IncrementResponse response;
+  response.set_current(105);
+  EXPECT_CALL(*stub, Increment(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  int64_t current = 0;
+  const tkrzw::Status status = client.Increment("key", 5, &current, 100);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(105, current);
+}
+
 TEST_F(ClientTest, Count) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::CountRequest request;

@@ -112,6 +112,18 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(0, response.status().code());
     EXPECT_EQ(0, dbms[0]->CountSimple());
   }
+  {
+    tkrzw::IncrementRequest request;
+    request.set_key("num");
+    request.set_increment(5);
+    request.set_initial(100);
+    tkrzw::IncrementResponse response;
+    grpc::Status status = server.Increment(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ(105, response.current());
+    EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Remove("num"));
+  }
   for (int32_t i = 0; i < 30; i++) {
     const std::string expr = tkrzw::ToString(i);
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(expr, expr));

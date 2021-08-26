@@ -129,6 +129,34 @@ class DBMClient final {
   Status Append(std::string_view key, std::string_view value, std::string_view delim = "");
 
   /**
+   * Increments the numeric value of a record.
+   * @param key The key of the record.
+   * @param increment The incremental value.  If it is INT64MIN, the current value is not changed
+   * and a new record is not created.
+   * @param current The pointer to an integer to contain the current value.  If it is nullptr,
+   * it is ignored.
+   * @param initial The initial value.
+   * @return The result status.
+   * @details The record value is stored as an 8-byte big-endian integer.  Negative is also
+   * supported.
+   */
+  Status Increment(std::string_view key, int64_t increment = 1,
+                   int64_t* current = nullptr, int64_t initial = 0);
+
+  /**
+   * Increments the numeric value of a record, in a simple way.
+   * @param key The key of the record.
+   * @param increment The incremental value.
+   * @param initial The initial value.
+   * @return The current value or INT64MIN on failure.
+   * @details The record value is treated as a decimal integer.  Negative is also supported.
+   */
+  int64_t IncrementSimple(std::string_view key, int64_t increment = 1, int64_t initial = 0) {
+    int64_t current = 0;
+    return Increment(key, increment, &current, initial) == Status::SUCCESS ? current : INT64MIN;
+  }
+  
+  /**
    * Gets the number of records.
    * @param count The pointer to an integer object to contain the result count.
    * @return The result status.

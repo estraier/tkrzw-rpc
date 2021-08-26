@@ -115,6 +115,26 @@ message AppendResponse {
   StatusProto status = 1;
 }
 
+// Request of the Increment method.
+message IncrementRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The key of the record.
+  bytes key = 2;
+  // The incremental value.
+  int64 increment = 3;
+  // The initial value.
+  int64 initial = 4;
+}
+
+// Response of the Increment method.
+message IncrementResponse {
+  // The result status.
+  StatusProto status = 1;
+  // The current value.
+  int64 current = 2;
+}
+
 // Request of the Count method.
 message CountRequest {
   // The index of the DBM object.  The origin is 0.
@@ -206,6 +226,7 @@ service DBMService {
   rpc Get(GetRequest) returns (GetResponse);
   rpc Set(SetRequest) returns (SetResponse);
   rpc Append(AppendRequest) returns (AppendResponse);
+  rpc Increment(IncrementRequest) returns (IncrementResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
   rpc Count(CountRequest) returns (CountResponse);
   rpc GetFileSize(GetFileSizeRequest) returns (GetFileSizeResponse);

@@ -77,6 +77,7 @@ class DBMClientImpl final {
   Status Set(std::string_view key, std::string_view value, bool overwrite);
   Status Remove(std::string_view key);
   Status Append(std::string_view key, std::string_view value, std::string_view delim);
+  Status Increment(std::string_view key, int64_t increment, int64_t* current, int64_t initial);
   Status Count(int64_t* count);
   Status GetFileSize(int64_t* file_size);
   Status Clear();
@@ -204,6 +205,25 @@ Status DBMClientImpl::Append(
   grpc::Status status = stub_->Append(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status DBMClientImpl::Increment(
+    std::string_view key, int64_t increment, int64_t* current, int64_t initial) {
+  grpc::ClientContext context;
+  IncrementRequest request;
+  request.set_dbm_index(dbm_index_);
+  request.set_key(key.data(), key.size());
+  request.set_increment(increment);
+  request.set_initial(initial);
+  IncrementResponse response;
+  grpc::Status status = stub_->Increment(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  if (current != nullptr) {
+    *current = response.current();
   }
   return MakeStatusFromProto(response.status());
 }
@@ -340,6 +360,11 @@ Status DBMClient::Remove(std::string_view key) {
 
 Status DBMClient::Append(std::string_view key, std::string_view value, std::string_view delim) {
   return impl_->Append(key, value, delim);
+}
+
+Status DBMClient::Increment(
+    std::string_view key, int64_t increment, int64_t* current, int64_t initial) {
+  return impl_->Increment(key, increment, current, initial);
 }
 
 Status DBMClient::Count(int64_t* count) {

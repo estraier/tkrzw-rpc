@@ -158,6 +158,25 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
+  grpc::Status Increment(
+      grpc::ServerContext* context, const IncrementRequest* request,
+      IncrementResponse* response) override {
+    LogRequest(context, "Increment", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    int64_t current = 0;
+    const Status status =
+        dbm.Increment(request->key(), request->increment(), &current, request->initial());
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    if (status == Status::SUCCESS) {
+      response->set_current(current);
+    }    
+    return grpc::Status::OK;
+  }
+  
   grpc::Status Count(
       grpc::ServerContext* context, const CountRequest* request,
       CountResponse* response) override {
