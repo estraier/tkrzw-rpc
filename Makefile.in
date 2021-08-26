@@ -106,7 +106,9 @@ testrun :
 	$(RUNENV) ./tkrzw_rpc_test
 
 apidoc :
-	mkdir api-doc
+	$(MAKE) apidocclean
+	mkdir -p api-doc
+	doxygen
 
 apidocclean :
 	rm -rf api-doc api-doc-tmp

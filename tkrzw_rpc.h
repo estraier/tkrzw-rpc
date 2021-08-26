@@ -1,5 +1,5 @@
 /*************************************************************************************************
- * RPC API of Tkrzw
+ * RPC API of Tkrzwb
  *
  * Copyright 2020 Google LLC
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
@@ -25,6 +25,9 @@ namespace tkrzw {
 
 class DBMClientImpl;
 
+/**
+ * RPC interface to access the database service via gRPC protocol.
+ */
 class DBMClient final {
  public:
   /**
@@ -58,13 +61,13 @@ class DBMClient final {
 
   /**
    * Sets the index of the DBM to access.
-   * @param index The index of the DBM to access.
+   * @param dbm_index The index of the DBM to access.
    */
   void SetDBMIndex(int32_t dbm_index);
 
   /**
    * Get the version numbers of the server.
-   * @param key The pointer to a string object to contain the version number.
+   * @param version The pointer to a string object to contain the version number.
    * @return The result status.
    */
   Status GetVersion(std::string* version);
@@ -111,8 +114,6 @@ class DBMClient final {
   /**
    * Removes a record of a key.
    * @param key The key of the record.
-   * @param old_value The pointer to a string object to contain the old value.  If it is nullptr,
-   * it is ignored.
    * @return The result status.  If there's no matching record, NOT_FOUND_ERROR is returned.
    */
   Status Remove(std::string_view key);
