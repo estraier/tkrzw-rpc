@@ -11,7 +11,6 @@
  * and limitations under the License.
  *************************************************************************************************/
 
-
 #include "google/protobuf/util/message_differencer.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -181,3 +180,63 @@ TEST_F(ClientTest, GetFileSize) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
   EXPECT_EQ(1234, file_size);
 }
+
+TEST_F(ClientTest, Clear) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::ClearRequest request;
+  tkrzw::ClearResponse response;
+  EXPECT_CALL(*stub, Clear(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  const tkrzw::Status status = client.Clear();
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+}
+
+TEST_F(ClientTest, Rebuild) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::RebuildRequest request;
+  auto* param = request.add_params();
+  param->set_first("num_buckets");
+  param->set_second("10");
+  tkrzw::RebuildResponse response;
+  EXPECT_CALL(*stub, Rebuild(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  const tkrzw::Status status = client.Rebuild({{"num_buckets", "10"}});
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+}
+
+TEST_F(ClientTest, ShouldBeRebuilt) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::ShouldBeRebuiltRequest request;
+  tkrzw::ShouldBeRebuiltResponse response;
+  response.set_tobe(true);
+  EXPECT_CALL(*stub, ShouldBeRebuilt(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  bool tobe = false;
+  const tkrzw::Status status = client.ShouldBeRebuilt(&tobe);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_TRUE(tobe);
+}
+
+TEST_F(ClientTest, Synchronize) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::SynchronizeRequest request;
+  request.set_hard(true);
+  auto* param = request.add_params();
+  param->set_first("reducer");
+  param->set_second("last");
+  tkrzw::SynchronizeResponse response;
+  EXPECT_CALL(*stub, Synchronize(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::DBMClient client;
+  client.InjectStub(stub.release());
+  const tkrzw::Status status = client.Synchronize(true, {{"reducer", "last"}});
+  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+}
+
+// END OF FILE

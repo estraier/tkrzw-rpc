@@ -66,6 +66,7 @@ TEST_F(ServerTest, Basic) {
     tkrzw::SetResponse response;
     grpc::Status status = server.Set(&context, &request, &response);
     EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
   }
   {
     tkrzw::AppendRequest request;
@@ -75,12 +76,14 @@ TEST_F(ServerTest, Basic) {
     tkrzw::AppendResponse response;
     grpc::Status status = server.Append(&context, &request, &response);
     EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
   }
   {
     tkrzw::CountRequest request;
     tkrzw::CountResponse response;
     grpc::Status status = server.Count(&context, &request, &response);
     EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
     EXPECT_EQ(1, response.count());
   }
   {
@@ -88,6 +91,7 @@ TEST_F(ServerTest, Basic) {
     tkrzw::GetFileSizeResponse response;
     grpc::Status status = server.GetFileSize(&context, &request, &response);
     EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
     EXPECT_GT(response.file_size(), 4096);
   }
   {
@@ -96,6 +100,7 @@ TEST_F(ServerTest, Basic) {
     tkrzw::GetResponse response;
     grpc::Status status = server.Get(&context, &request, &response);
     EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
     EXPECT_EQ("first:1", response.value());
   }
   {
@@ -104,5 +109,51 @@ TEST_F(ServerTest, Basic) {
     tkrzw::RemoveResponse response;
     grpc::Status status = server.Remove(&context, &request, &response);
     EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ(0, dbms[0]->CountSimple());
+  }
+  for (int32_t i = 0; i < 30; i++) {
+    const std::string expr = tkrzw::ToString(i);
+    EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(expr, expr));
+  }
+  {
+    tkrzw::ShouldBeRebuiltRequest request;
+    tkrzw::ShouldBeRebuiltResponse response;
+    grpc::Status status = server.ShouldBeRebuilt(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_TRUE(response.tobe());
+  }
+  {
+    tkrzw::RebuildRequest request;
+    auto* param = request.add_params();
+    param->set_first("align_pow");
+    param->set_second("0");
+    tkrzw::RebuildResponse response;
+    grpc::Status status = server.Rebuild(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+  }
+  {
+    tkrzw::RebuildRequest request;
+    auto* param = request.add_params();
+    param->set_first("align_pow");
+    param->set_second("0");
+    tkrzw::RebuildResponse response;
+    grpc::Status status = server.Rebuild(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    bool tobe = false;
+    EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->ShouldBeRebuilt(&tobe));
+    EXPECT_FALSE(tobe);
+  }
+  {
+    tkrzw::SynchronizeRequest request;
+    tkrzw::SynchronizeResponse response;
+    grpc::Status status = server.Synchronize(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
   }
 }
+
+// END OF FILE

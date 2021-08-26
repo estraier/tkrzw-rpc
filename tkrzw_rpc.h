@@ -14,6 +14,7 @@
 #ifndef _TKRZW_RPC_H
 #define _TKRZW_RPC_H
 
+#include <map>
 #include <string>
 #include <string_view>
 #include <tkrzw_lib_common.h>
@@ -157,6 +158,35 @@ class DBMClient final {
     int64_t size = 0;
     return GetFileSize(&size) == Status::SUCCESS ? size : -1;
   }
+
+  /**
+   * Removes all records.
+   * @return The result status.
+   */
+  Status Clear();
+
+  /**
+   * Rebuilds the entire database.
+   * @param params Optional parameters.
+   * @return The result status.
+   */
+  Status Rebuild(const std::map<std::string, std::string>& params = {});
+
+  /**
+   * Checks whether the database should be rebuilt.
+   * @param tobe The pointer to a boolean object to contain the result decision.
+   * @return The result status.
+   */
+  Status ShouldBeRebuilt(bool* tobe);
+
+  /**
+   * Synchronizes the content of the database to the file system.
+   * @param hard True to do physical synchronization with the hardware or false to do only
+   * logical synchronization with the file system.
+   * @param params Optional parameters.
+   * @return The result status.
+   */
+  Status Synchronize(bool hard, const std::map<std::string, std::string>& params = {});
 
  private:
   /** Pointer to the actual implementation. */

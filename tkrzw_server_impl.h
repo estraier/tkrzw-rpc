@@ -194,6 +194,74 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
+  grpc::Status Clear(
+      grpc::ServerContext* context, const ClearRequest* request,
+      ClearResponse* response) override {
+    LogRequest(context, "Clear", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    const Status status = dbm.Clear();
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Rebuild(
+      grpc::ServerContext* context, const RebuildRequest* request,
+      RebuildResponse* response) override {
+    LogRequest(context, "Rebuild", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::map<std::string, std::string> params;
+    for (const auto& param : request->params()) {
+      params.emplace(std::make_pair(param.first(), param.second()));
+    }
+    const Status status = dbm.RebuildAdvanced(params);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
+  grpc::Status ShouldBeRebuilt(
+      grpc::ServerContext* context, const ShouldBeRebuiltRequest* request,
+      ShouldBeRebuiltResponse* response) override {
+    LogRequest(context, "ShouldBeRebuilt", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    bool tobe = false;
+    const Status status = dbm.ShouldBeRebuilt(&tobe);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    if (status == Status::SUCCESS) {
+      response->set_tobe(tobe);
+    }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Synchronize(
+      grpc::ServerContext* context, const SynchronizeRequest* request,
+      SynchronizeResponse* response) override {
+    LogRequest(context, "Synchronize", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::map<std::string, std::string> params;
+    for (const auto& param : request->params()) {
+      params.emplace(std::make_pair(param.first(), param.second()));
+    }
+    const Status status = dbm.SynchronizeAdvanced(request->hard(), nullptr, params);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+  
  private:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;

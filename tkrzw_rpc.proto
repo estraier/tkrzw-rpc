@@ -143,6 +143,62 @@ message GetFileSizeResponse {
   int64 file_size = 2;
 }
 
+// Request of the Clear method.
+message ClearRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+}
+
+// Response of the Clear method.
+message ClearResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
+// Request of the Rebuild method.
+message RebuildRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // Optional parameters.
+  repeated StringPair params = 2;
+}
+
+// Response of the Rebuild method.
+message RebuildResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
+// Request of the ShouldBeRebuilt method.
+message ShouldBeRebuiltRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+}
+
+// Response of the ShouldBeRebuilt method.
+message ShouldBeRebuiltResponse {
+  // The result status.
+  StatusProto status = 1;
+  // Whether to be rebuilt.
+  bool tobe = 2;
+}
+
+// Request of the Synchronize method.
+message SynchronizeRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // Whether to do physical synchronization.
+  bool hard = 2;
+  // Optional parameters.
+  repeated StringPair params = 3;
+}
+
+// Response of the Synchronize method.
+message SynchronizeResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
 // Definition of the database service.
 service DBMService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
@@ -153,4 +209,8 @@ service DBMService {
   rpc Remove(RemoveRequest) returns (RemoveResponse);
   rpc Count(CountRequest) returns (CountResponse);
   rpc GetFileSize(GetFileSizeRequest) returns (GetFileSizeResponse);
+  rpc Clear(ClearRequest) returns (ClearResponse);
+  rpc Rebuild(RebuildRequest) returns (RebuildResponse);
+  rpc ShouldBeRebuilt(ShouldBeRebuiltRequest) returns (ShouldBeRebuiltResponse);
+  rpc Synchronize(SynchronizeRequest) returns (SynchronizeResponse);
 }

@@ -79,6 +79,10 @@ class DBMClientImpl final {
   Status Append(std::string_view key, std::string_view value, std::string_view delim);
   Status Count(int64_t* count);
   Status GetFileSize(int64_t* file_size);
+  Status Clear();
+  Status Rebuild(const std::map<std::string, std::string>& params);
+  Status ShouldBeRebuilt(bool* tobe);
+  Status Synchronize(bool hard, const std::map<std::string, std::string>& params);
 
  private:
   std::unique_ptr<DBMService::StubInterface> stub_;
@@ -232,6 +236,64 @@ Status DBMClientImpl::GetFileSize(int64_t* file_size) {
   return MakeStatusFromProto(response.status());
 }
 
+Status DBMClientImpl::Clear() {
+  grpc::ClientContext context;
+  ClearRequest request;
+  ClearResponse response;
+  grpc::Status status = stub_->Clear(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status DBMClientImpl::Rebuild(const std::map<std::string, std::string>& params) {
+  grpc::ClientContext context;
+  RebuildRequest request;
+  for (const auto& param : params) {
+    auto* req_param = request.add_params();
+    req_param->set_first(param.first);
+    req_param->set_second(param.second);
+  }
+  RebuildResponse response;
+  grpc::Status status = stub_->Rebuild(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status DBMClientImpl::ShouldBeRebuilt(bool* tobe) {
+  grpc::ClientContext context;
+  ShouldBeRebuiltRequest request;
+  ShouldBeRebuiltResponse response;
+  grpc::Status status = stub_->ShouldBeRebuilt(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  if (response.status().code() == 0) {
+    *tobe = response.tobe();
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status DBMClientImpl::Synchronize(bool hard, const std::map<std::string, std::string>& params) {
+  grpc::ClientContext context;
+  SynchronizeRequest request;
+  request.set_hard(hard);
+  for (const auto& param : params) {
+    auto* req_param = request.add_params();
+    req_param->set_first(param.first);
+    req_param->set_second(param.second);
+  }
+  SynchronizeResponse response;
+  grpc::Status status = stub_->Synchronize(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
 DBMClient::DBMClient() : impl_(nullptr) {
   impl_ = new DBMClientImpl();
 }
@@ -286,6 +348,22 @@ Status DBMClient::Count(int64_t* count) {
 
 Status DBMClient::GetFileSize(int64_t* file_size) {
   return impl_->GetFileSize(file_size);
+}
+
+Status DBMClient::Clear() {
+  return impl_->Clear();
+}
+
+Status DBMClient::Rebuild(const std::map<std::string, std::string>& params) {
+  return impl_->Rebuild(params);
+}
+
+Status DBMClient::ShouldBeRebuilt(bool* tobe) {
+  return impl_->ShouldBeRebuilt(tobe);
+}
+
+Status DBMClient::Synchronize(bool hard, const std::map<std::string, std::string>& params) {
+  return impl_->Synchronize(hard, params);
 }
 
 }  // namespace tkrzw
