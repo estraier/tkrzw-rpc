@@ -33,9 +33,13 @@ static void PrintUsageAndDie() {
   P("\n");
   P("Usage:\n");
   P("  %s getversion [options]\n", progname);
+  P("  %s inspect [options]\n", progname);
   P("  %s get [options] key\n", progname);
   P("  %s set [options] key value\n", progname);
   P("  %s remove [options] key\n", progname);
+  P("  %s clear [options]\n", progname);
+  P("  %s rebuild [options] [params]\n", progname);
+  P("  %s sync [options] [params]\n", progname);
   P("\n");
   P("Common options:\n");
   P("  --host : The binding address/hostname of the service (default: localhost)\n");
@@ -47,13 +51,16 @@ static void PrintUsageAndDie() {
   P("  --append str : Appends the value at the end after the given delimiter.\n");
   P("  --incr num : Increments the value with the given initial value.\n");
   P("\n");
+  P("Options for the sync subcommand:\n");
+  P("  --hard : Does physical synchronization with the hardware.\n");
+  P("\n");
   std::exit(1);
 }
 
 // Processes the getversion subcommand.
 static int32_t ProcessGetVersion(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--host", 1}, {"--port", 1},
+    {"", 0}, {"--host", 1}, {"--port", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -85,7 +92,7 @@ static int32_t ProcessGetVersion(int32_t argc, const char** args) {
 // Processes the inspect subcommand.
 static int32_t ProcessInspect(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--host", 1}, {"--port", 1}, {"--index", 1}
+    {"", 0}, {"--host", 1}, {"--port", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -121,7 +128,7 @@ static int32_t ProcessInspect(int32_t argc, const char** args) {
 // Processes the get subcommand.
 static int32_t ProcessGet(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 1}, {"--host", 1}, {"--port", 1}, {"--index", 1}
+    {"", 1}, {"--host", 1}, {"--port", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -212,7 +219,7 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
 // Processes the remove subcommand.
 static int32_t ProcessRemove(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 1}, {"--host", 1}, {"--port", 1}, {"--index", 1}
+    {"", 1}, {"--host", 1}, {"--port", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -233,6 +240,110 @@ static int32_t ProcessRemove(int32_t argc, const char** args) {
   client.SetDBMIndex(dbm_index);
   bool ok = false;
   status = client.Remove(key);
+  if (status == Status::SUCCESS) {
+    ok = true;
+  } else {
+    EPrintL("Remove failed: ", status);
+  }
+  client.Disconnect();
+  return ok ? 0 : 1;
+}
+
+// Processes the clear subcommand.
+static int32_t ProcessClear(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"", 0}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
+  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  DBMClient client;
+  Status status = client.Connect(host, port);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  client.SetDBMIndex(dbm_index);
+  bool ok = false;
+  status = client.Clear();
+  if (status == Status::SUCCESS) {
+    ok = true;
+  } else {
+    EPrintL("Remove failed: ", status);
+  }
+  client.Disconnect();
+  return ok ? 0 : 1;
+}
+
+// Processes the rebuild subcommand.
+static int32_t ProcessRebuild(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"--host", 1}, {"--port", 1}, {"--index", 1},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string params_expr = GetStringArgument(cmd_args, "", 0, "");
+  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
+  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  DBMClient client;
+  Status status = client.Connect(host, port);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  client.SetDBMIndex(dbm_index);
+  bool ok = false;
+  const std::map<std::string, std::string>& params =
+      StrSplitIntoMap(params_expr, ",", "=");
+  status = client.Rebuild(params);
+  if (status == Status::SUCCESS) {
+    ok = true;
+  } else {
+    EPrintL("Remove failed: ", status);
+  }
+  client.Disconnect();
+  return ok ? 0 : 1;
+}
+
+// Processes the sync subcommand.
+static int32_t ProcessSync(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"--hard", 0},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string params_expr = GetStringArgument(cmd_args, "", 0, "");
+  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
+  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const bool with_hard = CheckMap(cmd_args, "--hard");
+  DBMClient client;
+  Status status = client.Connect(host, port);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  client.SetDBMIndex(dbm_index);
+  bool ok = false;
+  const std::map<std::string, std::string>& params =
+      StrSplitIntoMap(params_expr, ",", "=");
+  status = client.Synchronize(with_hard, params);
   if (status == Status::SUCCESS) {
     ok = true;
   } else {
@@ -264,6 +375,12 @@ int main(int argc, char** argv) {
       rv = tkrzw::ProcessRemove(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "remove") == 0) {
       rv = tkrzw::ProcessRemove(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "clear") == 0) {
+      rv = tkrzw::ProcessClear(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "rebuild") == 0) {
+      rv = tkrzw::ProcessRebuild(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "sync") == 0) {
+      rv = tkrzw::ProcessSync(argc - 1, args + 1);
     } else {
       tkrzw::PrintUsageAndDie();
     }

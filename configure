@@ -694,6 +694,10 @@ ac_user_opts='
 enable_option_checking
 with_tkrzw
 with_grpc
+enable_devel
+enable_debug
+enable_profile
+enable_opt_native
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1322,6 +1326,15 @@ if test -n "$ac_init_help"; then
      short | recursive ) echo "Configuration of tkrzw-rpc 0.1.0:";;
    esac
   cat <<\_ACEOF
+
+Optional Features:
+  --disable-option-checking  ignore unrecognized --enable/--with options
+  --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
+  --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
+  --enable-devel          build for development
+  --enable-debug          build for debugging
+  --enable-profile        build for profiling
+  --enable-opt-native     build with optimization for the native architecture
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -2168,9 +2181,79 @@ then
   PATH="$with_grpc/bin:$PATH"
 fi
 
+#================================================================
+# Options
+#================================================================
+
+# Internal variables
+enables=""
+
+# Development mode
+# Check whether --enable-devel was given.
+if test "${enable_devel+set}" = set; then :
+  enableval=$enable_devel;
+fi
+
+if test "$enable_devel" = "yes"
+then
+  MYCXXFLAGS="-std=c++17 -pthread -Wall -fPIC -fsigned-char -g0 -O2"
+  MYCPPFLAGS="$MYCPPFLAGS -I/usr/local/include"
+  MYLDFLAGS="$MYLDFLAGS -L/usr/local/lib"
+  MYCMDLDFLAGS="$MYCMDLDFLAGS -L/usr/local/lib"
+  enables="$enables (devel)"
+fi
+
+# Debug mode
+# Check whether --enable-debug was given.
+if test "${enable_debug+set}" = set; then :
+  enableval=$enable_debug;
+fi
+
+if test "$enable_debug" = "yes"
+then
+  MYCXXFLAGS="-std=c++17 -Wall -Wextra -Wno-unused-parameter -fPIC -fsigned-char -g -O0"
+  MYCPPFLAGS="$MYCPPFLAGS -UNDEBUG -D_TKRZW_DEBUG"
+  MYCPPFLAGS="$MYCPPFLAGS -I/usr/local/include"
+  MYLDFLAGS="$MYLDFLAGS -L/usr/local/lib"
+  MYCMDLDFLAGS="$MYCMDLDFLAGS -L/usr/local/lib"
+  enables="$enables (debug)"
+fi
+
+# Profiling mode
+# Check whether --enable-profile was given.
+if test "${enable_profile+set}" = set; then :
+  enableval=$enable_profile;
+fi
+
+if test "$enable_profile" = "yes"
+then
+  MYCXXFLAGS="-std=c++17 -Wall -fPIC -fsigned-char -g -pg -O2 -fno-inline"
+  MYCPPFLAGS="$MYCPPFLAGS -I/usr/local/include"
+  MYLDFLAGS="$MYLDFLAGS -L/usr/local/lib"
+  MYCMDLDFLAGS="$MYCMDLDFLAGS -L/usr/local/lib"
+  enables="$enables (profile)"
+fi
+
+# Optimize for the native architecture
+# Check whether --enable-opt-native was given.
+if test "${enable_opt_native+set}" = set; then :
+  enableval=$enable_opt_native;
+fi
+
+if test "$enable_opt_native" = "yes"
+then
+  if uname | grep Darwin >config.tmp && uname -m | grep arm64 >config.tmp
+  then
+    MYCXXFLAGS="$MYCXXFLAGS -O3 -mcpu=native"
+  else
+    MYCXXFLAGS="$MYCXXFLAGS -O3 -march=native"
+  fi
+  enables="$enables (opt-native)"
+fi
+
 # Messages
 printf '#================================================================\n'
-printf '# Configuring Tkrzw RPC.\n' "$PACKAGE_VERSION"
+printf '# Configuring Tkrzw-RPC version %s%s.\n' "$PACKAGE_VERSION" "$enables"
 printf '#================================================================\n'
 
 #================================================================
@@ -3262,10 +3345,8 @@ if test "$GCC" != "yes"
 then
   { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: another compiler except for GCC was detected" >&5
 $as_echo "$as_me: WARNING: another compiler except for GCC was detected" >&2;}
-  MYCFLAGS=""
   MYCXXFLAGS=""
 fi
-test -n "$CFLAGS" && MYCFLAGS="$CFLAGS $MYCFLAGS"
 test -n "$CXXFLAGS" && MYCXXFLAGS="$CXXFLAGS $MYCXXFLAGS"
 test -n "$CPPFLAGS" && MYCPPFLAGS="$CPPFLAGS $MYCPPFLAGS"
 test -n "$LDFLAGS" && MYLDFLAGS="$LDFLAGS $MYLDFLAGS"
@@ -3818,13 +3899,13 @@ _ACEOF
 
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -ltkrzw-rpc" >&5
-$as_echo_n "checking for main in -ltkrzw-rpc... " >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -ltkrzw_rpc" >&5
+$as_echo_n "checking for main in -ltkrzw_rpc... " >&6; }
 if ${ac_cv_lib_tkrzw_rpc_main+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
-LIBS="-ltkrzw-rpc  $LIBS"
+LIBS="-ltkrzw_rpc  $LIBS"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 

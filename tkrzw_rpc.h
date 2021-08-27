@@ -155,7 +155,7 @@ class DBMClient final {
     int64_t current = 0;
     return Increment(key, increment, &current, initial) == Status::SUCCESS ? current : INT64MIN;
   }
-  
+
   /**
    * Gets the number of records.
    * @param count The pointer to an integer object to contain the result count.

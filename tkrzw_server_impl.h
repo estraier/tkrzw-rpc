@@ -173,10 +173,10 @@ class DBMServiceImpl : public DBMService::Service {
     response->mutable_status()->set_message(status.GetMessage());
     if (status == Status::SUCCESS) {
       response->set_current(current);
-    }    
+    }
     return grpc::Status::OK;
   }
-  
+
   grpc::Status Count(
       grpc::ServerContext* context, const CountRequest* request,
       CountResponse* response) override {
@@ -280,7 +280,7 @@ class DBMServiceImpl : public DBMService::Service {
     response->mutable_status()->set_message(status.GetMessage());
     return grpc::Status::OK;
   }
-  
+
  private:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;

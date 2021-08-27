@@ -75,9 +75,67 @@ then
   PATH="$with_grpc/bin:$PATH"
 fi
 
+#================================================================
+# Options
+#================================================================
+
+# Internal variables
+enables=""
+
+# Development mode
+AC_ARG_ENABLE(devel,
+  AS_HELP_STRING([--enable-devel], [build for development]))
+if test "$enable_devel" = "yes"
+then
+  MYCXXFLAGS="-std=c++17 -pthread -Wall -fPIC -fsigned-char -g0 -O2"
+  MYCPPFLAGS="$MYCPPFLAGS -I/usr/local/include"
+  MYLDFLAGS="$MYLDFLAGS -L/usr/local/lib"
+  MYCMDLDFLAGS="$MYCMDLDFLAGS -L/usr/local/lib"
+  enables="$enables (devel)"
+fi
+
+# Debug mode
+AC_ARG_ENABLE(debug,
+  AS_HELP_STRING([--enable-debug], [build for debugging]))
+if test "$enable_debug" = "yes"
+then
+  MYCXXFLAGS="-std=c++17 -Wall -Wextra -Wno-unused-parameter -fPIC -fsigned-char -g -O0"
+  MYCPPFLAGS="$MYCPPFLAGS -UNDEBUG -D_TKRZW_DEBUG"
+  MYCPPFLAGS="$MYCPPFLAGS -I/usr/local/include"
+  MYLDFLAGS="$MYLDFLAGS -L/usr/local/lib"
+  MYCMDLDFLAGS="$MYCMDLDFLAGS -L/usr/local/lib"
+  enables="$enables (debug)"
+fi
+
+# Profiling mode
+AC_ARG_ENABLE(profile,
+  AS_HELP_STRING([--enable-profile], [build for profiling]))
+if test "$enable_profile" = "yes"
+then
+  MYCXXFLAGS="-std=c++17 -Wall -fPIC -fsigned-char -g -pg -O2 -fno-inline"
+  MYCPPFLAGS="$MYCPPFLAGS -I/usr/local/include"
+  MYLDFLAGS="$MYLDFLAGS -L/usr/local/lib"
+  MYCMDLDFLAGS="$MYCMDLDFLAGS -L/usr/local/lib"
+  enables="$enables (profile)"
+fi
+
+# Optimize for the native architecture
+AC_ARG_ENABLE(opt-native,
+  AS_HELP_STRING([--enable-opt-native], [build with optimization for the native architecture]))
+if test "$enable_opt_native" = "yes"
+then
+  if uname | grep Darwin >config.tmp && uname -m | grep arm64 >config.tmp
+  then
+    MYCXXFLAGS="$MYCXXFLAGS -O3 -mcpu=native"
+  else
+    MYCXXFLAGS="$MYCXXFLAGS -O3 -march=native"
+  fi
+  enables="$enables (opt-native)"
+fi
+
 # Messages
 printf '#================================================================\n'
-printf '# Configuring Tkrzw RPC.\n' "$PACKAGE_VERSION"
+printf '# Configuring Tkrzw-RPC version %s%s.\n' "$PACKAGE_VERSION" "$enables"
 printf '#================================================================\n'
 
 #================================================================
@@ -119,10 +177,8 @@ AC_LANG(C++)
 if test "$GCC" != "yes"
 then
   AC_MSG_WARN([another compiler except for GCC was detected])
-  MYCFLAGS=""
   MYCXXFLAGS=""
 fi
-test -n "$CFLAGS" && MYCFLAGS="$CFLAGS $MYCFLAGS"
 test -n "$CXXFLAGS" && MYCXXFLAGS="$CXXFLAGS $MYCXXFLAGS"
 test -n "$CPPFLAGS" && MYCPPFLAGS="$CPPFLAGS $MYCPPFLAGS"
 test -n "$LDFLAGS" && MYLDFLAGS="$LDFLAGS $MYLDFLAGS"
@@ -142,7 +198,7 @@ AC_CHECK_LIB(protobuf, main)
 AC_CHECK_LIB(grpc, main)
 AC_CHECK_LIB(grpc++, main)
 AC_CHECK_LIB(grpc++_reflection, main)
-AC_CHECK_LIB(tkrzw-rpc, main, AC_MSG_WARN([old version of Tkrzw-RPC was detected]))
+AC_CHECK_LIB(tkrzw_rpc, main, AC_MSG_WARN([old version of Tkrzw-RPC was detected])) 
 MYLDLIBPATH="$LD_LIBRARY_PATH"
 
 # Necessary headers
