@@ -85,15 +85,24 @@ class DBMServiceImpl : public DBMService::Service {
         out_rec->set_second(record.second);
       }
     } else {
+      auto* out_record = response->add_records();
+      out_record->set_first("num_dbms");
+      out_record->set_second(ToString(dbms_.size()));
       for (int32_t i = 0; i < static_cast<int32_t>(dbms_.size()); i++) {
         auto& dbm = *dbms_[i];
-        auto* out_record = response->add_records();
+        out_record = response->add_records();
         out_record->set_first(StrCat("dbm_", i, "_path"));
         out_record->set_second(ToString(dbm.GetFilePathSimple()));
         out_record = response->add_records();
         out_record->set_first(StrCat("dbm_", i, "_count"));
         out_record->set_second(ToString(dbm.CountSimple()));
       }
+      out_record = response->add_records();
+      out_record->set_first("memory_usage");
+      out_record->set_second(ToString(GetMemoryUsage()));
+      out_record = response->add_records();
+      out_record->set_first("memory_capacity");
+      out_record->set_second(ToString(GetMemoryCapacity()));
     }
     return grpc::Status::OK;
   }

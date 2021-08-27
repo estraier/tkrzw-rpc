@@ -2113,7 +2113,7 @@ MYLIBREV=1
 MYHEADERFILES="tkrzw_rpc.h"
 MYLIBRARYFILES="libtkrzw_rpc.a"
 MYLIBOBJFILES="tkrzw_rpc.o tkrzw_rpc.pb.o tkrzw_rpc.grpc.pb.o"
-MYCOMMANDFILES="tkrzw_server tkrzw_client"
+MYCOMMANDFILES="tkrzw_server tkrzw_client tkrzw_perf"
 MYTESTFILES="tkrzw_server_test tkrzw_rpc_test"
 MYPCFILES="tkrzw-rpc.pc"
 

@@ -161,6 +161,9 @@ tkrzw_server : tkrzw_server.o tkrzw_server_util.o $(LIBRARYFILES)
 tkrzw_client : tkrzw_client.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
+tkrzw_perf : tkrzw_perf.o $(LIBRARYFILES)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
+
 #================================================================
 # Building tests
 #================================================================
