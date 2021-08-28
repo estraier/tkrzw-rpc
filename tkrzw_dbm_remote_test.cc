@@ -29,13 +29,13 @@ int main(int argc, char** argv) {
   return RUN_ALL_TESTS();
 }
 
-class ClientTest : public Test {};
+class RemoteDBMTest : public Test {};
 
 MATCHER_P(EqualsProto, rhs, "Equality matcher for protos") {
   return google::protobuf::util::MessageDifferencer::Equivalent(arg, rhs);
 }
 
-TEST_F(ClientTest, Echo) {
+TEST_F(RemoteDBMTest, Echo) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::EchoRequest request;
   request.set_message("hello");
@@ -51,7 +51,7 @@ TEST_F(ClientTest, Echo) {
   EXPECT_EQ("hello", echo);
 }
 
-TEST_F(ClientTest, Inspect) {
+TEST_F(RemoteDBMTest, Inspect) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::InspectRequest request;
   tkrzw::InspectResponse response;
@@ -70,7 +70,7 @@ TEST_F(ClientTest, Inspect) {
   EXPECT_EQ("value", records[0].second);
 }
 
-TEST_F(ClientTest, InspectServer) {
+TEST_F(RemoteDBMTest, InspectServer) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::InspectRequest request;
   request.set_dbm_index(-1);
@@ -91,7 +91,7 @@ TEST_F(ClientTest, InspectServer) {
   EXPECT_EQ("value", records[0].second);
 }
 
-TEST_F(ClientTest, Get) {
+TEST_F(RemoteDBMTest, Get) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::GetRequest request;
   request.set_key("key");
@@ -107,7 +107,7 @@ TEST_F(ClientTest, Get) {
   EXPECT_EQ("value", value);
 }
 
-TEST_F(ClientTest, Set) {
+TEST_F(RemoteDBMTest, Set) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::SetRequest request;
   request.set_key("key");
@@ -123,7 +123,7 @@ TEST_F(ClientTest, Set) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
 }
 
-TEST_F(ClientTest, Remove) {
+TEST_F(RemoteDBMTest, Remove) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::RemoveRequest request;
   request.set_key("key");
@@ -136,7 +136,7 @@ TEST_F(ClientTest, Remove) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
 }
 
-TEST_F(ClientTest, Append) {
+TEST_F(RemoteDBMTest, Append) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::AppendRequest request;
   request.set_key("key");
@@ -152,7 +152,7 @@ TEST_F(ClientTest, Append) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
 }
 
-TEST_F(ClientTest, Increment) {
+TEST_F(RemoteDBMTest, Increment) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::IncrementRequest request;
   request.set_key("key");
@@ -170,7 +170,7 @@ TEST_F(ClientTest, Increment) {
   EXPECT_EQ(105, current);
 }
 
-TEST_F(ClientTest, Count) {
+TEST_F(RemoteDBMTest, Count) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::CountRequest request;
   tkrzw::CountResponse response;
@@ -185,7 +185,7 @@ TEST_F(ClientTest, Count) {
   EXPECT_EQ(123, count);
 }
 
-TEST_F(ClientTest, GetFileSize) {
+TEST_F(RemoteDBMTest, GetFileSize) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::GetFileSizeRequest request;
   tkrzw::GetFileSizeResponse response;
@@ -200,7 +200,7 @@ TEST_F(ClientTest, GetFileSize) {
   EXPECT_EQ(1234, file_size);
 }
 
-TEST_F(ClientTest, Clear) {
+TEST_F(RemoteDBMTest, Clear) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::ClearRequest request;
   tkrzw::ClearResponse response;
@@ -212,7 +212,7 @@ TEST_F(ClientTest, Clear) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
 }
 
-TEST_F(ClientTest, Rebuild) {
+TEST_F(RemoteDBMTest, Rebuild) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::RebuildRequest request;
   auto* param = request.add_params();
@@ -227,7 +227,7 @@ TEST_F(ClientTest, Rebuild) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
 }
 
-TEST_F(ClientTest, ShouldBeRebuilt) {
+TEST_F(RemoteDBMTest, ShouldBeRebuilt) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::ShouldBeRebuiltRequest request;
   tkrzw::ShouldBeRebuiltResponse response;
@@ -242,7 +242,7 @@ TEST_F(ClientTest, ShouldBeRebuilt) {
   EXPECT_TRUE(tobe);
 }
 
-TEST_F(ClientTest, Synchronize) {
+TEST_F(RemoteDBMTest, Synchronize) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::SynchronizeRequest request;
   request.set_hard(true);
