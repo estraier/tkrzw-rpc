@@ -99,6 +99,27 @@ distclean : clean apidocclean
 	rm -Rf Makefile tkrzw-rpc.pc \
 	  config.cache config.log config.status config.tmp autom4te.cache build
 
+check :
+	$(MAKE) check-client
+	$(MAKE) check-perf
+
+check-client :
+	$(RUNENV) ./tkrzw_client echo "hello"
+	$(RUNENV) ./tkrzw_client inspect --index -1
+	$(RUNENV) ./tkrzw_client inspect
+	$(RUNENV) ./tkrzw_client set "one" "first"
+	$(RUNENV) ./tkrzw_client set "two" "second"
+	$(RUNENV) ./tkrzw_client get "one"
+	$(RUNENV) ./tkrzw_client remove "one"
+	$(RUNENV) ./tkrzw_client rebuild
+	$(RUNENV) ./tkrzw_client sync
+	$(RUNENV) ./tkrzw_client get "two"
+	$(RUNENV) ./tkrzw_client clear
+
+check-perf :
+	$(RUNENV) ./tkrzw_perf sequence --threads 1 --iter 100000
+	$(RUNENV) ./tkrzw_perf sequence --threads 4 --iter 25000 --random_key --random_value
+
 test : $(TESTFILES)
 
 testrun :

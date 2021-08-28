@@ -33,7 +33,7 @@ static void PrintUsageAndDie() {
   P("\n");
   P("Usage:\n");
   P("  %s sequence [options]\n", progname);
-  P("    : Checks setting/getting/removing performance in sequence.\n");
+  P("    : Checks echoing/setting/getting/removing performance in sequence.\n");
   P("\n");
   P("Common options:\n");
   P("  --host : The binding address/hostname of the service (default: localhost)\n");
@@ -47,6 +47,7 @@ static void PrintUsageAndDie() {
   P("Options for the sequence subcommand:\n");
   P("  --random_key : Uses random keys rather than sequential ones.\n");
   P("  --random_value : Uses random length values rather than fixed ones.\n");
+  P("  --echo_only : Does only echoing.\n");
   P("  --set_only : Does only setting.\n");
   P("  --get_only : Does only getting.\n");
   P("  --remove_only : Does only removing.\n");
@@ -60,7 +61,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     {"", 0}, {"--host", 1}, {"--port", 1}, {"--index", 1},
     {"--iter", 1}, {"--size", 1}, {"--threads", 1},
     {"--random_seed", 1}, {"--random_key", 0}, {"--random_value", 0},
-    {"--set_only", 0}, {"--get_only", 0}, {"--remove_only", 0},
+    {"--echo_only", 0}, {"--set_only", 0}, {"--get_only", 0}, {"--remove_only", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -77,8 +78,9 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   const int32_t random_seed = GetIntegerArgument(cmd_args, "--random_seed", 0, 0);
   const bool is_random_key = CheckMap(cmd_args, "--random_key");
   const bool is_random_value = CheckMap(cmd_args, "--random_value");
-  const bool is_get_only = CheckMap(cmd_args, "--get_only");
+  const bool is_echo_only = CheckMap(cmd_args, "--echo_only");
   const bool is_set_only = CheckMap(cmd_args, "--set_only");
+  const bool is_get_only = CheckMap(cmd_args, "--get_only");
   const bool is_remove_only = CheckMap(cmd_args, "--remove_only");
   if (num_iterations < 1) {
     Die("Invalid number of iterations");
@@ -100,6 +102,58 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   std::atomic_bool has_error(false);
   const int32_t dot_mod = std::max(num_iterations / 1000, 1);
   const int32_t fold_mod = std::max(num_iterations / 20, 1);
+  auto echoing_task = [&](int32_t id) {
+    const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
+    std::mt19937 key_mt(mt_seed + id);
+    std::mt19937 misc_mt(mt_seed * 2 + id + 1);
+    std::uniform_int_distribution<int32_t> key_num_dist(0, num_iterations * num_threads - 1);
+    std::uniform_int_distribution<int32_t> value_size_dist(0, value_size);
+    char key_buf[32];
+    bool midline = false;
+    for (int32_t i = 0; !has_error && i < num_iterations; i++) {
+      const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+      const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+      const std::string_view key(key_buf, key_size);
+      std::string echo;
+      const Status status = client.Echo(key, &echo);
+      if (status != Status::SUCCESS) {
+        EPrintL("Echo failed: ", status);
+        has_error = true;
+        break;
+      }
+      if (id == 0 && (i + 1) % dot_mod == 0) {
+        PutChar('.');
+        midline = true;
+        if ((i + 1) % fold_mod == 0) {
+          PrintF(" (%08d)\n", i + 1);
+          midline = false;
+        }
+      }
+    }
+    if (midline) {
+      PrintF(" (%08d)\n", num_iterations);
+    }
+  };
+  if (!is_set_only && !is_get_only && !is_remove_only) {
+    PrintF("Echoing: num_iterations=%d value_size=%d num_threads=%d\n",
+           num_iterations, value_size, num_threads);
+    const double start_time = GetWallTime();
+    std::vector<std::thread> threads;
+    for (int32_t i = 0; i < num_threads; i++) {
+      threads.emplace_back(std::thread(echoing_task, i));
+    }
+    for (auto& thread : threads) {
+      thread.join();
+    }
+    const double end_time = GetWallTime();
+    const double elapsed_time = end_time - start_time;
+    const int64_t num_records = client.CountSimple();
+    const int64_t mem_usage = GetMemoryUsage() - start_mem_rss;
+    PrintF("Echoing done: elapsed_time=%.6f num_records=%lld qps=%.0f mem=%lld\n",
+           elapsed_time, num_records, num_iterations * num_threads / elapsed_time,
+           mem_usage);
+    PrintL();
+  }
   auto setting_task = [&](int32_t id) {
     const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
     std::mt19937 key_mt(mt_seed + id);
@@ -136,7 +190,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     }
     delete[] value_buf;
   };
-  if (!is_get_only && !is_remove_only) {
+  if (!is_echo_only && !is_get_only && !is_remove_only) {
     PrintF("Setting: num_iterations=%d value_size=%d num_threads=%d\n",
            num_iterations, value_size, num_threads);
     const double start_time = GetWallTime();
@@ -188,7 +242,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
       PrintF(" (%08d)\n", num_iterations);
     }
   };
-  if (!is_set_only && !is_remove_only) {
+  if (!is_echo_only && !is_set_only && !is_remove_only) {
     PrintF("Getting: num_iterations=%d value_size=%d num_threads=%d\n",
            num_iterations, value_size, num_threads);
     const double start_time = GetWallTime();
@@ -238,7 +292,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
       PrintF(" (%08d)\n", num_iterations);
     }
   };
-  if (!is_set_only && !is_get_only) {
+  if (!is_echo_only && !is_set_only && !is_get_only) {
     PrintF("Removing: num_iterations=%d value_size=%d num_threads=%d\n",
            num_iterations, value_size, num_threads);
     const double start_time = GetWallTime();
