@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
 
   // Connects to the database service.
   dbm.Connect("localhost", 1978);
-  
+
   // Stores records.
   dbm.Set("foo", "hop");
   dbm.Set("bar", "step");
@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
     std::cout << key << ":" << value << std::endl;
     iter->Next();
   }
-  
+
   // Disconnects the connection.
   dbm.Disconnect();
 
