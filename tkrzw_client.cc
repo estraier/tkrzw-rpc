@@ -32,7 +32,7 @@ static void PrintUsageAndDie() {
   P("%s: RPC client of Tkrzw\n", progname);
   P("\n");
   P("Usage:\n");
-  P("  %s getversion [options]\n", progname);
+  P("  %s echo [options] [message]\n", progname);
   P("  %s inspect [options]\n", progname);
   P("  %s get [options] key\n", progname);
   P("  %s set [options] key value\n", progname);
@@ -57,10 +57,10 @@ static void PrintUsageAndDie() {
   std::exit(1);
 }
 
-// Processes the getversion subcommand.
-static int32_t ProcessGetVersion(int32_t argc, const char** args) {
+// Processes the echo subcommand.
+static int32_t ProcessEcho(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 0}, {"--host", 1}, {"--port", 1},
+    {"--host", 1}, {"--port", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -68,6 +68,7 @@ static int32_t ProcessGetVersion(int32_t argc, const char** args) {
     EPrint("Invalid command: ", cmd_error, "\n\n");
     PrintUsageAndDie();
   }
+  const std::string message = StrJoin(cmd_args[""], " ");
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   DBMClient client;
@@ -77,13 +78,13 @@ static int32_t ProcessGetVersion(int32_t argc, const char** args) {
     return 1;
   }
   bool ok = false;
-  std::string version;
-  status = client.GetVersion(&version);
+  std::string echo;
+  status = client.Echo(message, &echo);
   if (status == Status::SUCCESS) {
-    PrintL(version);
+    PrintL(echo);
     ok = true;
   } else {
-    EPrintL("GetVersion failed: ", status);
+    EPrintL("Echo failed: ", status);
   }
   client.Disconnect();
   return ok ? 0 : 1;
@@ -363,8 +364,8 @@ int main(int argc, char** argv) {
   }
   int32_t rv = 0;
   try {
-    if (std::strcmp(args[1], "getversion") == 0) {
-      rv = tkrzw::ProcessGetVersion(argc - 1, args + 1);
+    if (std::strcmp(args[1], "echo") == 0) {
+      rv = tkrzw::ProcessEcho(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "inspect") == 0) {
       rv = tkrzw::ProcessInspect(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "get") == 0) {

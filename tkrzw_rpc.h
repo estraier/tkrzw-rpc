@@ -66,11 +66,11 @@ class DBMClient final {
   void SetDBMIndex(int32_t dbm_index);
 
   /**
-   * Get the version numbers of the server.
-   * @param version The pointer to a string object to contain the version number.
+   * Sends a message and gets back the echo message.
+   * @param echo The pointer to a string object to contain the echo message.
    * @return The result status.
    */
-  Status GetVersion(std::string* version);
+  Status Echo(std::string_view message, std::string* echo);
 
   /**
    * Inspects a database.

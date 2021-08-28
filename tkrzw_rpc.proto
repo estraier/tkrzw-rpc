@@ -26,14 +26,16 @@ message BytesPair {
   bytes second = 2;
 }
 
-// Request of the GetVersion method.
-message GetVersionRequest {
+// Request of the Echo method.
+message EchoRequest {
+  // The message.
+  string message = 1;
 }
 
-// Response of the GetVersion method.
-message GetVersionResponse {
-  // The verson numbers.
-  string version = 1;
+// Response of the Echo method.
+message EchoResponse {
+  // The echo message.
+  string echo = 1;
 }
 
 // Request of the Inspect method.
@@ -221,7 +223,7 @@ message SynchronizeResponse {
 
 // Definition of the database service.
 service DBMService {
-  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+  rpc Echo(EchoRequest) returns (EchoResponse);
   rpc Inspect(InspectRequest) returns (InspectResponse);
   rpc Get(GetRequest) returns (GetResponse);
   rpc Set(SetRequest) returns (SetResponse);

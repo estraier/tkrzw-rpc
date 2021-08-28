@@ -40,24 +40,38 @@ TEST_F(ServerTest, Basic) {
   tkrzw::DBMServiceImpl server(dbms, &logger);
   grpc::ServerContext context;
   {
-    tkrzw::GetVersionRequest request;
-    tkrzw::GetVersionResponse response;
-    grpc::Status status = server.GetVersion(&context, &request, &response);
+    tkrzw::EchoRequest request;
+    request.set_message("hello");
+    tkrzw::EchoResponse response;
+    grpc::Status status = server.Echo(&context, &request, &response);
     EXPECT_TRUE(status.ok());
-    EXPECT_EQ(_TKSERV_PKG_VERSION, response.version());
+    EXPECT_EQ("hello", response.echo());
+  }
+  {
+    tkrzw::InspectRequest request;
+    request.set_dbm_index(-1);
+    tkrzw::InspectResponse response;
+    grpc::Status status = server.Inspect(&context, &request, &response);
+    std::map<std::string, std::string> records;
+    for (const auto& record : response.records()) {
+      records.emplace(std::make_pair(record.first(), record.second()));
+    }
+    EXPECT_EQ(_TKSERV_PKG_VERSION, records["version"]);
+    EXPECT_EQ("1", records["num_dbms"]);
+    EXPECT_EQ("0", records["dbm_0_count"]);
   }
   {
     tkrzw::InspectRequest request;
     tkrzw::InspectResponse response;
     grpc::Status status = server.Inspect(&context, &request, &response);
     EXPECT_TRUE(status.ok());
-    bool ok = false;
+    std::map<std::string, std::string> records;
     for (const auto& record : response.records()) {
-      if (record.first() == "class" && record.second() == "HashDBM") {
-        ok = true;
-      }
+      records.emplace(std::make_pair(record.first(), record.second()));
     }
-    EXPECT_TRUE(ok);
+    EXPECT_EQ("HashDBM", records["class"]);
+    EXPECT_EQ("10", records["num_buckets"]);
+    EXPECT_EQ("0", records["num_records"]);
   }
   {
     tkrzw::SetRequest request;

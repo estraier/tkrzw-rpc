@@ -35,19 +35,20 @@ MATCHER_P(EqualsProto, rhs, "Equality matcher for protos") {
   return google::protobuf::util::MessageDifferencer::Equivalent(arg, rhs);
 }
 
-TEST_F(ClientTest, GetVersion) {
+TEST_F(ClientTest, Echo) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
-  tkrzw::GetVersionRequest request;
-  tkrzw::GetVersionResponse response;
-  response.set_version("1.2.3");
-  EXPECT_CALL(*stub, GetVersion(_, EqualsProto(request), _)).WillOnce(
+  tkrzw::EchoRequest request;
+  request.set_message("hello");
+  tkrzw::EchoResponse response;
+  response.set_echo("hello");
+  EXPECT_CALL(*stub, Echo(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::DBMClient client;
   client.InjectStub(stub.release());
-  std::string version;
-  const tkrzw::Status status = client.GetVersion(&version);
+  std::string echo;
+  const tkrzw::Status status = client.Echo("hello", &echo);
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
-  EXPECT_EQ("1.2.3", version);
+  EXPECT_EQ("hello", echo);
 }
 
 TEST_F(ClientTest, Inspect) {

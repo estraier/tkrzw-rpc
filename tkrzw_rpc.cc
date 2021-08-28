@@ -71,7 +71,7 @@ class DBMClientImpl final {
   Status Connect(const std::string& host, int32_t port);
   void Disconnect();
   void SetDBMIndex(int32_t dbm_index);
-  Status GetVersion(std::string* version);
+  Status Echo(std::string_view message, std::string* echo);
   Status Inspect(std::vector<std::pair<std::string, std::string>>* records);
   Status Get(std::string_view key, std::string* value);
   Status Set(std::string_view key, std::string_view value, bool overwrite);
@@ -122,15 +122,16 @@ void DBMClientImpl::SetDBMIndex(int32_t dbm_index) {
   dbm_index_ = dbm_index;
 }
 
-Status DBMClientImpl::GetVersion(std::string* version) {
+Status DBMClientImpl::Echo(std::string_view message, std::string* echo) {
   grpc::ClientContext context;
-  GetVersionRequest request;
-  GetVersionResponse response;
-  grpc::Status status = stub_->GetVersion(&context, request, &response);
+  EchoRequest request;
+  request.set_message(std::string(message));
+  EchoResponse response;
+  grpc::Status status = stub_->Echo(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
   }
-  *version = response.version();
+  *echo = response.echo();
   return Status(Status::SUCCESS);
 }
 
@@ -338,8 +339,8 @@ void DBMClient::SetDBMIndex(int32_t dbm_index) {
   return impl_->SetDBMIndex(dbm_index);
 }
 
-Status DBMClient::GetVersion(std::string* version) {
-  return impl_->GetVersion(version);
+Status DBMClient::Echo(std::string_view message, std::string* echo) {
+  return impl_->Echo(message, echo);
 }
 
 Status DBMClient::Inspect(std::vector<std::pair<std::string, std::string>>* records) {

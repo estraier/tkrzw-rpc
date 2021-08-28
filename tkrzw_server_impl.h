@@ -62,11 +62,11 @@ class DBMServiceImpl : public DBMService::Service {
     logger_->Log(Logger::DEBUG, message);
   }
 
-  grpc::Status GetVersion(
-      grpc::ServerContext* context, const GetVersionRequest* request,
-      GetVersionResponse* response) override {
-    LogRequest(context, "GetVersion", request);
-    response->set_version(_TKSERV_PKG_VERSION);
+  grpc::Status Echo(
+      grpc::ServerContext* context, const EchoRequest* request,
+      EchoResponse* response) override {
+    LogRequest(context, "Echo", request);
+    response->set_echo(request->message());
     return grpc::Status::OK;
   }
 
@@ -86,6 +86,9 @@ class DBMServiceImpl : public DBMService::Service {
       }
     } else {
       auto* out_record = response->add_records();
+      out_record->set_first("version");
+      out_record->set_second(_TKSERV_PKG_VERSION);
+      out_record = response->add_records();
       out_record->set_first("num_dbms");
       out_record->set_second(ToString(dbms_.size()));
       for (int32_t i = 0; i < static_cast<int32_t>(dbms_.size()); i++) {
