@@ -1,5 +1,5 @@
 /*************************************************************************************************
- * RPC API of Tkrzwb
+ * Remote database manager implementation based on gRPC
  *
  * Copyright 2020 Google LLC
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
@@ -11,8 +11,8 @@
  * and limitations under the License.
  *************************************************************************************************/
 
-#ifndef _TKRZW_RPC_H
-#define _TKRZW_RPC_H
+#ifndef _TKRZW_DBM_REMOTE_H
+#define _TKRZW_DBM_REMOTE_H
 
 #include <map>
 #include <string>
@@ -23,13 +23,13 @@
 
 namespace tkrzw {
 
-class DBMClientImpl;
-class DBMClientIteratorImpl;
+class RemoteDBMImpl;
+class RemoteDBMIteratorImpl;
 
 /**
  * RPC interface to access the database service via gRPC protocol.
  */
-class DBMClient final {
+class RemoteDBM final {
  public:
   /**
    * Iterator for each record.
@@ -37,7 +37,7 @@ class DBMClient final {
    * Operations with invalidated iterators fails gracefully with NOT_FOUND_ERROR.
    */
   class Iterator {
-    friend class tkrzw::DBMClient;
+    friend class tkrzw::RemoteDBM;
    public:
     /**
      * Initializes the iterator to indicate the first record.
@@ -69,21 +69,21 @@ class DBMClient final {
      * Constructor.
      * @param dbm_impl The database implementation object.
      */
-    explicit Iterator(DBMClientImpl* dbm_impl);
+    explicit Iterator(RemoteDBMImpl* dbm_impl);
 
     /** Pointer to the actual implementation. */
-    DBMClientIteratorImpl* impl_;
+    RemoteDBMIteratorImpl* impl_;
   };
-  
+
   /**
    * Constructor.
    */
-  DBMClient();
+  RemoteDBM();
 
   /**
    * Destructor.
    */
-  ~DBMClient();
+  ~RemoteDBM();
 
   /**
    * Injects a stub for testing.
@@ -112,6 +112,7 @@ class DBMClient final {
 
   /**
    * Sends a message and gets back the echo message.
+   * @param message The message to send.
    * @param echo The pointer to a string object to contain the echo message.
    * @return The result status.
    */
@@ -264,11 +265,11 @@ class DBMClient final {
 
  private:
   /** Pointer to the actual implementation. */
-  DBMClientImpl* impl_;
+  RemoteDBMImpl* impl_;
 };
 
 }  // namespace tkrzw
 
-#endif  // _TKRZW_RPC_H
+#endif  // _TKRZW_DBM_REMOTE_H
 
 // END OF FILE

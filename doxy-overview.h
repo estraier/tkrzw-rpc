@@ -1,6 +1,6 @@
 /**
 
-@mainpage Tkrzw-RPC: Remote-Procedure-Call API of Tkrzw
+@mainpage Tkrzw-RPC: Remote procedure call interface of Tkrzw
 
 @section Introduction
 
@@ -9,7 +9,7 @@ Tkrzw is a library of DBM and provides features to mange key-value storages in v
 @li tkrzw::DBMClient -- RPC interface to access the service.
 
 @code
-#include "tkrzw_rpc.h"
+#include "tkrzw_dbm_remote.h"
 
 // Main routine.
 int main(int argc, char** argv) {
@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
 namespace tkrzw {}
 
 /**
- * @file tkrzw_rpc.h RPC API of Tkrzw.
+ * @file tkrzw_dbm_remote.h Remote database manager implementation based on gRPC.
  */
 
 // END OF FILE

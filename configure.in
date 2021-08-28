@@ -14,9 +14,9 @@ MYLIBREV=1
 # Targets
 MYHEADERFILES="tkrzw_rpc.h"
 MYLIBRARYFILES="libtkrzw_rpc.a"
-MYLIBOBJFILES="tkrzw_rpc.o tkrzw_rpc.pb.o tkrzw_rpc.grpc.pb.o"
-MYCOMMANDFILES="tkrzw_server tkrzw_client tkrzw_rpc_perf"
-MYTESTFILES="tkrzw_server_test tkrzw_rpc_test"
+MYLIBOBJFILES="tkrzw_dbm_remote.o tkrzw_rpc.pb.o tkrzw_rpc.grpc.pb.o"
+MYCOMMANDFILES="tkrzw_server tkrzw_dbm_remote_util tkrzw_dbm_remote_perf"
+MYTESTFILES="tkrzw_server_test tkrzw_dbm_remote_test"
 MYPCFILES="tkrzw-rpc.pc"
 
 # Building flags

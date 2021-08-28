@@ -1,5 +1,5 @@
 /*************************************************************************************************
- * RPC API of Tkrzw
+ * Remote database manager implementation based on gRPC
  *
  * Copyright 2020 Google LLC
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
@@ -17,7 +17,7 @@
 #include <grpcpp/create_channel.h>
 #include <grpcpp/security/credentials.h>
 
-#include "tkrzw_rpc.h"
+#include "tkrzw_dbm_remote.h"
 #include "tkrzw_rpc.grpc.pb.h"
 #include "tkrzw_rpc.pb.h"
 #include "tkrzw_str_util.h"
@@ -64,9 +64,9 @@ Status MakeStatusFromProto(const tkrzw::StatusProto& proto) {
   return Status(tkrzw::Status::Code(proto.code()), message);
 }
 
-class DBMClientImpl final {
+class RemoteDBMImpl final {
  public:
-  DBMClientImpl();
+  RemoteDBMImpl();
   void InfectStub(void* stub);
   Status Connect(const std::string& host, int32_t port);
   void Disconnect();
@@ -90,13 +90,13 @@ class DBMClientImpl final {
   int32_t dbm_index_;
 };
 
-DBMClientImpl::DBMClientImpl() : stub_(nullptr), dbm_index_(0) {}
+RemoteDBMImpl::RemoteDBMImpl() : stub_(nullptr), dbm_index_(0) {}
 
-void DBMClientImpl::InfectStub(void* stub) {
+void RemoteDBMImpl::InfectStub(void* stub) {
   stub_.reset(reinterpret_cast<DBMService::StubInterface*>(stub));
 }
 
-Status DBMClientImpl::Connect(const std::string& host, int32_t port) {
+Status RemoteDBMImpl::Connect(const std::string& host, int32_t port) {
   const std::string server_address(StrCat(host, ":", port));
   auto channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
   const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
@@ -114,15 +114,15 @@ Status DBMClientImpl::Connect(const std::string& host, int32_t port) {
   return Status(Status::SUCCESS);
 }
 
-void DBMClientImpl::Disconnect() {
+void RemoteDBMImpl::Disconnect() {
   stub_.reset(nullptr);
 }
 
-void DBMClientImpl::SetDBMIndex(int32_t dbm_index) {
+void RemoteDBMImpl::SetDBMIndex(int32_t dbm_index) {
   dbm_index_ = dbm_index;
 }
 
-Status DBMClientImpl::Echo(std::string_view message, std::string* echo) {
+Status RemoteDBMImpl::Echo(std::string_view message, std::string* echo) {
   grpc::ClientContext context;
   EchoRequest request;
   request.set_message(std::string(message));
@@ -135,7 +135,7 @@ Status DBMClientImpl::Echo(std::string_view message, std::string* echo) {
   return Status(Status::SUCCESS);
 }
 
-Status DBMClientImpl::Inspect(std::vector<std::pair<std::string, std::string>>* records) {
+Status RemoteDBMImpl::Inspect(std::vector<std::pair<std::string, std::string>>* records) {
   grpc::ClientContext context;
   InspectRequest request;
   request.set_dbm_index(dbm_index_);
@@ -150,7 +150,7 @@ Status DBMClientImpl::Inspect(std::vector<std::pair<std::string, std::string>>* 
   return Status(Status::SUCCESS);
 }
 
-Status DBMClientImpl::Get(std::string_view key, std::string* value) {
+Status RemoteDBMImpl::Get(std::string_view key, std::string* value) {
   grpc::ClientContext context;
   GetRequest request;
   request.set_dbm_index(dbm_index_);
@@ -166,7 +166,7 @@ Status DBMClientImpl::Get(std::string_view key, std::string* value) {
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::Set(std::string_view key, std::string_view value, bool overwrite) {
+Status RemoteDBMImpl::Set(std::string_view key, std::string_view value, bool overwrite) {
   grpc::ClientContext context;
   SetRequest request;
   request.set_dbm_index(dbm_index_);
@@ -181,7 +181,7 @@ Status DBMClientImpl::Set(std::string_view key, std::string_view value, bool ove
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::Remove(std::string_view key) {
+Status RemoteDBMImpl::Remove(std::string_view key) {
   grpc::ClientContext context;
   RemoveRequest request;
   request.set_dbm_index(dbm_index_);
@@ -194,7 +194,7 @@ Status DBMClientImpl::Remove(std::string_view key) {
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::Append(
+Status RemoteDBMImpl::Append(
     std::string_view key, std::string_view value, std::string_view delim) {
   grpc::ClientContext context;
   AppendRequest request;
@@ -210,7 +210,7 @@ Status DBMClientImpl::Append(
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::Increment(
+Status RemoteDBMImpl::Increment(
     std::string_view key, int64_t increment, int64_t* current, int64_t initial) {
   grpc::ClientContext context;
   IncrementRequest request;
@@ -229,7 +229,7 @@ Status DBMClientImpl::Increment(
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::Count(int64_t* count) {
+Status RemoteDBMImpl::Count(int64_t* count) {
   grpc::ClientContext context;
   CountRequest request;
   CountResponse response;
@@ -243,7 +243,7 @@ Status DBMClientImpl::Count(int64_t* count) {
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::GetFileSize(int64_t* file_size) {
+Status RemoteDBMImpl::GetFileSize(int64_t* file_size) {
   grpc::ClientContext context;
   GetFileSizeRequest request;
   GetFileSizeResponse response;
@@ -257,7 +257,7 @@ Status DBMClientImpl::GetFileSize(int64_t* file_size) {
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::Clear() {
+Status RemoteDBMImpl::Clear() {
   grpc::ClientContext context;
   ClearRequest request;
   ClearResponse response;
@@ -268,7 +268,7 @@ Status DBMClientImpl::Clear() {
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::Rebuild(const std::map<std::string, std::string>& params) {
+Status RemoteDBMImpl::Rebuild(const std::map<std::string, std::string>& params) {
   grpc::ClientContext context;
   RebuildRequest request;
   for (const auto& param : params) {
@@ -284,7 +284,7 @@ Status DBMClientImpl::Rebuild(const std::map<std::string, std::string>& params) 
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::ShouldBeRebuilt(bool* tobe) {
+Status RemoteDBMImpl::ShouldBeRebuilt(bool* tobe) {
   grpc::ClientContext context;
   ShouldBeRebuiltRequest request;
   ShouldBeRebuiltResponse response;
@@ -298,7 +298,7 @@ Status DBMClientImpl::ShouldBeRebuilt(bool* tobe) {
   return MakeStatusFromProto(response.status());
 }
 
-Status DBMClientImpl::Synchronize(bool hard, const std::map<std::string, std::string>& params) {
+Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::string>& params) {
   grpc::ClientContext context;
   SynchronizeRequest request;
   request.set_hard(hard);
@@ -315,80 +315,80 @@ Status DBMClientImpl::Synchronize(bool hard, const std::map<std::string, std::st
   return MakeStatusFromProto(response.status());
 }
 
-DBMClient::DBMClient() : impl_(nullptr) {
-  impl_ = new DBMClientImpl();
+RemoteDBM::RemoteDBM() : impl_(nullptr) {
+  impl_ = new RemoteDBMImpl();
 }
 
-DBMClient::~DBMClient() {
+RemoteDBM::~RemoteDBM() {
   delete impl_;
 }
 
-void DBMClient::InjectStub(void* stub) {
+void RemoteDBM::InjectStub(void* stub) {
   impl_->InfectStub(stub);
 }
 
-Status DBMClient::Connect(const std::string& host, int32_t port) {
+Status RemoteDBM::Connect(const std::string& host, int32_t port) {
   return impl_->Connect(host, port);
 }
 
-void DBMClient::Disconnect() {
+void RemoteDBM::Disconnect() {
   return impl_->Disconnect();
 }
 
-void DBMClient::SetDBMIndex(int32_t dbm_index) {
+void RemoteDBM::SetDBMIndex(int32_t dbm_index) {
   return impl_->SetDBMIndex(dbm_index);
 }
 
-Status DBMClient::Echo(std::string_view message, std::string* echo) {
+Status RemoteDBM::Echo(std::string_view message, std::string* echo) {
   return impl_->Echo(message, echo);
 }
 
-Status DBMClient::Inspect(std::vector<std::pair<std::string, std::string>>* records) {
+Status RemoteDBM::Inspect(std::vector<std::pair<std::string, std::string>>* records) {
   return impl_->Inspect(records);
 }
 
-Status DBMClient::Get(std::string_view key, std::string* value) {
+Status RemoteDBM::Get(std::string_view key, std::string* value) {
   return impl_->Get(key, value);
 }
 
-Status DBMClient::Set(std::string_view key, std::string_view value, bool overwrite) {
+Status RemoteDBM::Set(std::string_view key, std::string_view value, bool overwrite) {
   return impl_->Set(key, value, overwrite);
 }
 
-Status DBMClient::Remove(std::string_view key) {
+Status RemoteDBM::Remove(std::string_view key) {
   return impl_->Remove(key);
 }
 
-Status DBMClient::Append(std::string_view key, std::string_view value, std::string_view delim) {
+Status RemoteDBM::Append(std::string_view key, std::string_view value, std::string_view delim) {
   return impl_->Append(key, value, delim);
 }
 
-Status DBMClient::Increment(
+Status RemoteDBM::Increment(
     std::string_view key, int64_t increment, int64_t* current, int64_t initial) {
   return impl_->Increment(key, increment, current, initial);
 }
 
-Status DBMClient::Count(int64_t* count) {
+Status RemoteDBM::Count(int64_t* count) {
   return impl_->Count(count);
 }
 
-Status DBMClient::GetFileSize(int64_t* file_size) {
+Status RemoteDBM::GetFileSize(int64_t* file_size) {
   return impl_->GetFileSize(file_size);
 }
 
-Status DBMClient::Clear() {
+Status RemoteDBM::Clear() {
   return impl_->Clear();
 }
 
-Status DBMClient::Rebuild(const std::map<std::string, std::string>& params) {
+Status RemoteDBM::Rebuild(const std::map<std::string, std::string>& params) {
   return impl_->Rebuild(params);
 }
 
-Status DBMClient::ShouldBeRebuilt(bool* tobe) {
+Status RemoteDBM::ShouldBeRebuilt(bool* tobe) {
   return impl_->ShouldBeRebuilt(tobe);
 }
 
-Status DBMClient::Synchronize(bool hard, const std::map<std::string, std::string>& params) {
+Status RemoteDBM::Synchronize(bool hard, const std::map<std::string, std::string>& params) {
   return impl_->Synchronize(hard, params);
 }
 

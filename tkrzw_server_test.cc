@@ -166,7 +166,7 @@ TEST_F(ServerTest, Basic) {
     const std::string expr = tkrzw::SPrintF("%08d", i);
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(expr, expr));
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[1]->Set(expr, expr));
-  }  
+  }
   {
     tkrzw::ShouldBeRebuiltRequest request;
     tkrzw::ShouldBeRebuiltResponse response;
@@ -214,9 +214,9 @@ TEST_F(ServerTest, Basic) {
     auto server_task = [&]() { status = server.Iterate(&context, &stream); };
     std::thread server_thread = std::thread(server_task);
 
-    
 
-    
+
+
 
     server_thread.join();
     EXPECT_TRUE(status.ok());
@@ -225,7 +225,7 @@ TEST_F(ServerTest, Basic) {
   }
   */
 
-  
+
 
 
 

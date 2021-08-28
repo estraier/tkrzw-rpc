@@ -34,7 +34,6 @@
 
 #include "tkrzw_cmd_util.h"
 #include "tkrzw_rpc.grpc.pb.h"
-#include "tkrzw_rpc.h"
 #include "tkrzw_rpc.pb.h"
 
 namespace tkrzw {
@@ -339,8 +338,8 @@ class DBMServiceImpl : public DBMService::Service {
           response.mutable_status()->set_code(status.GetCode());
           response.mutable_status()->set_message(status.GetMessage());
         }
-          
-          
+
+
         default: {
           return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown operation");
         }
@@ -351,7 +350,7 @@ class DBMServiceImpl : public DBMService::Service {
     }
     return grpc::Status::OK;
   }
-  
+
  private:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;

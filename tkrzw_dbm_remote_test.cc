@@ -1,5 +1,5 @@
 /*************************************************************************************************
- * Tests for tkrzw_rpc.h
+ * Tests for tkrzw_dbm_remote.h
  *
  * Copyright 2020 Google LLC
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
@@ -15,10 +15,10 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "tkrzw_rpc.h"
+#include "tkrzw_dbm_remote.h"
+#include "tkrzw_lib_common.h"
 #include "tkrzw_rpc_mock.grpc.pb.h"
 #include "tkrzw_rpc.pb.h"
-#include "tkrzw_lib_common.h"
 #include "tkrzw_str_util.h"
 
 using namespace testing;
@@ -43,7 +43,7 @@ TEST_F(ClientTest, Echo) {
   response.set_echo("hello");
   EXPECT_CALL(*stub, Echo(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   std::string echo;
   const tkrzw::Status status = client.Echo("hello", &echo);
@@ -60,7 +60,7 @@ TEST_F(ClientTest, Inspect) {
   res_record->set_second("value");
   EXPECT_CALL(*stub, Inspect(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   std::vector<std::pair<std::string, std::string>> records;
   const tkrzw::Status status = client.Inspect(&records);
@@ -80,7 +80,7 @@ TEST_F(ClientTest, InspectServer) {
   res_record->set_second("value");
   EXPECT_CALL(*stub, Inspect(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   client.SetDBMIndex(-1);
   std::vector<std::pair<std::string, std::string>> records;
@@ -99,7 +99,7 @@ TEST_F(ClientTest, Get) {
   response.set_value("value");
   EXPECT_CALL(*stub, Get(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   std::string value;
   const tkrzw::Status status = client.Get("key", &value);
@@ -116,7 +116,7 @@ TEST_F(ClientTest, Set) {
   tkrzw::SetResponse response;
   EXPECT_CALL(*stub, Set(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   std::string value;
   const tkrzw::Status status = client.Set("key", "value");
@@ -130,7 +130,7 @@ TEST_F(ClientTest, Remove) {
   tkrzw::RemoveResponse response;
   EXPECT_CALL(*stub, Remove(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   const tkrzw::Status status = client.Remove("key");
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
@@ -145,7 +145,7 @@ TEST_F(ClientTest, Append) {
   tkrzw::AppendResponse response;
   EXPECT_CALL(*stub, Append(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   std::string value;
   const tkrzw::Status status = client.Append("key", "value", ":");
@@ -162,7 +162,7 @@ TEST_F(ClientTest, Increment) {
   response.set_current(105);
   EXPECT_CALL(*stub, Increment(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   int64_t current = 0;
   const tkrzw::Status status = client.Increment("key", 5, &current, 100);
@@ -177,7 +177,7 @@ TEST_F(ClientTest, Count) {
   response.set_count(123);
   EXPECT_CALL(*stub, Count(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   int64_t count = 0;
   const tkrzw::Status status = client.Count(&count);
@@ -192,7 +192,7 @@ TEST_F(ClientTest, GetFileSize) {
   response.set_file_size(1234);
   EXPECT_CALL(*stub, GetFileSize(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   int64_t file_size = 0;
   const tkrzw::Status status = client.GetFileSize(&file_size);
@@ -206,7 +206,7 @@ TEST_F(ClientTest, Clear) {
   tkrzw::ClearResponse response;
   EXPECT_CALL(*stub, Clear(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   const tkrzw::Status status = client.Clear();
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
@@ -221,7 +221,7 @@ TEST_F(ClientTest, Rebuild) {
   tkrzw::RebuildResponse response;
   EXPECT_CALL(*stub, Rebuild(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   const tkrzw::Status status = client.Rebuild({{"num_buckets", "10"}});
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);
@@ -234,7 +234,7 @@ TEST_F(ClientTest, ShouldBeRebuilt) {
   response.set_tobe(true);
   EXPECT_CALL(*stub, ShouldBeRebuilt(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   bool tobe = false;
   const tkrzw::Status status = client.ShouldBeRebuilt(&tobe);
@@ -252,7 +252,7 @@ TEST_F(ClientTest, Synchronize) {
   tkrzw::SynchronizeResponse response;
   EXPECT_CALL(*stub, Synchronize(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::DBMClient client;
+  tkrzw::RemoteDBM client;
   client.InjectStub(stub.release());
   const tkrzw::Status status = client.Synchronize(true, {{"reducer", "last"}});
   EXPECT_EQ(tkrzw::Status::SUCCESS, status);

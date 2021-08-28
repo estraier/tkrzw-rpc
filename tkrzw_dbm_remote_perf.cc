@@ -1,5 +1,5 @@
 /*************************************************************************************************
- * Performance checker of Tkrzw-RPC
+ * Performance checker of RemoteDBM of Tkrzw
  *
  * Copyright 2020 Google LLC
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
@@ -20,16 +20,16 @@
 #include <string_view>
 #include <vector>
 
-#include "tkrzw_rpc.h"
 #include "tkrzw_cmd_util.h"
+#include "tkrzw_dbm_remote.h"
 
 namespace tkrzw {
 
 // Prints the usage to the standard error and die.
 static void PrintUsageAndDie() {
   auto P = EPrintF;
-  const char* progname = "tkrzw_client";
-  P("%s: Performance checker of Tkrzw-RPC\n", progname);
+  const char* progname = "tkrzw_dbm_remote_perf";
+  P("%s: Performance checker of RemoteDBM of Tkrzw\n", progname);
   P("\n");
   P("Usage:\n");
   P("  %s sequence [options]\n", progname);
@@ -92,7 +92,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     Die("Invalid number of threads");
   }
   const int64_t start_mem_rss = GetMemoryUsage();
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);

@@ -1,5 +1,5 @@
 /*************************************************************************************************
- * RPC client command of Tkrzw
+ * Command line interface of RemoteDBM utilities
  *
  * Copyright 2020 Google LLC
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
@@ -20,16 +20,16 @@
 #include <string_view>
 #include <vector>
 
-#include "tkrzw_rpc.h"
 #include "tkrzw_cmd_util.h"
+#include "tkrzw_dbm_remote.h"
 
 namespace tkrzw {
 
 // Prints the usage to the standard error and die.
 static void PrintUsageAndDie() {
   auto P = EPrintF;
-  const char* progname = "tkrzw_client";
-  P("%s: RPC client of Tkrzw\n", progname);
+  const char* progname = "tkrzw_dbm_remote_util";
+  P("%s: RemoteDBM utilities of Tkrzw\n", progname);
   P("\n");
   P("Usage:\n");
   P("  %s echo [options] [message]\n", progname);
@@ -71,7 +71,7 @@ static int32_t ProcessEcho(int32_t argc, const char** args) {
   const std::string message = StrJoin(cmd_args[""], " ");
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
@@ -104,7 +104,7 @@ static int32_t ProcessInspect(int32_t argc, const char** args) {
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
@@ -141,7 +141,7 @@ static int32_t ProcessGet(int32_t argc, const char** args) {
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
@@ -181,7 +181,7 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
   const bool with_no_overwrite = CheckMap(cmd_args, "--no_overwrite");
   const std::string append_delim = GetStringArgument(cmd_args, "--append", 0, "[\xFF|\xFF|\xFF]");
   const int64_t incr_init = GetIntegerArgument(cmd_args, "--incr", 0, INT64MIN);
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
@@ -232,7 +232,7 @@ static int32_t ProcessRemove(int32_t argc, const char** args) {
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
@@ -264,7 +264,7 @@ static int32_t ProcessClear(int32_t argc, const char** args) {
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
@@ -297,7 +297,7 @@ static int32_t ProcessRebuild(int32_t argc, const char** args) {
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
@@ -334,7 +334,7 @@ static int32_t ProcessSync(int32_t argc, const char** args) {
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const bool with_hard = CheckMap(cmd_args, "--hard");
-  DBMClient client;
+  RemoteDBM client;
   Status status = client.Connect(host, port);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);

@@ -100,33 +100,33 @@ distclean : clean apidocclean
 	  config.cache config.log config.status config.tmp autom4te.cache build
 
 check :
-	$(MAKE) check-client
-	$(MAKE) check-rpc-perf
+	$(MAKE) check-remotedbm-util
+	$(MAKE) check-remotedbm-perf
 
-check-client :
-	$(RUNENV) ./tkrzw_client echo "hello"
-	$(RUNENV) ./tkrzw_client inspect --index -1
-	$(RUNENV) ./tkrzw_client inspect
-	$(RUNENV) ./tkrzw_client set "one" "first"
-	$(RUNENV) ./tkrzw_client set "two" "second"
-	$(RUNENV) ./tkrzw_client get "one"
-	$(RUNENV) ./tkrzw_client remove "one"
-	$(RUNENV) ./tkrzw_client rebuild
-	$(RUNENV) ./tkrzw_client sync
-	$(RUNENV) ./tkrzw_client get "two"
-	$(RUNENV) ./tkrzw_client clear
+check-remotedbm-util :
+	$(RUNENV) ./tkrzw_dbm_remote_util echo "hello"
+	$(RUNENV) ./tkrzw_dbm_remote_util inspect --index -1
+	$(RUNENV) ./tkrzw_dbm_remote_util inspect
+	$(RUNENV) ./tkrzw_dbm_remote_util set "one" "first"
+	$(RUNENV) ./tkrzw_dbm_remote_util set "two" "second"
+	$(RUNENV) ./tkrzw_dbm_remote_util get "one"
+	$(RUNENV) ./tkrzw_dbm_remote_util remove "one"
+	$(RUNENV) ./tkrzw_dbm_remote_util rebuild
+	$(RUNENV) ./tkrzw_dbm_remote_util sync
+	$(RUNENV) ./tkrzw_dbm_remote_util get "two"
+	$(RUNENV) ./tkrzw_dbm_remote_util clear
 
-check-rpc-perf :
-	$(RUNENV) ./tkrzw_client clear
-	$(RUNENV) ./tkrzw_client rebuild "num_buckets=100000"
-	$(RUNENV) ./tkrzw_rpc_perf sequence --threads 1 --iter 100000
-	$(RUNENV) ./tkrzw_rpc_perf sequence --threads 4 --iter 25000 --random_key --random_value
+check-remotedbm-perf :
+	$(RUNENV) ./tkrzw_dbm_remote_util clear
+	$(RUNENV) ./tkrzw_dbm_remote_util rebuild "num_buckets=100000"
+	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 1 --iter 100000
+	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 4 --iter 25000 --random_key --random_value
 
 test : $(TESTFILES)
 
 testrun :
 	$(RUNENV) ./tkrzw_server_test
-	$(RUNENV) ./tkrzw_rpc_test
+	$(RUNENV) ./tkrzw_dbm_remote_test
 
 apidoc :
 	$(MAKE) apidocclean
@@ -172,7 +172,7 @@ tkrzw_rpc.grpc.pb.h tkrzw_rpc.grpc.pb.cc tkrzw_rpc_mock.grpc.pb.h : tkrzw_rpc.pr
 libtkrzw_rpc.a : $(LIBOBJFILES)
 	$(AR) $(ARFLAGS) $@ $(LIBOBJFILES)
 
-tkrzw_rpc.o : tkrzw_rpc.pb.h tkrzw_rpc.grpc.pb.h
+tkrzw_dbm_remote.o tkrzw_server.o tkrzw_server_impl.h : tkrzw_rpc.pb.h tkrzw_rpc.grpc.pb.h
 
 #================================================================
 # Building binaries
@@ -181,10 +181,10 @@ tkrzw_rpc.o : tkrzw_rpc.pb.h tkrzw_rpc.grpc.pb.h
 tkrzw_server : tkrzw_server.o tkrzw_server_util.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< tkrzw_server_util.o $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
-tkrzw_client : tkrzw_client.o $(LIBRARYFILES)
+tkrzw_dbm_remote_util : tkrzw_dbm_remote_util.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
-tkrzw_rpc_perf : tkrzw_rpc_perf.o $(LIBRARYFILES)
+tkrzw_dbm_remote_perf : tkrzw_dbm_remote_perf.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
 #================================================================
@@ -196,9 +196,9 @@ tkrzw_server_test.o : tkrzw_server_impl.h tkrzw_rpc.pb.h tkrzw_rpc.grpc.pb.h
 tkrzw_server_test : tkrzw_server_test.o $(LIBRARYFILES) 
 	$(CXX) $(CXXFLAGS) -o $@ $< $(CMDLDFLAGS) $(CMDLIBS) $(TESTLIBS) $(LIBS)
 
-tkrzw_rpc_test.o : tkrzw_rpc.pb.h tkrzw_rpc_mock.grpc.pb.h
+tkrzw_dbm_remote_test.o : tkrzw_rpc.pb.h tkrzw_rpc_mock.grpc.pb.h
 
-tkrzw_rpc_test : tkrzw_rpc_test.o $(LIBRARYFILES)
+tkrzw_dbm_remote_test : tkrzw_dbm_remote_test.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(CMDLDFLAGS) $(CMDLIBS) $(TESTLIBS) $(LIBS)
 
 # END OF FILE
