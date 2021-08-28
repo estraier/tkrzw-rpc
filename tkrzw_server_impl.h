@@ -330,16 +330,56 @@ class DBMServiceImpl : public DBMService::Service {
           const Status status = iter->First();
           response.mutable_status()->set_code(status.GetCode());
           response.mutable_status()->set_message(status.GetMessage());
+          break;
         }
-
-
-        case IterateRequest::OP_MOVE_NEXT: {
+        case IterateRequest::OP_LAST: {
+          const Status status = iter->Last();
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+          break;
+        }
+        case IterateRequest::OP_JUMP: {
+          const Status status = iter->Jump(request.key());
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+          break;
+        }
+        case IterateRequest::OP_JUMP_LOWER: {
+          const Status status = iter->JumpLower(request.key(), false);
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+          break;
+        }
+        case IterateRequest::OP_JUMP_LOWER_INCLUSIVE: {
+          const Status status = iter->JumpLower(request.key(), true);
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+          break;
+        }
+        case IterateRequest::OP_JUMP_UPPER: {
+          const Status status = iter->JumpUpper(request.key(), false);
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+          break;
+        }
+        case IterateRequest::OP_JUMP_UPPER_INCLUSIVE: {
+          const Status status = iter->JumpUpper(request.key(), true);
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+          break;
+        }
+        case IterateRequest::OP_NEXT: {
           const Status status = iter->Next();
           response.mutable_status()->set_code(status.GetCode());
           response.mutable_status()->set_message(status.GetMessage());
+          break;
         }
-
-
+        case IterateRequest::OP_PREVIOUS: {
+          const Status status = iter->Previous();
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+          break;
+        }
         default: {
           return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown operation");
         }

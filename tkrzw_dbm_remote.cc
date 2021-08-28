@@ -17,10 +17,10 @@
 #include <grpcpp/create_channel.h>
 #include <grpcpp/security/credentials.h>
 
+#include "tkrzw_cmd_util.h"
 #include "tkrzw_dbm_remote.h"
 #include "tkrzw_rpc.grpc.pb.h"
 #include "tkrzw_rpc.pb.h"
-#include "tkrzw_str_util.h"
 
 namespace tkrzw {
 
@@ -65,12 +65,15 @@ Status MakeStatusFromProto(const tkrzw::StatusProto& proto) {
 }
 
 class RemoteDBMImpl final {
+  friend class RemoteDBMIteratorImpl;
+  typedef std::list<RemoteDBMIteratorImpl*> IteratorList;
  public:
   RemoteDBMImpl();
-  void InfectStub(void* stub);
+  ~RemoteDBMImpl();
+  void InjectStub(void* stub);
   Status Connect(const std::string& host, int32_t port);
-  void Disconnect();
-  void SetDBMIndex(int32_t dbm_index);
+  Status Disconnect();
+  Status SetDBMIndex(int32_t dbm_index);
   Status Echo(std::string_view message, std::string* echo);
   Status Inspect(std::vector<std::pair<std::string, std::string>>* records);
   Status Get(std::string_view key, std::string* value);
@@ -88,15 +91,50 @@ class RemoteDBMImpl final {
  private:
   std::unique_ptr<DBMService::StubInterface> stub_;
   int32_t dbm_index_;
+  IteratorList iterators_;
+  SpinSharedMutex mutex_;
 };
 
-RemoteDBMImpl::RemoteDBMImpl() : stub_(nullptr), dbm_index_(0) {}
+class RemoteDBMIteratorImpl final {
+  friend class RemoteDBMImpl;
+ public:
+  explicit RemoteDBMIteratorImpl(RemoteDBMImpl* dbm);
+  ~RemoteDBMIteratorImpl();
+  Status First();
+  Status Last();
+  Status Jump(std::string_view key);
+  Status JumpLower(std::string_view key, bool inclusive);
+  Status JumpUpper(std::string_view key, bool inclusive);
+  Status Next();
+  Status Previous();
+  Status Get(std::string* key, std::string* value);
 
-void RemoteDBMImpl::InfectStub(void* stub) {
+ private:
+  RemoteDBMImpl* dbm_;
+  grpc::ClientContext context_;
+  std::unique_ptr<grpc::ClientReaderWriterInterface<
+                    tkrzw::IterateRequest, tkrzw::IterateResponse>> stream_;
+};
+
+RemoteDBMImpl::RemoteDBMImpl()
+    : stub_(nullptr), dbm_index_(0), iterators_(), mutex_() {}
+
+RemoteDBMImpl::~RemoteDBMImpl() {
+  for (auto* iterator : iterators_) {
+    iterator->dbm_ = nullptr;
+  }
+}
+
+void RemoteDBMImpl::InjectStub(void* stub) {
+  std::lock_guard<SpinSharedMutex> lock(mutex_);
   stub_.reset(reinterpret_cast<DBMService::StubInterface*>(stub));
 }
 
 Status RemoteDBMImpl::Connect(const std::string& host, int32_t port) {
+  std::lock_guard<SpinSharedMutex> lock(mutex_);
+  if (stub_ != nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "connected database");
+  }
   const std::string server_address(StrCat(host, ":", port));
   auto channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
   const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
@@ -114,15 +152,29 @@ Status RemoteDBMImpl::Connect(const std::string& host, int32_t port) {
   return Status(Status::SUCCESS);
 }
 
-void RemoteDBMImpl::Disconnect() {
+Status RemoteDBMImpl::Disconnect() {
+  std::lock_guard<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   stub_.reset(nullptr);
+  return Status(Status::SUCCESS);
 }
 
-void RemoteDBMImpl::SetDBMIndex(int32_t dbm_index) {
+Status RemoteDBMImpl::SetDBMIndex(int32_t dbm_index) {
+  std::lock_guard<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   dbm_index_ = dbm_index;
+  return Status(Status::SUCCESS);
 }
 
 Status RemoteDBMImpl::Echo(std::string_view message, std::string* echo) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   EchoRequest request;
   request.set_message(std::string(message));
@@ -136,6 +188,10 @@ Status RemoteDBMImpl::Echo(std::string_view message, std::string* echo) {
 }
 
 Status RemoteDBMImpl::Inspect(std::vector<std::pair<std::string, std::string>>* records) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   InspectRequest request;
   request.set_dbm_index(dbm_index_);
@@ -151,6 +207,10 @@ Status RemoteDBMImpl::Inspect(std::vector<std::pair<std::string, std::string>>* 
 }
 
 Status RemoteDBMImpl::Get(std::string_view key, std::string* value) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   GetRequest request;
   request.set_dbm_index(dbm_index_);
@@ -167,6 +227,10 @@ Status RemoteDBMImpl::Get(std::string_view key, std::string* value) {
 }
 
 Status RemoteDBMImpl::Set(std::string_view key, std::string_view value, bool overwrite) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   SetRequest request;
   request.set_dbm_index(dbm_index_);
@@ -182,6 +246,10 @@ Status RemoteDBMImpl::Set(std::string_view key, std::string_view value, bool ove
 }
 
 Status RemoteDBMImpl::Remove(std::string_view key) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   RemoveRequest request;
   request.set_dbm_index(dbm_index_);
@@ -196,6 +264,10 @@ Status RemoteDBMImpl::Remove(std::string_view key) {
 
 Status RemoteDBMImpl::Append(
     std::string_view key, std::string_view value, std::string_view delim) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   AppendRequest request;
   request.set_dbm_index(dbm_index_);
@@ -212,6 +284,10 @@ Status RemoteDBMImpl::Append(
 
 Status RemoteDBMImpl::Increment(
     std::string_view key, int64_t increment, int64_t* current, int64_t initial) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   IncrementRequest request;
   request.set_dbm_index(dbm_index_);
@@ -230,6 +306,10 @@ Status RemoteDBMImpl::Increment(
 }
 
 Status RemoteDBMImpl::Count(int64_t* count) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   CountRequest request;
   CountResponse response;
@@ -244,6 +324,10 @@ Status RemoteDBMImpl::Count(int64_t* count) {
 }
 
 Status RemoteDBMImpl::GetFileSize(int64_t* file_size) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   GetFileSizeRequest request;
   GetFileSizeResponse response;
@@ -258,6 +342,10 @@ Status RemoteDBMImpl::GetFileSize(int64_t* file_size) {
 }
 
 Status RemoteDBMImpl::Clear() {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   ClearRequest request;
   ClearResponse response;
@@ -269,6 +357,10 @@ Status RemoteDBMImpl::Clear() {
 }
 
 Status RemoteDBMImpl::Rebuild(const std::map<std::string, std::string>& params) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   RebuildRequest request;
   for (const auto& param : params) {
@@ -285,6 +377,10 @@ Status RemoteDBMImpl::Rebuild(const std::map<std::string, std::string>& params) 
 }
 
 Status RemoteDBMImpl::ShouldBeRebuilt(bool* tobe) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   ShouldBeRebuiltRequest request;
   ShouldBeRebuiltResponse response;
@@ -299,6 +395,10 @@ Status RemoteDBMImpl::ShouldBeRebuilt(bool* tobe) {
 }
 
 Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::string>& params) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
   grpc::ClientContext context;
   SynchronizeRequest request;
   request.set_hard(hard);
@@ -315,6 +415,170 @@ Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::st
   return MakeStatusFromProto(response.status());
 }
 
+RemoteDBMIteratorImpl::RemoteDBMIteratorImpl(RemoteDBMImpl* dbm)
+    : dbm_(dbm), context_(), stream_(nullptr) {
+  {
+    std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
+    dbm_->iterators_.emplace_back(this);
+  }
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  stream_ = dbm_->stub_->Iterate(&context_);
+}
+
+RemoteDBMIteratorImpl::~RemoteDBMIteratorImpl() {
+  if (dbm_ != nullptr) {
+    std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
+    dbm_->iterators_.remove(this);
+  }
+}
+
+Status RemoteDBMIteratorImpl::First() {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(IterateRequest::OP_FIRST);
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::Last() {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(IterateRequest::OP_LAST);
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::Jump(std::string_view key) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(IterateRequest::OP_JUMP);
+  request.set_key(std::string(key));
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(
+      inclusive ? IterateRequest::OP_JUMP_LOWER_INCLUSIVE : IterateRequest::OP_JUMP_LOWER);
+  request.set_key(std::string(key));
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::JumpUpper(std::string_view key, bool inclusive) {
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(
+      inclusive ? IterateRequest::OP_JUMP_UPPER_INCLUSIVE : IterateRequest::OP_JUMP_UPPER);
+  request.set_key(std::string(key));
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::Next() {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(IterateRequest::OP_NEXT);
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::Previous() {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(IterateRequest::OP_PREVIOUS);
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(IterateRequest::OP_GET);
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  if (response.status().code() == 0) {
+    if (key != nullptr) {
+      *key = response.key();
+    }
+    if (value != nullptr) {
+      *value = response.value();
+    }
+  }
+  return MakeStatusFromProto(response.status());
+}
+
 RemoteDBM::RemoteDBM() : impl_(nullptr) {
   impl_ = new RemoteDBMImpl();
 }
@@ -324,18 +588,18 @@ RemoteDBM::~RemoteDBM() {
 }
 
 void RemoteDBM::InjectStub(void* stub) {
-  impl_->InfectStub(stub);
+  impl_->InjectStub(stub);
 }
 
 Status RemoteDBM::Connect(const std::string& host, int32_t port) {
   return impl_->Connect(host, port);
 }
 
-void RemoteDBM::Disconnect() {
+Status RemoteDBM::Disconnect() {
   return impl_->Disconnect();
 }
 
-void RemoteDBM::SetDBMIndex(int32_t dbm_index) {
+Status RemoteDBM::SetDBMIndex(int32_t dbm_index) {
   return impl_->SetDBMIndex(dbm_index);
 }
 
@@ -390,6 +654,51 @@ Status RemoteDBM::ShouldBeRebuilt(bool* tobe) {
 
 Status RemoteDBM::Synchronize(bool hard, const std::map<std::string, std::string>& params) {
   return impl_->Synchronize(hard, params);
+}
+
+std::unique_ptr<RemoteDBM::Iterator> RemoteDBM::MakeIterator() {
+  std::unique_ptr<RemoteDBM::Iterator> iter(new RemoteDBM::Iterator(impl_));
+  return iter;
+}
+
+RemoteDBM::Iterator::Iterator(RemoteDBMImpl* dbm_impl) {
+  impl_ = new RemoteDBMIteratorImpl(dbm_impl);
+}
+
+RemoteDBM::Iterator::~Iterator() {
+  delete impl_;
+}
+
+Status RemoteDBM::Iterator::First() {
+  return impl_->First();
+}
+
+Status RemoteDBM::Iterator::Last() {
+  return impl_->Last();
+}
+
+Status RemoteDBM::Iterator::Jump(std::string_view key) {
+  return impl_->Jump(key);
+}
+
+Status RemoteDBM::Iterator::JumpLower(std::string_view key, bool inclusive) {
+  return impl_->JumpLower(key, inclusive);
+}
+
+Status RemoteDBM::Iterator::JumpUpper(std::string_view key, bool inclusive) {
+  return impl_->JumpUpper(key, inclusive);
+}
+
+Status RemoteDBM::Iterator::Next() {
+  return impl_->Next();
+}
+
+Status RemoteDBM::Iterator::Previous() {
+  return impl_->Previous();
+}
+
+Status RemoteDBM::Iterator::Get(std::string* key, std::string* value) {
+  return impl_->Get(key, value);
 }
 
 }  // namespace tkrzw

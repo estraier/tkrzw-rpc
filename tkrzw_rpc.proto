@@ -242,9 +242,9 @@ message IterateRequest {
     // Jumps to the last record equal to or upper than the key.
     OP_JUMP_UPPER_INCLUSIVE = 7;
     // Moves to the next record.
-    OP_MOVE_NEXT = 8;
+    OP_NEXT = 8;
     // Moves to the previous record.
-    OP_MOVE_PREVIOUS = 9;
+    OP_PREVIOUS = 9;
   }
   // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;

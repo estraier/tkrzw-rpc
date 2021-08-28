@@ -6,7 +6,7 @@
 
 Tkrzw is a library of DBM and provides features to mange key-value storages in various algorithms.  This package provides a server program manage databases and a library to access the service via gRPC protocol.
 
-@li tkrzw::DBMClient -- RPC interface to access the service.
+@li tkrzw::RemoteDBM -- Remote database manager implementation.
 
 @code
 #include "tkrzw_dbm_remote.h"

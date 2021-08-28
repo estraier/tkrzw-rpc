@@ -28,6 +28,8 @@ class RemoteDBMIteratorImpl;
 
 /**
  * RPC interface to access the database service via gRPC protocol.
+ * @details All operations are thread-safe; Multiple threads can access the same connection
+ * concurrently.
  */
 class RemoteDBM final {
  public:
@@ -40,11 +42,76 @@ class RemoteDBM final {
     friend class tkrzw::RemoteDBM;
    public:
     /**
+     * Destructor.
+     */
+    virtual ~Iterator();
+
+    /**
+     * Copy and assignment are disabled.
+     */
+    explicit Iterator(const Iterator& rhs) = delete;
+    Iterator& operator =(const Iterator& rhs) = delete;
+
+    /**
      * Initializes the iterator to indicate the first record.
      * @return The result status.
      * @details Even if there's no record, the operation doesn't fail.
      */
     Status First();
+
+    /**
+     * Initializes the iterator to indicate the last record.
+     * @return The result status.
+     * @details Even if there's no record, the operation doesn't fail.  This method is suppoerted
+     * only by ordered databases.
+     */
+    Status Last();
+
+    /**
+     * Initializes the iterator to indicate a specific record.
+     * @param key The key of the record to look for.
+     * @return The result status.
+     * @details Ordered databases can support "lower bound" jump; If there's no record with the
+     * same key, the iterator refers to the first record whose key is greater than the given key.
+     * The operation fails with unordered databases if there's no record with the same key.
+     */
+    Status Jump(std::string_view key);
+
+    /**
+     * Initializes the iterator to indicate the last record whose key is lower than a given key.
+     * @param key The key to compare with.
+     * @param inclusive If true, the condition is inclusive: equal to or lower than the key.
+     * @return The result status.
+     * @details Even if there's no matching record, the operation doesn't fail.  This method is
+     * suppoerted only by ordered databases.
+     */
+    Status JumpLower(std::string_view key, bool inclusive = false);
+
+    /**
+     * Initializes the iterator to indicate the first record whose key is upper than a given key.
+     * @param key The key to compare with.
+     * @param inclusive If true, the condition is inclusive: equal to or upper than the key.
+     * @return The result status.
+     * @details Even if there's no matching record, the operation doesn't fail.  This method is
+     * suppoerted only by ordered databases.
+     */
+    Status JumpUpper(std::string_view key, bool inclusive = false);
+
+    /**
+     * Moves the iterator to the next record.
+     * @return The result status.
+     * @details If the current record is missing, the operation fails.  Even if there's no next
+     * record, the operation doesn't fail.
+     */
+    Status Next();
+
+    /**
+     * Moves the iterator to the previous record.
+     * @return The result status.
+     * @details If the current record is missing, the operation fails.  Even if there's no previous
+     * record, the operation doesn't fail.  This method is suppoerted only by ordered databases.
+     */
+    Status Previous();
 
     /**
      * Gets the key and the value of the current record of the iterator.
@@ -55,14 +122,6 @@ class RemoteDBM final {
      * @return The result status.
      */
     Status Get(std::string* key = nullptr, std::string* value = nullptr);
-
-    /**
-     * Moves the iterator to the next record.
-     * @return The result status.
-     * @details If the current record is missing, the operation fails.  Even if there's no next
-     * record, the operation doesn't fail.
-     */
-    Status Next();
 
    private:
     /**
@@ -86,6 +145,12 @@ class RemoteDBM final {
   ~RemoteDBM();
 
   /**
+   * Copy and assignment are disabled.
+   */
+  explicit RemoteDBM(const RemoteDBM& rhs) = delete;
+  RemoteDBM& operator =(const RemoteDBM& rhs) = delete;
+
+  /**
    * Injects a stub for testing.
    * @param stub The pointer to the DBMService::StubInterface object.  The ownership is taken.
    */
@@ -101,14 +166,16 @@ class RemoteDBM final {
 
   /**
    * Disconnects the connection to the server.
+   * @return The result status.
    */
-  void Disconnect();
+  Status Disconnect();
 
   /**
    * Sets the index of the DBM to access.
    * @param dbm_index The index of the DBM to access.
+   * @return The result status.
    */
-  void SetDBMIndex(int32_t dbm_index);
+  Status SetDBMIndex(int32_t dbm_index);
 
   /**
    * Sends a message and gets back the echo message.
@@ -262,6 +329,12 @@ class RemoteDBM final {
    * @return The result status.
    */
   Status Synchronize(bool hard, const std::map<std::string, std::string>& params = {});
+
+  /**
+   * Makes an iterator for each record.
+   * @return The iterator for each record.
+   */
+  std::unique_ptr<Iterator> MakeIterator();
 
  private:
   /** Pointer to the actual implementation. */
