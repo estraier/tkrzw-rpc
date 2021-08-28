@@ -101,7 +101,7 @@ distclean : clean apidocclean
 
 check :
 	$(MAKE) check-client
-	$(MAKE) check-perf
+	$(MAKE) check-rpc-perf
 
 check-client :
 	$(RUNENV) ./tkrzw_client echo "hello"
@@ -116,9 +116,11 @@ check-client :
 	$(RUNENV) ./tkrzw_client get "two"
 	$(RUNENV) ./tkrzw_client clear
 
-check-perf :
-	$(RUNENV) ./tkrzw_perf sequence --threads 1 --iter 100000
-	$(RUNENV) ./tkrzw_perf sequence --threads 4 --iter 25000 --random_key --random_value
+check-rpc-perf :
+	$(RUNENV) ./tkrzw_client clear
+	$(RUNENV) ./tkrzw_client rebuild "num_buckets=100000"
+	$(RUNENV) ./tkrzw_rpc_perf sequence --threads 1 --iter 100000
+	$(RUNENV) ./tkrzw_rpc_perf sequence --threads 4 --iter 25000 --random_key --random_value
 
 test : $(TESTFILES)
 
@@ -182,7 +184,7 @@ tkrzw_server : tkrzw_server.o tkrzw_server_util.o $(LIBRARYFILES)
 tkrzw_client : tkrzw_client.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
-tkrzw_perf : tkrzw_perf.o $(LIBRARYFILES)
+tkrzw_rpc_perf : tkrzw_rpc_perf.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
 #================================================================
