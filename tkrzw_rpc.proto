@@ -221,6 +221,49 @@ message SynchronizeResponse {
   StatusProto status = 1;
 }
 
+// Request of the Iterate method.
+message IterateRequest {
+  // Enumeration for operations.
+  enum OpType {
+    // Gets the current record.
+    OP_GET = 0;
+    // Jumps to the first record.
+    OP_FIRST = 1;
+    // Jumps to the last record.
+    OP_LAST = 2;
+    // Jumps to a record of the key.
+    OP_JUMP = 3;
+    // Jumps to the last record lower than the key.
+    OP_JUMP_LOWER = 4;
+    // Jumps to the last record equal to or lower than the key.
+    OP_JUMP_LOWER_INCLUSIVE = 5;
+    // Jumps to the last record upper than the key.
+    OP_JUMP_UPPER = 6;
+    // Jumps to the last record equal to or upper than the key.
+    OP_JUMP_UPPER_INCLUSIVE = 7;
+    // Moves to the next record.
+    OP_MOVE_NEXT = 8;
+    // Moves to the previous record.
+    OP_MOVE_PREVIOUS = 9;
+  }
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The jump operation.
+  OpType operation = 2;
+  // The key of the jump operation.
+  bytes key = 3;
+}
+
+// Response of the Iterate method.
+message IterateResponse {
+  // The result status.
+  StatusProto status = 1;
+  // The key of the record.
+  bytes key = 2;
+  // The value of the record.
+  bytes value = 3;
+}
+
 // Definition of the database service.
 service DBMService {
   rpc Echo(EchoRequest) returns (EchoResponse);
@@ -236,4 +279,5 @@ service DBMService {
   rpc Rebuild(RebuildRequest) returns (RebuildResponse);
   rpc ShouldBeRebuilt(ShouldBeRebuiltRequest) returns (ShouldBeRebuiltResponse);
   rpc Synchronize(SynchronizeRequest) returns (SynchronizeResponse);
+  rpc Iterate(stream IterateRequest) returns (stream IterateResponse);
 }

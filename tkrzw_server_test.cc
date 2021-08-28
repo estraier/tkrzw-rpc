@@ -30,12 +30,19 @@ class ServerTest : public Test {};
 
 TEST_F(ServerTest, Basic) {
   tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
-  const std::string file_path = tmp_dir.MakeUniquePath();
-  std::vector<std::unique_ptr<tkrzw::ParamDBM>> dbms(1);;
+  const std::string hash_file_path = tmp_dir.MakeUniquePath();
+  const std::string tree_file_path = tmp_dir.MakeUniquePath();
+  std::vector<std::unique_ptr<tkrzw::ParamDBM>> dbms(2);
   dbms[0] = std::make_unique<tkrzw::PolyDBM>();
-  const std::map<std::string, std::string> params = {{"dbm", "HashDBM"}, {"num_buckets", "10"}};
+  dbms[1] = std::make_unique<tkrzw::PolyDBM>();
+  const std::map<std::string, std::string> hash_params =
+      {{"dbm", "HashDBM"}, {"num_buckets", "20"}};
   EXPECT_EQ(tkrzw::Status::SUCCESS,
-            dbms[0]->OpenAdvanced(file_path, true, tkrzw::File::OPEN_DEFAULT, params));
+            dbms[0]->OpenAdvanced(hash_file_path, true, tkrzw::File::OPEN_DEFAULT, hash_params));
+  const std::map<std::string, std::string> tree_params =
+      {{"dbm", "TreeDBM"}, {"num_buckets", "10"}};
+  EXPECT_EQ(tkrzw::Status::SUCCESS,
+            dbms[1]->OpenAdvanced(tree_file_path, true, tkrzw::File::OPEN_DEFAULT, tree_params));
   tkrzw::StreamLogger logger;
   tkrzw::DBMServiceImpl server(dbms, &logger);
   grpc::ServerContext context;
@@ -57,11 +64,13 @@ TEST_F(ServerTest, Basic) {
       records.emplace(std::make_pair(record.first(), record.second()));
     }
     EXPECT_EQ(_TKSERV_PKG_VERSION, records["version"]);
-    EXPECT_EQ("1", records["num_dbms"]);
+    EXPECT_EQ("2", records["num_dbms"]);
     EXPECT_EQ("0", records["dbm_0_count"]);
+    EXPECT_EQ("0", records["dbm_1_count"]);
   }
   {
     tkrzw::InspectRequest request;
+    request.set_dbm_index(0);
     tkrzw::InspectResponse response;
     grpc::Status status = server.Inspect(&context, &request, &response);
     EXPECT_TRUE(status.ok());
@@ -70,7 +79,22 @@ TEST_F(ServerTest, Basic) {
       records.emplace(std::make_pair(record.first(), record.second()));
     }
     EXPECT_EQ("HashDBM", records["class"]);
-    EXPECT_EQ("10", records["num_buckets"]);
+    EXPECT_EQ("20", records["num_buckets"]);
+    EXPECT_EQ("0", records["num_records"]);
+  }
+  {
+    tkrzw::InspectRequest request;
+    request.set_dbm_index(1);
+    tkrzw::InspectResponse response;
+    grpc::Status status = server.Inspect(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    std::map<std::string, std::string> records;
+    for (const auto& record : response.records()) {
+      records.emplace(std::make_pair(record.first(), record.second()));
+      std::cout << record.first() << ":" << record.second() << std::endl;
+    }
+    EXPECT_EQ("TreeDBM", records["class"]);
+    EXPECT_EQ("1", records["tree_level"]);
     EXPECT_EQ("0", records["num_records"]);
   }
   {
@@ -139,9 +163,10 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Remove("num"));
   }
   for (int32_t i = 0; i < 30; i++) {
-    const std::string expr = tkrzw::ToString(i);
+    const std::string expr = tkrzw::SPrintF("%08d", i);
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(expr, expr));
-  }
+    EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[1]->Set(expr, expr));
+  }  
   {
     tkrzw::ShouldBeRebuiltRequest request;
     tkrzw::ShouldBeRebuiltResponse response;
@@ -180,6 +205,32 @@ TEST_F(ServerTest, Basic) {
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
   }
+
+
+  /*
+  {
+    grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest> stream(nullptr, &context);
+    grpc::Status status;
+    auto server_task = [&]() { status = server.Iterate(&context, &stream); };
+    std::thread server_thread = std::thread(server_task);
+
+    
+
+    
+
+    server_thread.join();
+    EXPECT_TRUE(status.ok());
+
+
+  }
+  */
+
+  
+
+
+
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[1]->Close());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
 }
 
 // END OF FILE

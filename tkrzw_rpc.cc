@@ -160,7 +160,7 @@ Status DBMClientImpl::Get(std::string_view key, std::string* value) {
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
   }
-  if (response.status().code() == 0) {
+  if (response.status().code() == 0 && value != nullptr) {
     *value = response.value();
   }
   return MakeStatusFromProto(response.status());

@@ -24,12 +24,57 @@
 namespace tkrzw {
 
 class DBMClientImpl;
+class DBMClientIteratorImpl;
 
 /**
  * RPC interface to access the database service via gRPC protocol.
  */
 class DBMClient final {
  public:
+  /**
+   * Iterator for each record.
+   * @details When the database is updated, some iterators may or may not be invalided.
+   * Operations with invalidated iterators fails gracefully with NOT_FOUND_ERROR.
+   */
+  class Iterator {
+    friend class tkrzw::DBMClient;
+   public:
+    /**
+     * Initializes the iterator to indicate the first record.
+     * @return The result status.
+     * @details Even if there's no record, the operation doesn't fail.
+     */
+    Status First();
+
+    /**
+     * Gets the key and the value of the current record of the iterator.
+     * @param key The pointer to a string object to contain the record key.  If it is nullptr,
+     * the key data is ignored.
+     * @param value The pointer to a string object to contain the record value.  If it is nullptr,
+     * the value data is ignored.
+     * @return The result status.
+     */
+    Status Get(std::string* key = nullptr, std::string* value = nullptr);
+
+    /**
+     * Moves the iterator to the next record.
+     * @return The result status.
+     * @details If the current record is missing, the operation fails.  Even if there's no next
+     * record, the operation doesn't fail.
+     */
+    Status Next();
+
+   private:
+    /**
+     * Constructor.
+     * @param dbm_impl The database implementation object.
+     */
+    explicit Iterator(DBMClientImpl* dbm_impl);
+
+    /** Pointer to the actual implementation. */
+    DBMClientIteratorImpl* impl_;
+  };
+  
   /**
    * Constructor.
    */
@@ -87,7 +132,7 @@ class DBMClient final {
    * the value data is ignored.
    * @return The result status.  If there's no matching record, NOT_FOUND_ERROR is returned.
    */
-  Status Get(std::string_view key, std::string* value);
+  Status Get(std::string_view key, std::string* value = nullptr);
 
   /**
    * Gets the value of a record of a key, in a simple way.

@@ -293,6 +293,65 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
+  grpc::Status Iterate(
+      grpc::ServerContext* context,
+      grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) override {
+    std::unique_ptr<DBM::Iterator> iter;
+    tkrzw::IterateRequest request;
+    while (true) {
+      if (context->IsCancelled()) {
+        return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
+      }
+      if (!stream->Read(&request)) {
+        break;
+      }
+      LogRequest(context, "Iterate", &request);
+      if (iter.get() == nullptr) {
+        if (request.dbm_index() < 0 ||
+            request.dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+          return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+        }
+        auto& dbm = *dbms_[request.dbm_index()];
+        iter = dbm.MakeIterator();
+      }
+      tkrzw::IterateResponse response;
+      switch (request.operation()) {
+        case IterateRequest::OP_GET: {
+          std::string key, value;
+          const Status status = iter->Get(&key, &value);
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+          if (status == Status::SUCCESS) {
+            response.set_key(key);
+            response.set_value(value);
+          }
+          break;
+        }
+        case IterateRequest::OP_FIRST: {
+          const Status status = iter->First();
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+        }
+
+
+        case IterateRequest::OP_MOVE_NEXT: {
+          const Status status = iter->Next();
+          response.mutable_status()->set_code(status.GetCode());
+          response.mutable_status()->set_message(status.GetMessage());
+        }
+          
+          
+        default: {
+          return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown operation");
+        }
+      }
+      if (!stream->Write(response)) {
+        break;
+      }
+    }
+    return grpc::Status::OK;
+  }
+  
  private:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;
