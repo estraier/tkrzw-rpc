@@ -94,7 +94,6 @@ TEST_F(RemoteDBMTest, Get) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::GetRequest request;
   request.set_key("key");
-  request.set_fill_value(true);
   tkrzw::GetResponse response;
   response.set_value("value");
   EXPECT_CALL(*stub, Get(_, EqualsProto(request), _)).WillOnce(
@@ -307,16 +306,16 @@ TEST_F(RemoteDBMTest, IterateAction) {
     tkrzw::IterateRequest, tkrzw::IterateResponse>>();
   tkrzw::IterateRequest request_get_both;
   request_get_both.set_operation(tkrzw::IterateRequest::OP_GET);
-  request_get_both.set_fill_key(true);
-  request_get_both.set_fill_value(true);
   tkrzw::IterateRequest request_get_none;
   request_get_none.set_operation(tkrzw::IterateRequest::OP_GET);
+  request_get_both.set_omit_key(true);
+  request_get_both.set_omit_value(true);
   tkrzw::IterateRequest request_get_key;
   request_get_key.set_operation(tkrzw::IterateRequest::OP_GET);
-  request_get_key.set_fill_key(true);
+  request_get_key.set_omit_value(true);
   tkrzw::IterateRequest request_get_value;
   request_get_value.set_operation(tkrzw::IterateRequest::OP_GET);
-  request_get_value.set_fill_value(true);
+  request_get_value.set_omit_key(true);
   tkrzw::IterateRequest request_set;
   request_set.set_operation(tkrzw::IterateRequest::OP_SET);
   request_set.set_value("set");

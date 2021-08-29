@@ -217,8 +217,8 @@ Status RemoteDBMImpl::Get(std::string_view key, std::string* value) {
   GetRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
-  if (value != nullptr) {
-    request.set_fill_value(true);
+  if (value == nullptr) {
+    request.set_omit_value(true);
   }
   GetResponse response;
   grpc::Status status = stub_->Get(&context, request, &response);
@@ -566,11 +566,11 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
   }
   IterateRequest request;
   request.set_operation(IterateRequest::OP_GET);
-  if (key != nullptr) {
-    request.set_fill_key(true);
+  if (key == nullptr) {
+    request.set_omit_key(true);
   }
-  if (value != nullptr) {
-    request.set_fill_value(true);
+  if (value == nullptr) {
+    request.set_omit_value(true);
   }
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");

@@ -118,7 +118,7 @@ class DBMServiceImpl : public DBMService::Service {
     }
     auto& dbm = *dbms_[request->dbm_index()];
     std::string value;
-    const Status status = dbm.Get(request->key(), request->fill_value() ? &value : nullptr);
+    const Status status = dbm.Get(request->key(), request->omit_value() ? nullptr : &value);
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
     if (status == Status::SUCCESS) {
@@ -360,7 +360,7 @@ class DBMServiceImpl : public DBMService::Service {
         case IterateRequest::OP_GET: {
           std::string key, value;
           const Status status = iter->Get(
-              request.fill_key() ? &key : nullptr, request.fill_value() ? &value : nullptr);
+              request.omit_key() ? nullptr : &key, request.omit_value() ? nullptr : &value);
           response.mutable_status()->set_code(status.GetCode());
           response.mutable_status()->set_message(status.GetMessage());
           if (status == Status::SUCCESS) {

@@ -57,8 +57,8 @@ message GetRequest {
   int32 dbm_index = 1;
   // The key of the record.
   bytes key = 2;
-  // Whether to fill the value in the response.
-  bool fill_value = 3;
+  // Whether to omit the value in the response.
+  bool omit_value = 3;
 }
 
 // Response of the Get method.
@@ -258,10 +258,10 @@ message IterateRequest {
   bytes value = 4;
   // Whether the jump condition is inclusive.
   bool jump_inclusive = 5;
-  // Whether to get the key in the response.
-  bool fill_key = 6;
-  // Whether to get the value in the response.
-  bool fill_value = 7;
+  // Whether to omit the key in the response.
+  bool omit_key = 6;
+  // Whether to omit the value in the response.
+  bool omit_value = 7;
 }
 
 // Response of the Iterate method.

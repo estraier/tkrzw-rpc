@@ -11,8 +11,11 @@
  * and limitations under the License.
  *************************************************************************************************/
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "grpcpp/test/mock_stream.h"
 
 #include "tkrzw_server_impl.h"
 #include "tkrzw_lib_common.h"
@@ -27,6 +30,10 @@ int main(int argc, char** argv) {
 }
 
 class ServerTest : public Test {};
+
+MATCHER_P(EqualsProto, rhs, "Equality matcher for protos") {
+  return google::protobuf::util::MessageDifferencer::Equivalent(arg, rhs);
+}
 
 TEST_F(ServerTest, Basic) {
   tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
@@ -134,7 +141,6 @@ TEST_F(ServerTest, Basic) {
   {
     tkrzw::GetRequest request;
     request.set_key("one");
-    request.set_fill_value(true);
     tkrzw::GetResponse response;
     grpc::Status status = server.Get(&context, &request, &response);
     EXPECT_TRUE(status.ok());
@@ -165,7 +171,6 @@ TEST_F(ServerTest, Basic) {
   for (int32_t i = 0; i < 30; i++) {
     const std::string expr = tkrzw::SPrintF("%08d", i);
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(expr, expr));
-    EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[1]->Set(expr, expr));
   }
   {
     tkrzw::ShouldBeRebuiltRequest request;
@@ -205,8 +210,40 @@ TEST_F(ServerTest, Basic) {
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
   }
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[1]->Close());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
+}
+
+/*
+TEST_F(ServerTest, Iterator) {
+  tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
+  const std::string file_path = tmp_dir.MakeUniquePath();
+  std::vector<std::unique_ptr<tkrzw::ParamDBM>> dbms(1);
+  dbms[0] = std::make_unique<tkrzw::PolyDBM>();
+  const std::map<std::string, std::string> params =
+      {{"dbm", "TreeDBM"}, {"num_buckets", "10"}};
+  EXPECT_EQ(tkrzw::Status::SUCCESS,
+            dbms[0]->OpenAdvanced(file_path, true, tkrzw::File::OPEN_DEFAULT, params));
+  tkrzw::StreamLogger logger;
+  tkrzw::DBMServiceImpl server(dbms, &logger);
+  grpc::ServerContext context;
+
+  for (int32_t i = 1; i <= 100; i++) {
+    const std::stirng key = tkrzw::SPrintF("%08d", i);
+    const std::stirng value = tkrzw::ToString(i * i);
+    
+    tkrzw::SetRequest request;
+    request.set_message("hello");
+    tkrzw::EchoResponse response;
+    grpc::Status status = server.Echo(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ("hello", response.echo());
+  }
 
 
+
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
+*/
   /*
   {
     grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest> stream(nullptr, &context);
@@ -226,11 +263,5 @@ TEST_F(ServerTest, Basic) {
   */
 
 
-
-
-
-  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[1]->Close());
-  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
-}
 
 // END OF FILE
