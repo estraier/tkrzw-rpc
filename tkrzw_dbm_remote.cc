@@ -71,7 +71,7 @@ class RemoteDBMImpl final {
   RemoteDBMImpl();
   ~RemoteDBMImpl();
   void InjectStub(void* stub);
-  Status Connect(const std::string& host, int32_t port);
+  Status Connect(const std::string& host, int32_t port, double timeout);
   Status Disconnect();
   Status SetDBMIndex(int32_t dbm_index);
   Status Echo(std::string_view message, std::string* echo);
@@ -90,6 +90,7 @@ class RemoteDBMImpl final {
 
  private:
   std::unique_ptr<DBMService::StubInterface> stub_;
+  double timeout_;
   int32_t dbm_index_;
   IteratorList iterators_;
   SpinSharedMutex mutex_;
@@ -120,7 +121,7 @@ class RemoteDBMIteratorImpl final {
 };
 
 RemoteDBMImpl::RemoteDBMImpl()
-    : stub_(nullptr), dbm_index_(0), iterators_(), mutex_() {}
+    : stub_(nullptr), timeout_(0), dbm_index_(0), iterators_(), mutex_() {}
 
 RemoteDBMImpl::~RemoteDBMImpl() {
   for (auto* iterator : iterators_) {
@@ -132,14 +133,18 @@ void RemoteDBMImpl::InjectStub(void* stub) {
   stub_.reset(reinterpret_cast<DBMService::StubInterface*>(stub));
 }
 
-Status RemoteDBMImpl::Connect(const std::string& host, int32_t port) {
+Status RemoteDBMImpl::Connect(const std::string& host, int32_t port, double timeout) {
   std::lock_guard<SpinSharedMutex> lock(mutex_);
   if (stub_ != nullptr) {
     return Status(Status::PRECONDITION_ERROR, "connected database");
   }
+  if (timeout < 0) {
+    timeout = INT32MAX;
+  }
   const std::string server_address(StrCat(host, ":", port));
   auto channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
-  const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
+  const auto deadline = std::chrono::system_clock::now() +
+      std::chrono::microseconds(static_cast<int64_t>(timeout * 1000000));
   while (true) {
     auto status = channel->GetState(true);
     if (status == GRPC_CHANNEL_READY) {
@@ -151,6 +156,7 @@ Status RemoteDBMImpl::Connect(const std::string& host, int32_t port) {
     }
   }
   stub_ = DBMService::NewStub(channel);
+  timeout_ = timeout;
   return Status(Status::SUCCESS);
 }
 
@@ -178,6 +184,8 @@ Status RemoteDBMImpl::Echo(std::string_view message, std::string* echo) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   EchoRequest request;
   request.set_message(std::string(message));
   EchoResponse response;
@@ -195,6 +203,8 @@ Status RemoteDBMImpl::Inspect(std::vector<std::pair<std::string, std::string>>* 
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   InspectRequest request;
   request.set_dbm_index(dbm_index_);
   InspectResponse response;
@@ -214,6 +224,8 @@ Status RemoteDBMImpl::Get(std::string_view key, std::string* value) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   GetRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
@@ -237,6 +249,8 @@ Status RemoteDBMImpl::Set(std::string_view key, std::string_view value, bool ove
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   SetRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
@@ -256,6 +270,8 @@ Status RemoteDBMImpl::Remove(std::string_view key) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   RemoveRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
@@ -274,6 +290,8 @@ Status RemoteDBMImpl::Append(
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   AppendRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
@@ -294,6 +312,8 @@ Status RemoteDBMImpl::Increment(
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   IncrementRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
@@ -316,6 +336,8 @@ Status RemoteDBMImpl::Count(int64_t* count) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   CountRequest request;
   CountResponse response;
   grpc::Status status = stub_->Count(&context, request, &response);
@@ -334,6 +356,8 @@ Status RemoteDBMImpl::GetFileSize(int64_t* file_size) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   GetFileSizeRequest request;
   GetFileSizeResponse response;
   grpc::Status status = stub_->GetFileSize(&context, request, &response);
@@ -352,6 +376,8 @@ Status RemoteDBMImpl::Clear() {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   ClearRequest request;
   ClearResponse response;
   grpc::Status status = stub_->Clear(&context, request, &response);
@@ -367,6 +393,8 @@ Status RemoteDBMImpl::Rebuild(const std::map<std::string, std::string>& params) 
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   RebuildRequest request;
   for (const auto& param : params) {
     auto* req_param = request.add_params();
@@ -387,6 +415,8 @@ Status RemoteDBMImpl::ShouldBeRebuilt(bool* tobe) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   ShouldBeRebuiltRequest request;
   ShouldBeRebuiltResponse response;
   grpc::Status status = stub_->ShouldBeRebuilt(&context, request, &response);
@@ -405,6 +435,8 @@ Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::st
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   SynchronizeRequest request;
   request.set_hard(hard);
   for (const auto& param : params) {
@@ -427,6 +459,8 @@ RemoteDBMIteratorImpl::RemoteDBMIteratorImpl(RemoteDBMImpl* dbm)
     dbm_->iterators_.emplace_back(this);
   }
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   stream_ = dbm_->stub_->Iterate(&context_);
 }
 
@@ -447,6 +481,8 @@ Status RemoteDBMIteratorImpl::First() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_FIRST);
   if (!stream_->Write(request)) {
@@ -464,6 +500,8 @@ Status RemoteDBMIteratorImpl::Last() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_LAST);
   if (!stream_->Write(request)) {
@@ -481,6 +519,8 @@ Status RemoteDBMIteratorImpl::Jump(std::string_view key) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_JUMP);
   request.set_key(std::string(key));
@@ -498,6 +538,8 @@ Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_JUMP_LOWER);
   request.set_key(std::string(key));
@@ -516,6 +558,8 @@ Status RemoteDBMIteratorImpl::JumpUpper(std::string_view key, bool inclusive) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_JUMP_UPPER);
   request.set_key(std::string(key));
@@ -535,6 +579,8 @@ Status RemoteDBMIteratorImpl::Next() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_NEXT);
   if (!stream_->Write(request)) {
@@ -552,6 +598,8 @@ Status RemoteDBMIteratorImpl::Previous() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_PREVIOUS);
   if (!stream_->Write(request)) {
@@ -569,6 +617,8 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_GET);
   if (key == nullptr) {
@@ -600,6 +650,8 @@ Status RemoteDBMIteratorImpl::Set(std::string_view value) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_SET);
   request.set_value(std::string(value));
@@ -618,6 +670,8 @@ Status RemoteDBMIteratorImpl::Remove() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_operation(IterateRequest::OP_REMOVE);
   if (!stream_->Write(request)) {
@@ -642,8 +696,8 @@ void RemoteDBM::InjectStub(void* stub) {
   impl_->InjectStub(stub);
 }
 
-Status RemoteDBM::Connect(const std::string& host, int32_t port) {
-  return impl_->Connect(host, port);
+Status RemoteDBM::Connect(const std::string& host, int32_t port, double timeout) {
+  return impl_->Connect(host, port, timeout);
 }
 
 Status RemoteDBM::Disconnect() {

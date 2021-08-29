@@ -33,7 +33,7 @@ static void PrintUsageAndDie() {
   P("\n");
   P("Usage:\n");
   P("  %s echo [options] [message]\n", progname);
-  P("  %s inspect [options]\n", progname);
+  P("  %s inspect [options] [attr]\n", progname);
   P("  %s get [options] key\n", progname);
   P("  %s set [options] key value\n", progname);
   P("  %s remove [options] key\n", progname);
@@ -101,7 +101,7 @@ static int32_t ProcessEcho(int32_t argc, const char** args) {
 // Processes the inspect subcommand.
 static int32_t ProcessInspect(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 0}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"--host", 1}, {"--port", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -109,6 +109,7 @@ static int32_t ProcessInspect(int32_t argc, const char** args) {
     EPrint("Invalid command: ", cmd_error, "\n\n");
     PrintUsageAndDie();
   }
+  const std::string attr_name = GetStringArgument(cmd_args, "", 0, "");
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
   const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
@@ -123,8 +124,16 @@ static int32_t ProcessInspect(int32_t argc, const char** args) {
   std::vector<std::pair<std::string, std::string>> records;
   status = dbm.Inspect(&records);
   if (status == Status::SUCCESS) {
-    for (const auto& record : records) {
-      PrintL(StrCat(record.first, "=", record.second));
+    if (attr_name.empty()) {
+      for (const auto& record : records) {
+        PrintL(StrCat(record.first, "=", record.second));
+      }
+    } else {
+      for (const auto& record : records) {
+        if (record.first == attr_name) {
+          PrintL(record.second);
+        }
+      }
     }
     ok = true;
   } else {

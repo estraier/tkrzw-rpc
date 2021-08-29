@@ -187,6 +187,8 @@ class RemoteDBM final {
   /**
    * Injects a stub for testing.
    * @param stub The pointer to the DBMService::StubInterface object.  The ownership is taken.
+   * @details This method is used instead of the Connect method.  With this, you can inject
+   * mock stubs for testing and any kind of stubs with arbitrary auth/network settings.
    */
   void InjectStub(void* stub);
 
@@ -194,9 +196,11 @@ class RemoteDBM final {
    * Connects to the server.
    * @param host The host name of the server.
    * @param port The port number of the server.
+   * @param timeout The timeout in seconds for connection and each operation.  Negative
+   * means unlimited.
    * @return The result status.
    */
-  Status Connect(const std::string& host, int32_t port);
+  Status Connect(const std::string& host, int32_t port, double timeout = -1);
 
   /**
    * Disconnects the connection to the server.
