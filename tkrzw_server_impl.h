@@ -296,11 +296,11 @@ class DBMServiceImpl : public DBMService::Service {
       grpc::ServerContext* context,
       grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) override {
     std::unique_ptr<DBM::Iterator> iter;
-    tkrzw::IterateRequest request;
     while (true) {
       if (context->IsCancelled()) {
         return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
       }
+      tkrzw::IterateRequest request;
       if (!stream->Read(&request)) {
         break;
       }
