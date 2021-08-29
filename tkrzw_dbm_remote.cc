@@ -432,6 +432,11 @@ RemoteDBMIteratorImpl::RemoteDBMIteratorImpl(RemoteDBMImpl* dbm)
 
 RemoteDBMIteratorImpl::~RemoteDBMIteratorImpl() {
   if (dbm_ != nullptr) {
+    {
+      std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+      stream_->WritesDone();
+      stream_->Finish();
+    }
     std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
     dbm_->iterators_.remove(this);
   }

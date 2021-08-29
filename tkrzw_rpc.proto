@@ -227,26 +227,28 @@ message SynchronizeResponse {
 message IterateRequest {
   // Enumeration for operations.
   enum OpType {
+    // No operation.
+    OP_NONE = 0;
     // Jumps to the first record.
-    OP_FIRST = 0;
+    OP_FIRST = 1;
     // Jumps to the last record.
-    OP_LAST = 1;
+    OP_LAST = 2;
     // Jumps to a record of the key.
-    OP_JUMP = 2;
+    OP_JUMP = 3;
     // Jumps to the last record lower than the key.
-    OP_JUMP_LOWER = 3;
+    OP_JUMP_LOWER = 4;
     // Jumps to the last record upper than the key.
-    OP_JUMP_UPPER = 4;
+    OP_JUMP_UPPER = 5;
     // Moves to the next record.
-    OP_NEXT = 5;
+    OP_NEXT = 6;
     // Moves to the previous record.
-    OP_PREVIOUS = 6;
+    OP_PREVIOUS = 7;
     // Gets the current record.
-    OP_GET = 7;
+    OP_GET = 8;
     // Sets the current record value.
-    OP_SET = 8;
+    OP_SET = 9;
     // Removes the current record.
-    OP_REMOVE = 9;
+    OP_REMOVE = 10;
   }
   // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;

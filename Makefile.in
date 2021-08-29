@@ -109,7 +109,10 @@ check-remotedbm-util :
 	$(RUNENV) ./tkrzw_dbm_remote_util inspect
 	$(RUNENV) ./tkrzw_dbm_remote_util set "one" "first"
 	$(RUNENV) ./tkrzw_dbm_remote_util set "two" "second"
+	$(RUNENV) ./tkrzw_dbm_remote_util set "three" "third"
 	$(RUNENV) ./tkrzw_dbm_remote_util get "one"
+	$(RUNENV) ./tkrzw_dbm_remote_util list
+	$(RUNENV) ./tkrzw_dbm_remote_util list --move jump --jump_key two
 	$(RUNENV) ./tkrzw_dbm_remote_util remove "one"
 	$(RUNENV) ./tkrzw_dbm_remote_util rebuild
 	$(RUNENV) ./tkrzw_dbm_remote_util sync

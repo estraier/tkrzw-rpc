@@ -305,7 +305,7 @@ class DBMServiceImpl : public DBMService::Service {
         break;
       }
       LogRequest(context, "Iterate", &request);
-      if (iter.get() == nullptr) {
+      if (iter == nullptr) {
         if (request.dbm_index() < 0 ||
             request.dbm_index() >= static_cast<int32_t>(dbms_.size())) {
           return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -315,6 +315,9 @@ class DBMServiceImpl : public DBMService::Service {
       }
       tkrzw::IterateResponse response;
       switch (request.operation()) {
+        case IterateRequest::OP_NONE: {
+          break;
+        }
         case IterateRequest::OP_FIRST: {
           const Status status = iter->First();
           response.mutable_status()->set_code(status.GetCode());

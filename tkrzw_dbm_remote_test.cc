@@ -285,7 +285,9 @@ TEST_F(RemoteDBMTest, IterateMove) {
   EXPECT_CALL(*stream, Write(EqualsProto(request_next), _)).WillOnce(Return(true));
   EXPECT_CALL(*stream, Write(EqualsProto(request_previous), _)).WillOnce(Return(true));
   EXPECT_CALL(*stream, Read(_)).WillRepeatedly(DoAll(SetArgPointee<0>(response), Return(true)));
-  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();  
+  EXPECT_CALL(*stream, WritesDone()).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Finish()).WillOnce(Return(grpc::Status::OK));
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   EXPECT_CALL(*stub, IterateRaw(_)).WillRepeatedly(Return(stream.release()));
   tkrzw::RemoteDBM dbm;
   dbm.InjectStub(stub.release());
@@ -347,7 +349,9 @@ TEST_F(RemoteDBMTest, IterateAction) {
       .WillOnce(DoAll(SetArgPointee<0>(response_get_value), Return(true)))
       .WillOnce(DoAll(SetArgPointee<0>(response_get_none), Return(true)))
       .WillRepeatedly(DoAll(SetArgPointee<0>(response), Return(true)));
-  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();  
+  EXPECT_CALL(*stream, WritesDone()).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Finish()).WillOnce(Return(grpc::Status::OK));
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   EXPECT_CALL(*stub, IterateRaw(_)).WillRepeatedly(Return(stream.release()));
   tkrzw::RemoteDBM dbm;
   dbm.InjectStub(stub.release());

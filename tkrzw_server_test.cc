@@ -11,8 +11,6 @@
  * and limitations under the License.
  *************************************************************************************************/
 
-#include <google/protobuf/util/message_differencer.h>
-
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "grpcpp/test/mock_stream.h"
@@ -30,10 +28,6 @@ int main(int argc, char** argv) {
 }
 
 class ServerTest : public Test {};
-
-MATCHER_P(EqualsProto, rhs, "Equality matcher for protos") {
-  return google::protobuf::util::MessageDifferencer::Equivalent(arg, rhs);
-}
 
 TEST_F(ServerTest, Basic) {
   tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
@@ -214,7 +208,6 @@ TEST_F(ServerTest, Basic) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
 }
 
-/*
 TEST_F(ServerTest, Iterator) {
   tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
   const std::string file_path = tmp_dir.MakeUniquePath();
@@ -227,41 +220,30 @@ TEST_F(ServerTest, Iterator) {
   tkrzw::StreamLogger logger;
   tkrzw::DBMServiceImpl server(dbms, &logger);
   grpc::ServerContext context;
-
   for (int32_t i = 1; i <= 100; i++) {
-    const std::stirng key = tkrzw::SPrintF("%08d", i);
-    const std::stirng value = tkrzw::ToString(i * i);
-    
-    tkrzw::SetRequest request;
-    request.set_message("hello");
-    tkrzw::EchoResponse response;
-    grpc::Status status = server.Echo(&context, &request, &response);
-    EXPECT_TRUE(status.ok());
-    EXPECT_EQ("hello", response.echo());
+    const std::string key = tkrzw::SPrintF("%08d", i);
+    const std::string value = tkrzw::ToString(i * i);
+    tkrzw::SetRequest set_request;
+    set_request.set_key(key);
+    set_request.set_value(value);
+    tkrzw::SetResponse set_response;
+    const grpc::Status set_status = server.Set(&context, &set_request, &set_response);
+    EXPECT_TRUE(set_status.ok());
+    EXPECT_EQ(0, set_response.status().code());
+    tkrzw::GetRequest get_request;
+    get_request.set_key(key);
+    tkrzw::GetResponse get_response;
+    const grpc::Status get_status = server.Get(&context, &get_request, &get_response);
+    EXPECT_TRUE(get_status.ok());
+    EXPECT_EQ(0, get_response.status().code());
+    EXPECT_EQ(value, get_response.value());
   }
 
-
+  // TODO: Write unite tests for the iterator.
+  // Currently, mocking grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>
+  // is impossible.  We have to find a workaround.
 
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
-*/
-  /*
-  {
-    grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest> stream(nullptr, &context);
-    grpc::Status status;
-    auto server_task = [&]() { status = server.Iterate(&context, &stream); };
-    std::thread server_thread = std::thread(server_task);
-
-
-
-
-
-    server_thread.join();
-    EXPECT_TRUE(status.ok());
-
-
-  }
-  */
-
-
+}
 
 // END OF FILE
