@@ -57,6 +57,8 @@ message GetRequest {
   int32 dbm_index = 1;
   // The key of the record.
   bytes key = 2;
+  // Whether to fill the value in the response.
+  bool fill_value = 3;
 }
 
 // Response of the Get method.
@@ -225,33 +227,41 @@ message SynchronizeResponse {
 message IterateRequest {
   // Enumeration for operations.
   enum OpType {
-    // Gets the current record.
-    OP_GET = 0;
     // Jumps to the first record.
-    OP_FIRST = 1;
+    OP_FIRST = 0;
     // Jumps to the last record.
-    OP_LAST = 2;
+    OP_LAST = 1;
     // Jumps to a record of the key.
-    OP_JUMP = 3;
+    OP_JUMP = 2;
     // Jumps to the last record lower than the key.
-    OP_JUMP_LOWER = 4;
-    // Jumps to the last record equal to or lower than the key.
-    OP_JUMP_LOWER_INCLUSIVE = 5;
+    OP_JUMP_LOWER = 3;
     // Jumps to the last record upper than the key.
-    OP_JUMP_UPPER = 6;
-    // Jumps to the last record equal to or upper than the key.
-    OP_JUMP_UPPER_INCLUSIVE = 7;
+    OP_JUMP_UPPER = 4;
     // Moves to the next record.
-    OP_NEXT = 8;
+    OP_NEXT = 5;
     // Moves to the previous record.
-    OP_PREVIOUS = 9;
+    OP_PREVIOUS = 6;
+    // Gets the current record.
+    OP_GET = 7;
+    // Sets the current record value.
+    OP_SET = 8;
+    // Removes the current record.
+    OP_REMOVE = 9;
   }
   // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
   // The jump operation.
   OpType operation = 2;
-  // The key of the jump operation.
+  // The key of the operation.
   bytes key = 3;
+  // The value of the operation.
+  bytes value = 4;
+  // Whether the jump condition is inclusive.
+  bool jump_inclusive = 5;
+  // Whether to get the key in the response.
+  bool fill_key = 6;
+  // Whether to get the value in the response.
+  bool fill_value = 7;
 }
 
 // Response of the Iterate method.

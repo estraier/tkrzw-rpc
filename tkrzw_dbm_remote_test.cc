@@ -11,9 +11,11 @@
  * and limitations under the License.
  *************************************************************************************************/
 
-#include "google/protobuf/util/message_differencer.h"
+#include <google/protobuf/util/message_differencer.h>
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "grpcpp/test/mock_stream.h"
 
 #include "tkrzw_dbm_remote.h"
 #include "tkrzw_lib_common.h"
@@ -43,11 +45,10 @@ TEST_F(RemoteDBMTest, Echo) {
   response.set_echo("hello");
   EXPECT_CALL(*stub, Echo(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   std::string echo;
-  const tkrzw::Status status = client.Echo("hello", &echo);
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Echo("hello", &echo));
   EXPECT_EQ("hello", echo);
 }
 
@@ -60,11 +61,10 @@ TEST_F(RemoteDBMTest, Inspect) {
   res_record->set_second("value");
   EXPECT_CALL(*stub, Inspect(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   std::vector<std::pair<std::string, std::string>> records;
-  const tkrzw::Status status = client.Inspect(&records);
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Inspect(&records));
   ASSERT_EQ(1, records.size());
   EXPECT_EQ("name", records[0].first);
   EXPECT_EQ("value", records[0].second);
@@ -80,12 +80,11 @@ TEST_F(RemoteDBMTest, InspectServer) {
   res_record->set_second("value");
   EXPECT_CALL(*stub, Inspect(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
-  client.SetDBMIndex(-1);
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  dbm.SetDBMIndex(-1);
   std::vector<std::pair<std::string, std::string>> records;
-  const tkrzw::Status status = client.Inspect(&records);
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Inspect(&records));
   ASSERT_EQ(1, records.size());
   EXPECT_EQ("name", records[0].first);
   EXPECT_EQ("value", records[0].second);
@@ -95,15 +94,15 @@ TEST_F(RemoteDBMTest, Get) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::GetRequest request;
   request.set_key("key");
+  request.set_fill_value(true);
   tkrzw::GetResponse response;
   response.set_value("value");
   EXPECT_CALL(*stub, Get(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   std::string value;
-  const tkrzw::Status status = client.Get("key", &value);
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Get("key", &value));
   EXPECT_EQ("value", value);
 }
 
@@ -116,11 +115,10 @@ TEST_F(RemoteDBMTest, Set) {
   tkrzw::SetResponse response;
   EXPECT_CALL(*stub, Set(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   std::string value;
-  const tkrzw::Status status = client.Set("key", "value");
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Set("key", "value"));
 }
 
 TEST_F(RemoteDBMTest, Remove) {
@@ -130,10 +128,9 @@ TEST_F(RemoteDBMTest, Remove) {
   tkrzw::RemoveResponse response;
   EXPECT_CALL(*stub, Remove(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
-  const tkrzw::Status status = client.Remove("key");
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Remove("key"));
 }
 
 TEST_F(RemoteDBMTest, Append) {
@@ -145,11 +142,10 @@ TEST_F(RemoteDBMTest, Append) {
   tkrzw::AppendResponse response;
   EXPECT_CALL(*stub, Append(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   std::string value;
-  const tkrzw::Status status = client.Append("key", "value", ":");
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Append("key", "value", ":"));
 }
 
 TEST_F(RemoteDBMTest, Increment) {
@@ -162,11 +158,10 @@ TEST_F(RemoteDBMTest, Increment) {
   response.set_current(105);
   EXPECT_CALL(*stub, Increment(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   int64_t current = 0;
-  const tkrzw::Status status = client.Increment("key", 5, &current, 100);
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Increment("key", 5, &current, 100));
   EXPECT_EQ(105, current);
 }
 
@@ -177,11 +172,10 @@ TEST_F(RemoteDBMTest, Count) {
   response.set_count(123);
   EXPECT_CALL(*stub, Count(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   int64_t count = 0;
-  const tkrzw::Status status = client.Count(&count);
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Count(&count));
   EXPECT_EQ(123, count);
 }
 
@@ -192,11 +186,10 @@ TEST_F(RemoteDBMTest, GetFileSize) {
   response.set_file_size(1234);
   EXPECT_CALL(*stub, GetFileSize(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   int64_t file_size = 0;
-  const tkrzw::Status status = client.GetFileSize(&file_size);
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.GetFileSize(&file_size));
   EXPECT_EQ(1234, file_size);
 }
 
@@ -206,10 +199,9 @@ TEST_F(RemoteDBMTest, Clear) {
   tkrzw::ClearResponse response;
   EXPECT_CALL(*stub, Clear(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
-  const tkrzw::Status status = client.Clear();
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Clear());
 }
 
 TEST_F(RemoteDBMTest, Rebuild) {
@@ -221,10 +213,9 @@ TEST_F(RemoteDBMTest, Rebuild) {
   tkrzw::RebuildResponse response;
   EXPECT_CALL(*stub, Rebuild(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
-  const tkrzw::Status status = client.Rebuild({{"num_buckets", "10"}});
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Rebuild({{"num_buckets", "10"}}));
 }
 
 TEST_F(RemoteDBMTest, ShouldBeRebuilt) {
@@ -234,11 +225,10 @@ TEST_F(RemoteDBMTest, ShouldBeRebuilt) {
   response.set_tobe(true);
   EXPECT_CALL(*stub, ShouldBeRebuilt(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
   bool tobe = false;
-  const tkrzw::Status status = client.ShouldBeRebuilt(&tobe);
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.ShouldBeRebuilt(&tobe));
   EXPECT_TRUE(tobe);
 }
 
@@ -252,10 +242,128 @@ TEST_F(RemoteDBMTest, Synchronize) {
   tkrzw::SynchronizeResponse response;
   EXPECT_CALL(*stub, Synchronize(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
-  tkrzw::RemoteDBM client;
-  client.InjectStub(stub.release());
-  const tkrzw::Status status = client.Synchronize(true, {{"reducer", "last"}});
-  EXPECT_EQ(tkrzw::Status::SUCCESS, status);
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Synchronize(true, {{"reducer", "last"}}));
+}
+
+TEST_F(RemoteDBMTest, IterateMove) {
+  auto stream = std::make_unique<grpc::testing::MockClientReaderWriter<
+    tkrzw::IterateRequest, tkrzw::IterateResponse>>();
+  tkrzw::IterateRequest request_first;
+  request_first.set_operation(tkrzw::IterateRequest::OP_FIRST);
+  tkrzw::IterateRequest request_last;
+  request_last.set_operation(tkrzw::IterateRequest::OP_LAST);
+  tkrzw::IterateRequest request_jump;
+  request_jump.set_operation(tkrzw::IterateRequest::OP_JUMP);
+  request_jump.set_key("jump");
+  tkrzw::IterateRequest request_jump_lower;
+  request_jump_lower.set_operation(tkrzw::IterateRequest::OP_JUMP_LOWER);
+  request_jump_lower.set_key("jumplower");
+  tkrzw::IterateRequest request_jump_lower_inc;
+  request_jump_lower_inc.set_operation(tkrzw::IterateRequest::OP_JUMP_LOWER);
+  request_jump_lower_inc.set_key("jumplowerinc");
+  request_jump_lower_inc.set_jump_inclusive(true);
+  tkrzw::IterateRequest request_jump_upper;
+  request_jump_upper.set_operation(tkrzw::IterateRequest::OP_JUMP_UPPER);
+  request_jump_upper.set_key("jumpupper");
+  tkrzw::IterateRequest request_jump_upper_inc;
+  request_jump_upper_inc.set_operation(tkrzw::IterateRequest::OP_JUMP_UPPER);
+  request_jump_upper_inc.set_key("jumpupperinc");
+  request_jump_upper_inc.set_jump_inclusive(true);
+  tkrzw::IterateRequest request_next;
+  request_next.set_operation(tkrzw::IterateRequest::OP_NEXT);
+  tkrzw::IterateRequest request_previous;
+  request_previous.set_operation(tkrzw::IterateRequest::OP_PREVIOUS);
+  tkrzw::IterateResponse response;
+  EXPECT_CALL(*stream, Write(EqualsProto(request_first), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_last), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_jump), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_jump_lower), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_jump_lower_inc), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_jump_upper), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_jump_upper_inc), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_next), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_previous), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Read(_)).WillRepeatedly(DoAll(SetArgPointee<0>(response), Return(true)));
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();  
+  EXPECT_CALL(*stub, IterateRaw(_)).WillRepeatedly(Return(stream.release()));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  auto iter = dbm.MakeIterator();
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->First());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->Last());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->Jump("jump"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->JumpLower("jumplower"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->JumpLower("jumplowerinc", true));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->JumpUpper("jumpupper"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->JumpUpper("jumpupperinc", true));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->Next());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->Previous());
+}
+
+TEST_F(RemoteDBMTest, IterateAction) {
+  auto stream = std::make_unique<grpc::testing::MockClientReaderWriter<
+    tkrzw::IterateRequest, tkrzw::IterateResponse>>();
+  tkrzw::IterateRequest request_get_both;
+  request_get_both.set_operation(tkrzw::IterateRequest::OP_GET);
+  request_get_both.set_fill_key(true);
+  request_get_both.set_fill_value(true);
+  tkrzw::IterateRequest request_get_none;
+  request_get_none.set_operation(tkrzw::IterateRequest::OP_GET);
+  tkrzw::IterateRequest request_get_key;
+  request_get_key.set_operation(tkrzw::IterateRequest::OP_GET);
+  request_get_key.set_fill_key(true);
+  tkrzw::IterateRequest request_get_value;
+  request_get_value.set_operation(tkrzw::IterateRequest::OP_GET);
+  request_get_value.set_fill_value(true);
+  tkrzw::IterateRequest request_set;
+  request_set.set_operation(tkrzw::IterateRequest::OP_SET);
+  request_set.set_value("set");
+  tkrzw::IterateRequest request_remove;
+  request_remove.set_operation(tkrzw::IterateRequest::OP_REMOVE);
+  tkrzw::IterateResponse response_get_both;
+  response_get_both.set_key("getbothkey");
+  response_get_both.set_value("getbothvalue");
+  tkrzw::IterateResponse response_get_none;
+  response_get_none.mutable_status()->set_code(tkrzw::Status::NOT_FOUND_ERROR);
+  tkrzw::IterateResponse response_get_key;
+  response_get_key.set_key("getkeykey");
+  tkrzw::IterateResponse response_get_value;
+  response_get_value.set_value("getvaluevalue");
+  tkrzw::IterateResponse response;
+  EXPECT_CALL(*stream, Write(EqualsProto(request_get_both), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_get_none), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_get_key), _))
+      .WillOnce(Return(true)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_get_value), _))
+      .WillOnce(Return(true)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_set), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_remove), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Read(_))
+      .WillOnce(DoAll(SetArgPointee<0>(response_get_both), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_get_none), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_get_key), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_get_none), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_get_value), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_get_none), Return(true)))
+      .WillRepeatedly(DoAll(SetArgPointee<0>(response), Return(true)));
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();  
+  EXPECT_CALL(*stub, IterateRaw(_)).WillRepeatedly(Return(stream.release()));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  auto iter = dbm.MakeIterator();
+  std::string key, value;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->Get(&key, &value));
+  EXPECT_EQ("getbothkey", key);
+  EXPECT_EQ("getbothvalue", value);
+  EXPECT_EQ(tkrzw::Status::NOT_FOUND_ERROR, iter->Get());
+  EXPECT_EQ("getkeykey", iter->GetKey());
+  EXPECT_EQ("*", iter->GetKey("*"));
+  EXPECT_EQ("getvaluevalue", iter->GetValue());
+  EXPECT_EQ("*", iter->GetValue("*"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->Set("set"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, iter->Remove());
 }
 
 // END OF FILE

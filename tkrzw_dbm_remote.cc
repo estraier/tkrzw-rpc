@@ -100,6 +100,7 @@ class RemoteDBMIteratorImpl final {
  public:
   explicit RemoteDBMIteratorImpl(RemoteDBMImpl* dbm);
   ~RemoteDBMIteratorImpl();
+  void InjectStream(void* stream);
   Status First();
   Status Last();
   Status Jump(std::string_view key);
@@ -108,6 +109,8 @@ class RemoteDBMIteratorImpl final {
   Status Next();
   Status Previous();
   Status Get(std::string* key, std::string* value);
+  Status Set(std::string_view value);
+  Status Remove();
 
  private:
   RemoteDBMImpl* dbm_;
@@ -126,7 +129,6 @@ RemoteDBMImpl::~RemoteDBMImpl() {
 }
 
 void RemoteDBMImpl::InjectStub(void* stub) {
-  std::lock_guard<SpinSharedMutex> lock(mutex_);
   stub_.reset(reinterpret_cast<DBMService::StubInterface*>(stub));
 }
 
@@ -215,6 +217,9 @@ Status RemoteDBMImpl::Get(std::string_view key, std::string* value) {
   GetRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
+  if (value != nullptr) {
+    request.set_fill_value(true);
+  }
   GetResponse response;
   grpc::Status status = stub_->Get(&context, request, &response);
   if (!status.ok()) {
@@ -489,9 +494,9 @@ Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   IterateRequest request;
-  request.set_operation(
-      inclusive ? IterateRequest::OP_JUMP_LOWER_INCLUSIVE : IterateRequest::OP_JUMP_LOWER);
+  request.set_operation(IterateRequest::OP_JUMP_LOWER);
   request.set_key(std::string(key));
+  request.set_jump_inclusive(inclusive);
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");
   }
@@ -507,9 +512,9 @@ Status RemoteDBMIteratorImpl::JumpUpper(std::string_view key, bool inclusive) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
   IterateRequest request;
-  request.set_operation(
-      inclusive ? IterateRequest::OP_JUMP_UPPER_INCLUSIVE : IterateRequest::OP_JUMP_UPPER);
+  request.set_operation(IterateRequest::OP_JUMP_UPPER);
   request.set_key(std::string(key));
+  request.set_jump_inclusive(inclusive);
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");
   }
@@ -561,6 +566,12 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
   }
   IterateRequest request;
   request.set_operation(IterateRequest::OP_GET);
+  if (key != nullptr) {
+    request.set_fill_key(true);
+  }
+  if (value != nullptr) {
+    request.set_fill_value(true);
+  }
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");
   }
@@ -575,6 +586,41 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
     if (value != nullptr) {
       *value = response.value();
     }
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::Set(std::string_view value) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(IterateRequest::OP_SET);
+  request.set_value(std::string(value));
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMIteratorImpl::Remove() {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  IterateRequest request;
+  request.set_operation(IterateRequest::OP_REMOVE);
+  if (!stream_->Write(request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  IterateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
   }
   return MakeStatusFromProto(response.status());
 }
@@ -699,6 +745,14 @@ Status RemoteDBM::Iterator::Previous() {
 
 Status RemoteDBM::Iterator::Get(std::string* key, std::string* value) {
   return impl_->Get(key, value);
+}
+
+Status RemoteDBM::Iterator::Set(std::string_view value) {
+  return impl_->Set(value);
+}
+
+Status RemoteDBM::Iterator::Remove() {
+  return impl_->Remove();
 }
 
 }  // namespace tkrzw

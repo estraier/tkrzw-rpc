@@ -91,7 +91,6 @@ TEST_F(ServerTest, Basic) {
     std::map<std::string, std::string> records;
     for (const auto& record : response.records()) {
       records.emplace(std::make_pair(record.first(), record.second()));
-      std::cout << record.first() << ":" << record.second() << std::endl;
     }
     EXPECT_EQ("TreeDBM", records["class"]);
     EXPECT_EQ("1", records["tree_level"]);
@@ -135,6 +134,7 @@ TEST_F(ServerTest, Basic) {
   {
     tkrzw::GetRequest request;
     request.set_key("one");
+    request.set_fill_value(true);
     tkrzw::GetResponse response;
     grpc::Status status = server.Get(&context, &request, &response);
     EXPECT_TRUE(status.ok());

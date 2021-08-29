@@ -123,6 +123,40 @@ class RemoteDBM final {
      */
     Status Get(std::string* key = nullptr, std::string* value = nullptr);
 
+    /**
+     * Gets the key of the current record, in a simple way.
+     * @param default_value The value to be returned on failure.
+     * @return The key of the current record on success, or the default value on failure.
+     */
+    std::string GetKey(std::string_view default_value = "") {
+      std::string key;
+      return Get(&key, nullptr) == Status::SUCCESS ? key : std::string(default_value);
+    }
+
+    /**
+     * Gets the value of the current record, in a simple way.
+     * @param default_value The value to be returned on failure.
+     * @return The value of the current record on success, or the default value on failure.
+     */
+    std::string GetValue(std::string_view default_value = "") {
+      std::string value;
+      return Get(nullptr, &value) == Status::SUCCESS ? value : std::string(default_value);
+    }
+
+    /**
+     * Sets the value of the current record.
+     * @param value The value of the record.
+     * @return The result status.
+     */
+    Status Set(std::string_view value);
+
+    /**
+     * Removes the current record.
+     * @return The result status.
+     * @details If possible, the iterator moves to the next record.
+     */
+    Status Remove();
+
    private:
     /**
      * Constructor.
