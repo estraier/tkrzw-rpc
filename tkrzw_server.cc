@@ -127,7 +127,7 @@ static int32_t Process(int32_t argc, const char** args) {
     PrintUsageAndDie();
   }
   if (CheckMap(cmd_args, "--version")) {
-    PrintL("Tkrzw server ", _TKSERV_PKG_VERSION);
+    PrintL("Tkrzw server ", _TKRPC_PKG_VERSION);
     return 0;
   }
   const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");

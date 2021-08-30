@@ -82,7 +82,7 @@ TEST_F(ServerTest, Basic) {
     for (const auto& record : response.records()) {
       records.emplace(std::make_pair(record.first(), record.second()));
     }
-    EXPECT_EQ(_TKSERV_PKG_VERSION, records["version"]);
+    EXPECT_EQ(_TKRPC_PKG_VERSION, records["version"]);
     EXPECT_EQ("2", records["num_dbms"]);
     EXPECT_EQ("0", records["dbm_0_count"]);
     EXPECT_EQ("0", records["dbm_1_count"]);

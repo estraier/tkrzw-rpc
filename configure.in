@@ -5,11 +5,12 @@
 #================================================================
 
 # Package name
-AC_INIT([tkrzw-rpc], [0.1.0])
+AC_INIT([tkrzw-rpc], [0.5.0])
 
 # Package information
-MYLIBVER=0
+MYLIBVER=1
 MYLIBREV=1
+MYLIBFMT=0
 
 # Targets
 MYHEADERFILES="tkrzw_dbm_remote.h"
@@ -23,6 +24,7 @@ MYPCFILES="tkrzw-rpc.pc"
 # Building flags
 MYCXXFLAGS="-std=c++17 -Wall -fPIC -fsigned-char -O2"
 MYCPPFLAGS="-I. -I\$(INCLUDEDIR) -I$HOME/include -I/usr/local/include -DNDEBUG"
+MYLDSOFLAGS="-shared -Wl,-soname,libtkrzw_rpc.so.\$(LIBVER)"
 MYLDFLAGS="-L. -L\$(LIBDIR) -L$HOME/lib -L/usr/local/lib"
 MYCMDLDFLAGS="-L. -L\$(LIBDIR)"
 MYCMDLIBS="-ltkrzw_rpc"
@@ -209,6 +211,34 @@ then
   fi
 fi
 
+# As-needed linking
+if uname | grep Linux >config.tmp
+then
+  MYLDFLAGS="$MYLDFLAGS -Wl,-rpath-link,.:/usr/local/lib:$MYLDLIBPATH"
+  MYLDFLAGS="$MYLDFLAGS -Wl,--as-needed"
+fi
+if uname -a | grep -i 'SunOS' >config.tmp
+then
+  MYLDSOFLAGS="-shared -Wl,-soname,libtkrzw_rpc.so.\$(LIBVER)"
+fi
+
+# Shared libraries
+if test "$enable_shared" != "no" && test "$enable_profile" != "yes"
+then
+  if uname | grep Darwin >config.tmp
+  then
+    MYLIBRARYFILES="$MYLIBRARYFILES libtkrzw_rpc.$MYLIBVER.$MYLIBREV.$MYLIBFMT.dylib"
+    MYLIBRARYFILES="$MYLIBRARYFILES libtkrzw_rpc.$MYLIBVER.dylib"
+    MYLIBRARYFILES="$MYLIBRARYFILES libtkrzw_rpc.dylib"
+    MYCPPFLAGS="$MYCPPFLAGS -D_DARWIN_C_SOURCE"
+    MYLDLIBPATHENV="DYLD_LIBRARY_PATH"
+  else
+    MYLIBRARYFILES="$MYLIBRARYFILES libtkrzw_rpc.so.$MYLIBVER.$MYLIBREV.$MYLIBFMT"
+    MYLIBRARYFILES="$MYLIBRARYFILES libtkrzw_rpc.so.$MYLIBVER"
+    MYLIBRARYFILES="$MYLIBRARYFILES libtkrzw_rpc.so"
+  fi
+fi
+
 #================================================================
 # Generic Settings
 #================================================================
@@ -218,6 +248,7 @@ AC_SUBST(PROTOC)
 AC_SUBST(GRPCCPP)
 AC_SUBST(MYLIBVER)
 AC_SUBST(MYLIBREV)
+AC_SUBST(MYLIBFMT)
 AC_SUBST(MYHEADERFILES)
 AC_SUBST(MYLIBRARYFILES)
 AC_SUBST(MYLIBOBJFILES)
@@ -227,6 +258,7 @@ AC_SUBST(MYTESTFILES)
 AC_SUBST(MYPCFILES)
 AC_SUBST(MYCXXFLAGS)
 AC_SUBST(MYCPPFLAGS)
+AC_SUBST(MYLDSOFLAGS)
 AC_SUBST(MYLDFLAGS)
 AC_SUBST(MYCMDLDFLAGS)
 AC_SUBST(MYCMDLIBS)

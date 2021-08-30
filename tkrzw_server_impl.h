@@ -86,7 +86,7 @@ class DBMServiceImpl : public DBMService::Service {
     } else {
       auto* out_record = response->add_records();
       out_record->set_first("version");
-      out_record->set_second(_TKSERV_PKG_VERSION);
+      out_record->set_second(_TKRPC_PKG_VERSION);
       out_record = response->add_records();
       out_record->set_first("num_dbms");
       out_record->set_second(ToString(dbms_.size()));

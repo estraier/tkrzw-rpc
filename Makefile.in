@@ -14,6 +14,7 @@ PACKAGEDIR := $(PACKAGE)-$(VERSION)
 PACKAGETGZ := $(PACKAGE)-$(VERSION).tar.gz
 LIBVER := @MYLIBVER@
 LIBREV := @MYLIBREV@
+LIBFMT := @MYLIBFMT@
 
 # Targets
 HEADERFILES := @MYHEADERFILES@
@@ -40,8 +41,14 @@ DESTDIR =
 PROTOC := @PROTOC@
 GRPCCPP := @GRPCCPP@
 CXX := @CXX@
-CPPFLAGS := @MYCPPFLAGS@ -D_TKSERV_PKG_VERSION="\"$(VERSION)\""
+CPPFLAGS := @MYCPPFLAGS@ \
+  -D_TKRPC_PREFIX="\"$(prefix)\"" -D_TKRPC_INCLUDEDIR="\"$(INCLUDEDIR)\"" \
+  -D_TKRPC_LIBDIR="\"$(LIBDIR)\"" -D_TKRPC_BINDIR="\"$(BINDIR)\"" \
+  -D_TKRPC_LIBEXECDIR="\"$(LIBEXECDIR)\"" \
+  -D_TKRPC_APPINC="\"-I$(INCLUDEDIR)\"" -D_TKRPC_APPLIBS="\"-L$(LIBDIR) @MYCMDLIBS@ @LIBS@\"" \
+  -D_TKRPC_PKG_VERSION="\"$(VERSION)\"" -D_TKRPC_LIB_VERSION="\"$(LIBVER).$(LIBREV).$(LIBFMT)\""
 CXXFLAGS := @MYCXXFLAGS@
+LDSOFLAGS := @MYLDSOFLAGS@
 LDFLAGS := @MYLDFLAGS@
 CMDLDFLAGS := @MYCMDLDFLAGS@
 CMDLIBS := @MYCMDLIBS@
@@ -191,6 +198,27 @@ tkrzw_rpc.grpc.pb.h tkrzw_rpc.grpc.pb.cc tkrzw_rpc_mock.grpc.pb.h : tkrzw_rpc.pr
 
 libtkrzw_rpc.a : $(LIBOBJFILES)
 	$(AR) $(ARFLAGS) $@ $(LIBOBJFILES)
+
+libtkrzw_rpc.so.$(LIBVER).$(LIBREV).$(LIBFMT) : $(LIBOBJFILES)
+	$(CXX) $(CXXFLAGS) $(LDSOFLAGS) -o $@ $(LIBOBJFILES) $(LDFLAGS) $(LIBS)
+
+libtkrzw_rpc.so.$(LIBVER) : libtkrzw_rpc.so.$(LIBVER).$(LIBREV).$(LIBFMT)
+	ln -f -s libtkrzw_rpc.so.$(LIBVER).$(LIBREV).$(LIBFMT) $@
+
+libtkrzw_rpc.so : libtkrzw_rpc.so.$(LIBVER).$(LIBREV).$(LIBFMT)
+	ln -f -s libtkrzw_rpc.so.$(LIBVER).$(LIBREV).$(LIBFMT) $@
+
+libtkrzw_rpc.$(LIBVER).$(LIBREV).$(LIBFMT).dylib : $(LIBOBJFILES)
+	$(CXX) $(CXXFLAGS) -dynamiclib -o $@ \
+	  -install_name $(LIBDIR)/libtkrzw_rpc.$(LIBVER).dylib \
+	  -current_version $(LIBVER).$(LIBREV).$(LIBFMT) -compatibility_version $(LIBVER) \
+	  $(LIBOBJFILES) $(LDFLAGS) $(LIBS)
+
+libtkrzw_rpc.$(LIBVER).dylib : libtkrzw_rpc.$(LIBVER).$(LIBREV).$(LIBFMT).dylib
+	ln -f -s libtkrzw_rpc.$(LIBVER).$(LIBREV).$(LIBFMT).dylib $@
+
+libtkrzw_rpc.dylib : libtkrzw_rpc.$(LIBVER).$(LIBREV).$(LIBFMT).dylib
+	ln -f -s libtkrzw_rpc.$(LIBVER).$(LIBREV).$(LIBFMT).dylib $@
 
 tkrzw_dbm_remote.o tkrzw_server.o tkrzw_server_impl.h : tkrzw_rpc.pb.h tkrzw_rpc.grpc.pb.h
 
