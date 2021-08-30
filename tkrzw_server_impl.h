@@ -98,6 +98,15 @@ class DBMServiceImpl : public DBMService::Service {
         out_record = response->add_records();
         out_record->set_first(StrCat("dbm_", i, "_count"));
         out_record->set_second(ToString(dbm.CountSimple()));
+        std::string class_name;
+        for (const auto& record : dbm.Inspect()) {
+          if (record.first == "class") {
+            class_name = record.second;
+          }
+        }
+        out_record = response->add_records();
+        out_record->set_first(StrCat("dbm_", i, "_class"));
+        out_record->set_second(class_name);
       }
       out_record = response->add_records();
       out_record->set_first("memory_usage");

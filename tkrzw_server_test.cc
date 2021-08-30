@@ -86,6 +86,8 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ("2", records["num_dbms"]);
     EXPECT_EQ("0", records["dbm_0_count"]);
     EXPECT_EQ("0", records["dbm_1_count"]);
+    EXPECT_EQ("HashDBM", records["dbm_0_class"]);
+    EXPECT_EQ("TreeDBM", records["dbm_1_class"]);
   }
   {
     tkrzw::InspectRequest request;
