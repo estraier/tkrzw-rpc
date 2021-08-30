@@ -11,6 +11,8 @@
  * and limitations under the License.
  *************************************************************************************************/
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "grpcpp/test/mock_stream.h"
@@ -28,6 +30,22 @@ int main(int argc, char** argv) {
 }
 
 class ServerTest : public Test {};
+
+// TODO: Remove this after prevailing packages supports the latest grpcpp/test/mock_stream.h
+// where MockServerReaderWriter is implemented.
+template <class W, class R>
+class MockServerReaderWriter : public grpc::ServerReaderWriterInterface<W, R> {
+ public:
+  MockServerReaderWriter() = default;
+  MOCK_METHOD0_T(SendInitialMetadata, void());
+  MOCK_METHOD1_T(NextMessageSize, bool(uint32_t*));
+  MOCK_METHOD1_T(Read, bool(R*));
+  MOCK_METHOD2_T(Write, bool(const W&, const grpc::WriteOptions));
+};
+
+MATCHER_P(EqualsProto, rhs, "Equality matcher for protos") {
+  return google::protobuf::util::MessageDifferencer::Equivalent(arg, rhs);
+}
 
 TEST_F(ServerTest, Basic) {
   tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
@@ -217,32 +235,90 @@ TEST_F(ServerTest, Iterator) {
       {{"dbm", "TreeDBM"}, {"num_buckets", "10"}};
   EXPECT_EQ(tkrzw::Status::SUCCESS,
             dbms[0]->OpenAdvanced(file_path, true, tkrzw::File::OPEN_DEFAULT, params));
+  for (int32_t i = 1; i <= 10; i++) {
+    const std::string key = tkrzw::SPrintF("%08d", i);
+    const std::string value = tkrzw::ToString(i * i);
+    EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(key, value));
+  }
   tkrzw::StreamLogger logger;
   tkrzw::DBMServiceImpl server(dbms, &logger);
   grpc::ServerContext context;
-  for (int32_t i = 1; i <= 100; i++) {
-    const std::string key = tkrzw::SPrintF("%08d", i);
-    const std::string value = tkrzw::ToString(i * i);
-    tkrzw::SetRequest set_request;
-    set_request.set_key(key);
-    set_request.set_value(value);
-    tkrzw::SetResponse set_response;
-    const grpc::Status set_status = server.Set(&context, &set_request, &set_response);
-    EXPECT_TRUE(set_status.ok());
-    EXPECT_EQ(0, set_response.status().code());
-    tkrzw::GetRequest get_request;
-    get_request.set_key(key);
-    tkrzw::GetResponse get_response;
-    const grpc::Status get_status = server.Get(&context, &get_request, &get_response);
-    EXPECT_TRUE(get_status.ok());
-    EXPECT_EQ(0, get_response.status().code());
-    EXPECT_EQ(value, get_response.value());
-  }
-
-  // TODO: Write unite tests for the iterator.
-  // Currently, mocking grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>
-  // is impossible.  We have to find a workaround.
-
+  MockServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest> stream;
+  tkrzw::IterateRequest request_get;
+  request_get.set_operation(tkrzw::IterateRequest::OP_GET);
+  tkrzw::IterateRequest request_first;
+  request_first.set_operation(tkrzw::IterateRequest::OP_FIRST);
+  tkrzw::IterateRequest request_jump;
+  request_jump.set_operation(tkrzw::IterateRequest::OP_JUMP);
+  request_jump.set_key("00000004");
+  tkrzw::IterateRequest request_next;
+  request_next.set_operation(tkrzw::IterateRequest::OP_NEXT);
+  tkrzw::IterateRequest request_jump_upper;
+  request_jump_upper.set_operation(tkrzw::IterateRequest::OP_JUMP_UPPER);
+  request_jump_upper.set_key("00000008");
+  request_jump_upper.set_jump_inclusive(true);
+  tkrzw::IterateRequest request_previous;
+  request_previous.set_operation(tkrzw::IterateRequest::OP_PREVIOUS);
+  tkrzw::IterateRequest request_last;
+  request_last.set_operation(tkrzw::IterateRequest::OP_LAST);
+  tkrzw::IterateRequest request_set;
+  request_set.set_operation(tkrzw::IterateRequest::OP_SET);
+  request_set.set_value("setvalue");
+  tkrzw::IterateRequest request_remove;
+  request_remove.set_operation(tkrzw::IterateRequest::OP_REMOVE);
+  tkrzw::IterateResponse response_move;
+  tkrzw::IterateResponse response_get_first;
+  response_get_first.set_key("00000001");
+  response_get_first.set_value("1");
+  tkrzw::IterateResponse response_get_jump;
+  response_get_jump.set_key("00000004");
+  response_get_jump.set_value("16");
+  tkrzw::IterateResponse response_get_next;
+  response_get_next.set_key("00000005");
+  response_get_next.set_value("25");
+  tkrzw::IterateResponse response_get_jump_upper;
+  response_get_jump_upper.set_key("00000008");
+  response_get_jump_upper.set_value("64");
+  tkrzw::IterateResponse response_get_previous;
+  response_get_previous.set_key("00000007");
+  response_get_previous.set_value("49");
+  tkrzw::IterateResponse response_get_last;
+  response_get_last.set_key("00000010");
+  response_get_last.set_value("100");
+  tkrzw::IterateResponse response_get_set;
+  response_get_set.set_key("00000010");
+  response_get_set.set_value("setvalue");
+  tkrzw::IterateResponse response_get_remove;
+  response_get_remove.mutable_status()->set_code(tkrzw::Status::NOT_FOUND_ERROR);
+  EXPECT_CALL(stream, Read(_))
+      .WillOnce(DoAll(SetArgPointee<0>(request_first), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_jump), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_next), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_jump_upper), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_previous), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_last), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_set), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_remove), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(Return(false));
+  EXPECT_CALL(stream, Write(EqualsProto(response_move), _)).WillRepeatedly(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get_first), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get_jump), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get_next), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get_jump_upper), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get_previous), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get_last), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get_set), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get_remove), _)).WillOnce(Return(true));
+  grpc::Status status = server.IterateImpl(&context, &stream);
+  EXPECT_TRUE(status.ok());
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
 }
 
