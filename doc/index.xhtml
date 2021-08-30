@@ -97,21 +97,7 @@ window.onload = function(){
 
 <pre><code class="language-shell-session"><![CDATA[$ ./configure --enable-opt-native
 $ make
-]]></code></pre>
-
-<p>Before you install the programs, let's check the functionality of the service.  First, run the following command.</p>
-
-<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_server --log_level debug
-]]></code></pre>
-
-<p>Open another terminal and move the current directory to the source source directory.  Then, run the the following command.</p>
-
-<pre><code class="language-shell-session"><![CDATA[$ make check
-]]></code></pre>
-
-<p>If the "Checking completed" is shown, all checks are OK.  You can stop the server process by inputting Ctrl-C on the same terminal.  Then, install the programs by the following command.</p>
-
-<pre><code class="language-shell-session"><![CDATA[$ sudo make install
+$ sudo make install
 ]]></code></pre>
 
 <p>By default, the library and related files are installed under "/usr/local".  If you want to install the files under "/usr", specify "--prefix=/usr" with the configure scriptt.</p>
@@ -131,6 +117,19 @@ $ make
 <pre><code class="language-shell-session"><![CDATA[$ make test
 $ make testrun
 ]]></code></pre>
+
+<p>You can run end-to-end tests with the following procedures.  First, run the server.  On MacOS, you use DYLD_LIBRARY_PATH intead of LD_LIBRARY_PATH.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ export LD_LIBRARY_PATH=.
+$ tkrzw_server --log_level debug
+]]></code></pre>
+
+<p>While the server is running, run the client commands on another terminal.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ make check
+]]></code></pre>
+
+<p>If the "Checking completed" is shown, all checks are OK.  You can stop the server process by inputting Ctrl-C on the same terminal.</p>
 
 <h2 id="tutorial">Tutorial</h2>
 
@@ -262,7 +261,11 @@ world
 
 <h3 id="commands_tkrzw_server">tkrzw_server: Database Server</h3>
 
+<p>TBD</p>
+
 <h3 id="commands_tkrzw_dbm_remote_util">tkrzw_dbm_remote_util: Database Client</h3>
+
+<p>TBD</p>
 
 <h2 id="license">License</h2>
 
