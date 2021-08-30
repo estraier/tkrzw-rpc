@@ -22,11 +22,13 @@ LIBOBJFILES := @MYLIBOBJFILES@
 DATAFILES := @MYDATAFILES@
 COMMANDFILES := @MYCOMMANDFILES@
 TESTFILES := @MYTESTFILES@
+PCFILES := @MYPCFILES@
 
 # Install destinations
 prefix := @prefix@
 exec_prefix := @exec_prefix@
 datarootdir := @datarootdir@
+INCLUDEDIR := @includedir@
 LIBDIR := @libdir@
 BINDIR := @bindir@
 LIBEXECDIR := @libexecdir@
@@ -71,21 +73,30 @@ untabify :
 
 install :
 	mkdir -p $(DESTDIR)$(INCLUDEDIR)
-	[ ! -f tkrzw_lib_commons.h -a -f ../tkrzw_lib_common.h ] && cd .. ; \
+	[ ! -f tkrzw_dbm_remote.h -a -f ../tkrzw_dbm_remote.h ] && cd .. ; \
 	  cp -Rf $(HEADERFILES) $(DESTDIR)$(INCLUDEDIR)
 	mkdir -p $(DESTDIR)$(LIBDIR)
 	cp -Rf $(LIBRARYFILES) $(DESTDIR)$(LIBDIR)
 	mkdir -p $(DESTDIR)$(BINDIR)
 	cp -Rf $(COMMANDFILES) $(DESTDIR)$(BINDIR)
+	mkdir -p $(DESTDIR)$(DATADIR)
+	[ ! -f tkrzw_rpc.proto -a -f ../tkrzw_rpc.proto ] && cd .. ; \
+	  cp -Rf $(DATAFILES) $(DESTDIR)$(DATADIR)
+	mkdir -p $(DESTDIR)$(PCDIR)
+	[ ! -f tkrzw-rpc.pc -a -f ../tkrzw-rpc.pc ] && cd .. ; \
+	  cp -Rf $(PCFILES) $(DESTDIR)$(PCDIR)
 	@printf '\n'
 	@printf '#================================================================\n'
-	@printf '# Thanks for using Kyoto Cabinet for Java.\n'
+	@printf '# Thanks for using Tkrzw-RPC.\n'
 	@printf '#================================================================\n'
 
 uninstall :
 	-cd $(DESTDIR)$(INCLUDEDIR) && rm -f $(HEADERFILES)
 	-cd $(DESTDIR)$(LIBDIR) && rm -f $(LIBRARYFILES)
 	-cd $(DESTDIR)$(BINDIR) && rm -f $(COMMANDFILES)
+	-cd $(DESTDIR)$(DATADIR) && rm -f $(DATAFILES)
+	-rmdir $(DESTDIR)$(DATADIR) >/dev/null 2>&1 || true
+	-cd $(DESTDIR)$(PCDIR) && rm -f $(PCFILES)
 
 dist :
 	$(MAKE) untabify

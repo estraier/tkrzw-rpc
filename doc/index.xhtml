@@ -125,6 +125,12 @@ $ make
 /usr/local/bin/tkrzw_dbm_remote_perf
 ]]></code></pre>
 
+<p>To run the test suite, GoogleTest is required.  Although testing the library is not necessary for most users, you can do so just in case.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ make test
+$ make testrun
+]]></code></pre>
+
 <h2 id="tutorial">Tutorial</h2>
 
 <p>Let's run the server with a simple setting.  By default, an on-memory database of TinyDBM is specified.  By specifying the log level to "debug", every RPC call to the service is printed in the log stream.</p>
@@ -214,8 +220,48 @@ japan  tokyo
 korea  seoul
 ]]></code></pre>
 
-<p>Keep running the server, </p>
+<p>Read <a href="https://dbmx.net/tkrzw/api-rpc/">the C++ API documents</a> for usage of the C++ client library.  Then, let's build a sample program.  Make a file of the following C++ code and save it as "helloworld.cc".</p>
 
+<pre><code class="language-shell-session"><![CDATA[#include "tkrzw_dbm_remote.h"
+
+int main(int argc, char** argv) {
+  tkrzw::RemoteDBM dbm;
+  dbm.Connect("localhost", 1978).OrDie();
+  dbm.Set("hello", "world").OrDie();
+  std::cout << dbm.GetSimple("hello") << std::endl;
+  dbm.Disconnect().OrDie();
+  return 0;
+}
+]]></code></pre>
+
+<p>To build an application program, you'll typically run a command like this.  The compiler flag "-std=c++17" is necessary if the default C++ version of your compiler is older than C++17.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ g++ -std=c++17 -pthread -I/usr/local/include \
+  -O2 -Wall helloworld.cc -o helloworld \
+  -L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lprotobuf \
+  -ltkrzw -lstdc++ -lpthread
+]]></code></pre>
+
+<p>In some environments, you can also use the "pkg-config" command to list up those flags.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+$ pkg-config --cflags-only-I tkrzw-rpc
+-I/usr/local/include
+$ pkg-config --libs tkrzw-rpc
+-L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lprotobuf -ltkrzw -llzma -llz4 -lzstd -lz -lstdc++ -lrt -lpthread -lm -lc
+]]></code></pre>
+
+<p>Build the above sample program and run it while the server is running.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./helloworld
+world
+]]></code></pre>
+
+<h2 id="commands">Commands Line Interfaces</h2>
+
+<h3 id="commands_tkrzw_server">tkrzw_server: Database Server</h3>
+
+<h3 id="commands_tkrzw_dbm_remote_util">tkrzw_dbm_remote_util: Database Client</h3>
 
 <h2 id="license">License</h2>
 
