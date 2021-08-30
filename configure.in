@@ -47,32 +47,18 @@ then
   export PATH LIBRARY_PATH LD_LIBRARY_PATH CPATH PKG_CONFIG_PATH
 fi
 
-# Specify the installation path of Tkrzw
-AC_ARG_WITH(tkrzw,
-  AS_HELP_STRING([--with-tkrzw=DIR], [search DIR/include and DIR/lib for Tkrzw]))
-if test -n "$with_tkrzw"
+# Specify the installation prefix of extra packages
+AC_ARG_WITH(extra,
+  AS_HELP_STRING([--with-extra=DIR], [search DIR/include and DIR/lib for extra packages]))
+if test -n "$with_extra"
 then
-  MYCPPFLAGS="$MYCPPFLAGS -I$with_tkrzw/include"
-  MYLDFLAGS="$MYLDFLAGS -L$with_tkrzw/lib"
-  CPATH="$CPATH:$with_tkrzw/include"
-  LIBRARY_PATH="$LIBRARY_PATH:$with_tkrzw/lib"
-  LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$with_tkrzw/lib"
-  PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$with_tkrzw/lib/pkgconfig"
-  PATH="$with_tkrzw/bin:$PATH"
-fi
-
-# Specify the installation path of gRPC
-AC_ARG_WITH(grpc,
-  AS_HELP_STRING([--with-grpc=DIR], [search DIR/include and DIR/lib for gRPC]))
-if test -n "$with_grpc"
-then
-  MYCPPFLAGS="$MYCPPFLAGS -I$with_grpc/include"
-  MYLDFLAGS="$MYLDFLAGS -L$with_grpc/lib"
-  CPATH="$CPATH:$with_grpc/include"
-  LIBRARY_PATH="$LIBRARY_PATH:$with_grpc/lib"
-  LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$with_grpc/lib"
-  PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$with_grpc/lib/pkgconfig"
-  PATH="$with_grpc/bin:$PATH"
+  MYCPPFLAGS="$MYCPPFLAGS -I$with_extra/include"
+  MYLDFLAGS="$MYLDFLAGS -L$with_extra/lib"
+  CPATH="$CPATH:$with_extra/include"
+  LIBRARY_PATH="$LIBRARY_PATH:$with_extra/lib"
+  LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$with_extra/lib"
+  PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$with_extra/lib/pkgconfig"
+  PATH="$with_extra/bin:$PATH"
 fi
 
 #================================================================
