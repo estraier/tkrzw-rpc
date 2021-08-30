@@ -48,6 +48,7 @@ CMDLIBS := @MYCMDLIBS@
 TESTLIBS := @MYTESTLIBS@
 LIBS := @LIBS@
 RUNENV := @MYLDLIBPATHENV@=@MYLDLIBPATH@
+VPATH := .:..
 
 #================================================================
 # Actions
@@ -80,11 +81,10 @@ install :
 	mkdir -p $(DESTDIR)$(BINDIR)
 	cp -Rf $(COMMANDFILES) $(DESTDIR)$(BINDIR)
 	mkdir -p $(DESTDIR)$(DATADIR)
-	[ ! -f tkrzw_rpc.proto -a -f ../tkrzw_rpc.proto ] && cd .. ; \
+	[ ! -f tkrzw_dbm_remote.h -a -f ../tkrzw_dbm_remote.h ] && cd .. ; \
 	  cp -Rf $(DATAFILES) $(DESTDIR)$(DATADIR)
 	mkdir -p $(DESTDIR)$(PCDIR)
-	[ ! -f tkrzw-rpc.pc -a -f ../tkrzw-rpc.pc ] && cd .. ; \
-	  cp -Rf $(PCFILES) $(DESTDIR)$(PCDIR)
+	cp -Rf $(PCFILES) $(DESTDIR)$(PCDIR)
 	@printf '\n'
 	@printf '#================================================================\n'
 	@printf '# Thanks for using Tkrzw-RPC.\n'
@@ -179,11 +179,11 @@ DEPS := $(SRCS:%.c=%.d)
 #================================================================
 
 tkrzw_rpc.pb.h tkrzw_rpc.pb.cc : tkrzw_rpc.proto
-	$(PROTOC) -I . --cpp_out=. tkrzw_rpc.proto
+	$(PROTOC) -I . -I .. --cpp_out=. $<
 
 tkrzw_rpc.grpc.pb.h tkrzw_rpc.grpc.pb.cc tkrzw_rpc_mock.grpc.pb.h : tkrzw_rpc.proto
-	$(PROTOC) -I . --grpc_out=generate_mock_code=true:. \
-	  --plugin=protoc-gen-grpc=$(GRPCCPP) tkrzw_rpc.proto
+	$(PROTOC) -I . -I .. --grpc_out=generate_mock_code=true:. \
+	  --plugin=protoc-gen-grpc=$(GRPCCPP) $<
 
 #================================================================
 # Building libraries
