@@ -21,6 +21,7 @@ pre { margin-left: 1.5ex; padding: 0.4ex 0.6ex; border: solid 1px #dddddd; borde
 code { font-weight: bold; }
 pre[class*="language-"] { font-size: 10pt; line-height: 120%; padding: 0.5ex 0.8ex; background: #f8f8f8;
   max-height: 70ex; }
+pre.log { font-size: 9pt; line-height: 110%; padding: 0.5ex 0.8ex; background: #f8f8f8; }
 li { margin-left: 0.2ex; }
 dt { margin-left: 2.0ex; }
 dd { margin-left: 5.0ex; }
@@ -70,7 +71,151 @@ window.onload = function(){
 
 <h2 id="overview">Overview</h2>
 
-<p>Tkrzw-RPC is provides a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to mange key-value storages in various algorithms.  With Tkrzw, the application can handle database files efficiently in process without any network overhead.  However, it means that multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves the issue by using a server program which manages database files and allowing other processes access the contents via RPC.</p>
+<p>Tkrzw-RPC is a package of a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to mange key-value storages in various algorithms.  With Tkrzw, the application can handle database files efficiently in process without any network overhead.  However, multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves the issue by using a server program which manages database files and allowing other processes access the contents via RPC.</p>
+
+<p>One server process can handle multiple databases, each of which can be different data structure and tuning parameters.  Each database is an instance of the <a href="https://dbmx.net/tkrzw/#polydbm_overview">PolyDBM</a> class, which is an adapter class to handle the following classes with the same interface.</p>
+
+<ul>
+<li><strong><a href="https://dbmx.net/tkrzw/#hashdbm_overview">HashDBM</a></strong> : File database manager implementation based on hash table.</li>
+<li><strong><a href="https://dbmx.net/tkrzw/#treedbm_overview">TreeDBM</a></strong> : File database manager implementation based on B+ tree.</li>
+<li><strong><a href="https://dbmx.net/tkrzw/#skipdbm_overview">SkipDBM</a></strong> : File database manager implementation based on skip list.</li>
+<li><strong><a href="https://dbmx.net/tkrzw/#tinydbm_overview">TinyDBM</a></strong> : On-memory database manager implementation based on hash table.</li>
+<li><strong><a href="https://dbmx.net/tkrzw/#babydbm_overview">BabyDBM</a></strong> : On-memory database manager implementation based on B+ tree.</li>
+<li><strong><a href="https://dbmx.net/tkrzw/#cachedbm_overview">CacheDBM</a></strong> : On-memory database manager implementation with LRU deletion.</li>
+<li><strong><a href="https://dbmx.net/tkrzw/#stddbm_overview">Std(Hash|Tree)DBM</a></strong> : On-memory DBM implementations using std::unordered_map and std::map.</li>
+</ul>
+
+<p>The library of Tkrzw-RPC is a C++ library to access the database service via gRPC protocol.  Thus, you can easily write application programs in C++.  Moreover, gRPC automates to generate client interfaces in various languages, based on the service definition in the protocol buffers <a href="https://github.com/estraier/tkrzw-rpc/blob/master/tkrzw_rpc.proto">tkrzw_rpc.proto</a>.  Tkrzw-RPC also provides command line utilities to access the database service.</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>Tkrzw-RPC is implemented based on the C++17 standard and POSIX API.  It works on Unix-like systems (Linux, FreeBSD, and Mac OS X), and GCC (version 7.3 or later) is required to build programs.</p>
+
+<p>Download the latest version of the source packages in <a href="https://dbmx.net/tkrzw/pkg-rpc/">this directory</a>.  The core library of <a href="https://grpc.io/">gRPC</a> is also required so install it beforehand.</p>
+
+<p>To build the server and the library, usually, you will run the following commands.  If you have installed Tkrzw and gRPC into another location than "/usr/local", specify the prefix by the "--with-extra" of "./configure", such as "--with-extra=/opt/homebrew".</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./configure --enable-opt-native
+$ make
+]]></code></pre>
+
+<p>Before you install the programs, let's check the functionality of the service.  First, run the following command.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_server --log_level debug
+]]></code></pre>
+
+<p>Open another terminal and move the current directory to the source source directory.  Then, run the the following command.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ make check
+]]></code></pre>
+
+<p>If the "Checking completed" is shown, all checks are OK.  You can stop the server process by inputting Ctrl-C on the same terminal.  Then, install the programs by the following command.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ sudo make install
+]]></code></pre>
+
+<p>By default, the library and related files are installed under "/usr/local".  If you want to install the files under "/usr", specify "--prefix=/usr" with the configure scriptt.</p>
+
+<pre><code class="language-shell-session"><![CDATA[/usr/local/lib/libtkrzw.a
+/usr/local/lib/libtkrzw_rpc.a
+/usr/local/include/tkrzw_dbm_remote.h
+/usr/local/share/tkrzw/tkrzw_rpc.proto
+/usr/local/bin/tkrzw_server
+/usr/local/bin/tkrzw_dbm_remote_util
+/usr/local/bin/tkrzw_dbm_remote_perf
+]]></code></pre>
+
+<h2 id="tutorial">Tutorial</h2>
+
+<p>Let's run the server with a simple setting.  By default, an on-memory database of TinyDBM is specified.  By specifying the log level to "debug", every RPC call to the service is printed in the log stream.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --log_level debug
+]]></code></pre>
+
+<p>Let's play with the command line utilities on another terminal.</p>
+
+<pre><code class="language-shell-session"><![CDATA[# Stores three records
+$ tkrzw_dbm_remote_util set one first
+$ tkrzw_dbm_remote_util set two second
+$ tkrzw_dbm_remote_util set three third
+
+# Retrieves each record
+$ tkrzw_dbm_remote_util get one
+first
+$ tkrzw_dbm_remote_util get two
+second
+$ tkrzw_dbm_remote_util get three
+third
+
+# Removes one record
+$ tkrzw_dbm_remote_util remove one
+
+# Lists all records
+$ tkrzw_dbm_remote_util list
+three    third
+two      second
+]]></code></pre>
+
+<p>Stop the server by inputting Ctrl-C on the terminal of the server command.  Such logs as the following are printed.</p>
+
+<pre class="log"><![CDATA[2021/08/30 21:44:55 [INFO] ==== Starting the process as a command ====
+2021/08/30 21:44:55 [INFO] Opening a database: #dbm=tiny
+2021/08/30 21:44:55 [INFO] address=0.0.0.0:1978, pid=1175899
+2021/08/30 21:45:20 [DEBUG] ipv4:127.0.0.1:59208 [Set] key: "one" value: "first" overwrite: true
+2021/08/30 21:45:24 [DEBUG] ipv4:127.0.0.1:59210 [Set] key: "two" value: "second" overwrite: true
+2021/08/30 21:45:29 [DEBUG] ipv4:127.0.0.1:59212 [Set] key: "three" value: "third" overwrite: true
+2021/08/30 21:45:38 [DEBUG] ipv4:127.0.0.1:59214 [Get] key: "one"
+2021/08/30 21:45:48 [DEBUG] ipv4:127.0.0.1:59216 [Get] key: "two"
+2021/08/30 21:46:01 [DEBUG] ipv4:127.0.0.1:59218 [Get] key: "three"
+2021/08/30 21:46:11 [DEBUG] ipv4:127.0.0.1:59220 [Remove] key: "one"
+2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_FIRST
+2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_GET
+2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_NEXT
+2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_GET
+2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_NEXT
+2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_GET
+2021/08/30 21:48:53 [INFO] Shutting down by signal: 2
+2021/08/30 21:48:53 [INFO] The server finished
+2021/08/30 21:48:53 [INFO] Closing a database
+2021/08/30 21:48:53 [INFO] ==== Ending the process in success ====
+]]></pre>
+
+<p>As the on-memory database was not associated with any file, records in the database vanished whn the server shut down.  Next, let's run the server with two on-memory databases associated with files.  The first database is TinyDBM, which is on-memory hash database.  The second database is BabyDBM, which is on-memory tree database.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --log_level debug "casket-1.tkmt" "casket-2.tkmb"
+]]></code></pre>
+
+<p>Let's add serveral records to each databases.  The target of the operation is specified by the "--index" option, whose default value is zero referring to the first database.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set one first
+$ tkrzw_dbm_remote_util set two second
+$ tkrzw_dbm_remote_util set three third
+
+$ tkrzw_dbm_remote_util set --index 1 japan tokyo
+$ tkrzw_dbm_remote_util set --index 1 china beijing
+$ tkrzw_dbm_remote_util set --index 1 korea seoul
+]]></code></pre>
+
+<p>Stop the server by inputting Ctrl-C on the terminal of the server command.  This time, all records are stored in the specified files.  Then, restart the server with the same arguemnts.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --log_level debug "casket-1.tkmt" "casket-2.tkmb"
+]]></code></pre>
+
+<p>Confirm that the records are loaded properly.  As the second database is an ordered database, the record keys are in acsending order for sure.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list
+three	 third
+two	   second
+one	   first
+
+$ tkrzw_dbm_remote_util list --index 1
+china  beijing
+japan  tokyo
+korea  seoul
+]]></code></pre>
+
+<p>Keep running the server, </p>
+
 
 <h2 id="license">License</h2>
 

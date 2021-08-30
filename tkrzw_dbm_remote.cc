@@ -484,6 +484,7 @@ Status RemoteDBMIteratorImpl::First() {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_FIRST);
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");
@@ -503,6 +504,7 @@ Status RemoteDBMIteratorImpl::Last() {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_LAST);
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");
@@ -522,6 +524,7 @@ Status RemoteDBMIteratorImpl::Jump(std::string_view key) {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_JUMP);
   request.set_key(std::string(key));
   if (!stream_->Write(request)) {
@@ -541,6 +544,7 @@ Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_JUMP_LOWER);
   request.set_key(std::string(key));
   request.set_jump_inclusive(inclusive);
@@ -561,6 +565,7 @@ Status RemoteDBMIteratorImpl::JumpUpper(std::string_view key, bool inclusive) {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_JUMP_UPPER);
   request.set_key(std::string(key));
   request.set_jump_inclusive(inclusive);
@@ -582,6 +587,7 @@ Status RemoteDBMIteratorImpl::Next() {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_NEXT);
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");
@@ -601,6 +607,7 @@ Status RemoteDBMIteratorImpl::Previous() {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_PREVIOUS);
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");
@@ -620,6 +627,7 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_GET);
   if (key == nullptr) {
     request.set_omit_key(true);
@@ -653,6 +661,7 @@ Status RemoteDBMIteratorImpl::Set(std::string_view value) {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_SET);
   request.set_value(std::string(value));
   if (!stream_->Write(request)) {
@@ -673,6 +682,7 @@ Status RemoteDBMIteratorImpl::Remove() {
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_REMOVE);
   if (!stream_->Write(request)) {
     return Status(Status::NETWORK_ERROR, "Write failed");

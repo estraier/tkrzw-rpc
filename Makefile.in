@@ -19,6 +19,7 @@ LIBREV := @MYLIBREV@
 HEADERFILES := @MYHEADERFILES@
 LIBRARYFILES := @MYLIBRARYFILES@
 LIBOBJFILES := @MYLIBOBJFILES@
+DATAFILES := @MYDATAFILES@
 COMMANDFILES := @MYCOMMANDFILES@
 TESTFILES := @MYTESTFILES@
 
@@ -29,6 +30,7 @@ datarootdir := @datarootdir@
 LIBDIR := @libdir@
 BINDIR := @bindir@
 LIBEXECDIR := @libexecdir@
+DATADIR := ${datarootdir}/tkrzw
 PCDIR := @libdir@/pkgconfig
 DESTDIR =
 
@@ -102,6 +104,10 @@ distclean : clean apidocclean
 check :
 	$(MAKE) check-remotedbm-util
 	$(MAKE) check-remotedbm-perf
+	@printf '\n'
+	@printf '#================================================================\n'
+	@printf '# Checking completed.\n'
+	@printf '#================================================================\n'
 
 check-remotedbm-util :
 	$(RUNENV) ./tkrzw_dbm_remote_util echo "hello"

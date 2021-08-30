@@ -311,6 +311,7 @@ class DBMServiceImpl : public DBMService::Service {
       grpc::ServerReaderWriterInterface<
                            tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) {
     std::unique_ptr<DBM::Iterator> iter;
+    int32_t dbm_index = -1;
     while (true) {
       if (context->IsCancelled()) {
         return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
@@ -320,13 +321,14 @@ class DBMServiceImpl : public DBMService::Service {
         break;
       }
       LogRequest(context, "Iterate", &request);
-      if (iter == nullptr) {
+      if (iter == nullptr || request.dbm_index() != dbm_index) {
         if (request.dbm_index() < 0 ||
             request.dbm_index() >= static_cast<int32_t>(dbms_.size())) {
           return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
         }
         auto& dbm = *dbms_[request.dbm_index()];
         iter = dbm.MakeIterator();
+        dbm_index = request.dbm_index();
       }
       tkrzw::IterateResponse response;
       switch (request.operation()) {
