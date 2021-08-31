@@ -120,12 +120,21 @@ distclean : clean apidocclean
 	  config.cache config.log config.status config.tmp autom4te.cache build
 
 check :
+	$(MAKE) check-rpc-build-util
 	$(MAKE) check-remotedbm-util
 	$(MAKE) check-remotedbm-perf
 	@printf '\n'
 	@printf '#================================================================\n'
 	@printf '# Checking completed.\n'
 	@printf '#================================================================\n'
+
+check-rpc-build-util :
+	$(RUNENV) ./tkrzw_rpc_build_util version
+	$(RUNENV) ./tkrzw_rpc_build_util config
+	$(RUNENV) ./tkrzw_rpc_build_util config -v
+	$(RUNENV) ./tkrzw_rpc_build_util config -i
+	$(RUNENV) ./tkrzw_rpc_build_util config -l
+	$(RUNENV) ./tkrzw_rpc_build_util config -p
 
 check-remotedbm-util :
 	$(RUNENV) ./tkrzw_dbm_remote_util echo "hello"
@@ -225,6 +234,9 @@ tkrzw_dbm_remote.o tkrzw_server.o tkrzw_server_impl.h : tkrzw_rpc.pb.h tkrzw_rpc
 #================================================================
 # Building binaries
 #================================================================
+
+tkrzw_rpc_build_util : tkrzw_rpc_build_util.o $(LIBRARYFILES)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
 tkrzw_server : tkrzw_server.o tkrzw_server_util.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< tkrzw_server_util.o $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)

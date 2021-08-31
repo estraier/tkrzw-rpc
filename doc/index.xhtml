@@ -107,6 +107,7 @@ $ sudo make install
 /usr/local/lib/libtkrzw_rpc.a
 /usr/local/include/tkrzw_dbm_remote.h
 /usr/local/share/tkrzw/tkrzw_rpc.proto
+/usr/local/bin/tkrzw_rpc_build_util
 /usr/local/bin/tkrzw_server
 /usr/local/bin/tkrzw_dbm_remote_util
 /usr/local/bin/tkrzw_dbm_remote_perf
@@ -242,13 +243,21 @@ int main(int argc, char** argv) {
   -ltkrzw -lstdc++ -lpthread
 ]]></code></pre>
 
+<p>The bundled command "tkrzw_rpc_build_util" is useful to know necessary CPPFLAGS (flags for the preprocessor), and LDFLAGS (flags for the linker).</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_rpc_build_util config -i
+-I/usr/local/include
+$ tkrzw_rpc_build_util config -l
+-L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lprotobuf -ltkrzw -lstdc++ -lpthread -lm -lc
+]]></code></pre>
+
 <p>In some environments, you can also use the "pkg-config" command to list up those flags.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
 $ pkg-config --cflags-only-I tkrzw-rpc
 -I/usr/local/include
 $ pkg-config --libs tkrzw-rpc
--L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lprotobuf -ltkrzw -llzma -llz4 -lzstd -lz -lstdc++ -lrt -lpthread -lm -lc
+-L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lprotobuf -ltkrzw -lstdc++ -lpthread -lm -lc
 ]]></code></pre>
 
 <p>Build the above sample program and run it while the server is running.</p>
@@ -258,6 +267,33 @@ world
 ]]></code></pre>
 
 <h2 id="commands">Commands Line Interfaces</h2>
+
+<h3 id="commands_tkrzw_rpc_build_util">tkrzw_rpc_build_util: Build Utilities</h3>
+
+<p>tkrzw_rpc_build_util is a command for build utilities.  Thereby, you can obtain flags to build your own program using the library of Tkrzw-RPC.  The usage is the following.  A subcommand name comes as the first argument.  Some options and other arguments can follow.</p>
+
+<dl>
+<dt><code>tkrzw_rpc_build_util config [<var>options</var>]</code></dt>
+<dd>Prints configurations.</dd>
+<dt><code>tkrzw_rpc_build_util version</code></dt>
+<dd>Prints the version information.</dd>
+</dl>
+
+<dl>
+<dt>Options of the config subcommand:</dt>
+<dd><code>-v</code> : Prints the version number.</dd>
+<dd><code>-i</code> : Prints C++ preprocessor options for build.</dd>
+<dd><code>-l</code> : Prints linker options for build.</dd>
+<dd><code>-p</code> : Prints the prefix for installation.</dd>
+</dl>
+
+<p>The following is a way to build your own application without setting complicated flags.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ g++ -std=c++17 -pthread \
+  $(tkrzw_rpc_build_util config -i) \
+  -O2 -Wall helloworld.cc -o helloworld \
+  $(tkrzw_rpc_build_util config -l)
+]]></code></pre>
 
 <h3 id="commands_tkrzw_server">tkrzw_server: Database Server</h3>
 
