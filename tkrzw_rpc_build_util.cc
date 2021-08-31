@@ -12,6 +12,7 @@
  *************************************************************************************************/
 
 #include "tkrzw_cmd_util.h"
+#include "tkrzw_rpc_common.h"
 
 namespace tkrzw {
 
@@ -48,7 +49,7 @@ static int32_t ProcessConfig(int32_t argc, const char** args) {
     PrintUsageAndDie();
   }
   if (CheckMap(cmd_args, "-v")) {
-    PrintF("%s\n", _TKRPC_PKG_VERSION);
+    PrintF("%s\n", RPC_PACKAGE_VERSION);
   } else if (CheckMap(cmd_args, "-i")) {
     PrintF("%s\n", _TKRPC_APPINC);
   } else if (CheckMap(cmd_args, "-l")) {
@@ -56,41 +57,8 @@ static int32_t ProcessConfig(int32_t argc, const char** args) {
   } else if (CheckMap(cmd_args, "-p")) {
     PrintF("%s\n", _TKRPC_BINDIR);
   } else {
-    PrintF("PACKAGE_VERSION: %s\n", _TKRPC_PKG_VERSION);
-    PrintF("LIBRARY_VERSION: %s\n", _TKRPC_LIB_VERSION);
-    PrintF("OS_NAME: %s\n", OS_NAME);
-    PrintF("IS_BIG_ENDIAN: %d\n", IS_BIG_ENDIAN);
-    PrintF("PAGE_SIZE: %d\n", PAGE_SIZE);
-    PrintF("TYPES: void*=%d short=%d int=%d long=%d long_long=%d size_t=%d"
-           " float=%d double=%d long_double=%d\n",
-           (int)sizeof(void*), (int)sizeof(short), (int)sizeof(int), (int)sizeof(long),
-           (int)sizeof(long long), (int)sizeof(size_t),
-           (int)sizeof(float), (int)sizeof(double), (int)sizeof(long double));
-    std::vector<std::string> compressors;
-    if (LZ4Compressor().IsSupported()) {
-      compressors.emplace_back("lz4");
-    }
-    if (ZStdCompressor().IsSupported()) {
-      compressors.emplace_back("zstd");
-    }
-    if (ZLibCompressor().IsSupported()) {
-      compressors.emplace_back("zlib");
-    }
-    if (LZMACompressor().IsSupported()) {
-      compressors.emplace_back("lzma");
-    }
-    if (!compressors.empty()) {
-      PrintF("COMPRESSORS: %s\n", StrJoin(compressors, ", ").c_str());
-    }
-    std::map<std::string, std::string> info = GetSystemInfo();
-    if (!info["proc_id"].empty()) {
-      PrintF("PROCESS_ID: %s\n", info["proc_id"].c_str());
-    }
-    if (!info["mem_total"].empty()) {
-      PrintF("MEMORY: total=%s free=%s cached=%s rss=%s\n",
-             info["mem_total"].c_str(), info["mem_free"].c_str(),
-             info["mem_cached"].c_str(), info["mem_rss"].c_str());
-    }
+    PrintF("RPC_PACKAGE_VERSION: %s\n", RPC_PACKAGE_VERSION);
+    PrintF("RPC_LIBRARY_VERSION: %s\n", RPC_LIBRARY_VERSION);
     if (*_TKRPC_PREFIX != '\0') {
       PrintF("prefix: %s\n", _TKRPC_PREFIX);
     }
@@ -118,10 +86,8 @@ static int32_t ProcessConfig(int32_t argc, const char** args) {
 
 // Prints the version information.
 void PrintVersion() {
-  PrintF("Tkrzw-RPC %s (library %s) on %s (%s) (%s endian)\n",
-         _TKRPC_PKG_VERSION, _TKRPC_LIB_VERSION, OS_NAME,
-         IS_POSIX ? "POSIX" : "non-POSIX",
-         IS_BIG_ENDIAN ? "big" : "little");
+  PrintF("Tkrzw-RPC %s (library %s) on %s\n",
+         RPC_PACKAGE_VERSION, RPC_LIBRARY_VERSION, OS_NAME);
 }
 
 }  // namespace tkrzw

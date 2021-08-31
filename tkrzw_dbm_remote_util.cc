@@ -22,6 +22,7 @@
 
 #include "tkrzw_cmd_util.h"
 #include "tkrzw_dbm_remote.h"
+#include "tkrzw_rpc_common.h"
 
 namespace tkrzw {
 
@@ -43,8 +44,9 @@ static void PrintUsageAndDie() {
   P("  %s sync [options] [params]\n", progname);
   P("\n");
   P("Common options:\n");
-  P("  --host : The binding address/hostname of the service (default: localhost)\n");
-  P("  --port : The port number of the service. (default: 1978)\n");
+  P("  --version : Prints the version number and exits.\n");
+  P("  --address : The address and the port of the service (default: localhost:1978)\n");
+  P("  --timeout : The timeout in seconds for connection and each operation.\n");
   P("  --index : The index of the DBM to access. (default: 0)\n");
   P("\n");
   P("Options for the set subcommand:\n");
@@ -67,20 +69,20 @@ static void PrintUsageAndDie() {
 
 // Processes the echo subcommand.
 static int32_t ProcessEcho(int32_t argc, const char** args) {
-  const std::map<std::string, int32_t>& cmd_configs = {
-    {"--host", 1}, {"--port", 1},
+  const std::map<std::string, int32_t>& cmd_config = {
+    {"--address", 1}, {"--timeout", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
-  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+  if (!ParseCommandArguments(argc, args, cmd_config, &cmd_args, &cmd_error)) {
     EPrint("Invalid command: ", cmd_error, "\n\n");
     PrintUsageAndDie();
   }
   const std::string message = StrJoin(cmd_args[""], " ");
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -101,7 +103,7 @@ static int32_t ProcessEcho(int32_t argc, const char** args) {
 // Processes the inspect subcommand.
 static int32_t ProcessInspect(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"--address", 1}, {"--timeout", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -110,11 +112,11 @@ static int32_t ProcessInspect(int32_t argc, const char** args) {
     PrintUsageAndDie();
   }
   const std::string attr_name = GetStringArgument(cmd_args, "", 0, "");
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -146,7 +148,7 @@ static int32_t ProcessInspect(int32_t argc, const char** args) {
 // Processes the get subcommand.
 static int32_t ProcessGet(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 1}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"", 1}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -155,11 +157,11 @@ static int32_t ProcessGet(int32_t argc, const char** args) {
     PrintUsageAndDie();
   }
   const std::string key = GetStringArgument(cmd_args, "", 0, "");
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -181,7 +183,7 @@ static int32_t ProcessGet(int32_t argc, const char** args) {
 // Processes the set subcommand.
 static int32_t ProcessSet(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 2}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"", 2}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
     {"--no_overwrite", 0}, {"--append", 1}, {"--incr", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
@@ -192,14 +194,14 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
   }
   const std::string key = GetStringArgument(cmd_args, "", 0, "");
   const std::string value = GetStringArgument(cmd_args, "", 1, "");
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const bool with_no_overwrite = CheckMap(cmd_args, "--no_overwrite");
   const std::string append_delim = GetStringArgument(cmd_args, "--append", 0, "[\xFF|\xFF|\xFF]");
   const int64_t incr_init = GetIntegerArgument(cmd_args, "--incr", 0, INT64MIN);
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -237,7 +239,7 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
 // Processes the remove subcommand.
 static int32_t ProcessRemove(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 1}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"", 1}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -246,11 +248,11 @@ static int32_t ProcessRemove(int32_t argc, const char** args) {
     PrintUsageAndDie();
   }
   const std::string key = GetStringArgument(cmd_args, "", 0, "");
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -270,7 +272,7 @@ static int32_t ProcessRemove(int32_t argc, const char** args) {
 // Processes the list subcommand.
 static int32_t ProcessList(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 0}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
     {"--move", 1}, {"--jump_key", 1}, {"--items", 1}, {"--escape", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
@@ -279,15 +281,15 @@ static int32_t ProcessList(int32_t argc, const char** args) {
     EPrint("Invalid command: ", cmd_error, "\n\n");
     PrintUsageAndDie();
   }
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const std::string jump_key = GetStringArgument(cmd_args, "--jump_key", 0, "");
   const std::string move_type = GetStringArgument(cmd_args, "--move", 0, "first");
   const int64_t num_items = GetIntegerArgument(cmd_args, "--items", 0, INT64MAX);
   const bool with_escape = CheckMap(cmd_args, "--escape");
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -371,7 +373,7 @@ static int32_t ProcessList(int32_t argc, const char** args) {
 // Processes the clear subcommand.
 static int32_t ProcessClear(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 0}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -379,11 +381,11 @@ static int32_t ProcessClear(int32_t argc, const char** args) {
     EPrint("Invalid command: ", cmd_error, "\n\n");
     PrintUsageAndDie();
   }
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -403,7 +405,7 @@ static int32_t ProcessClear(int32_t argc, const char** args) {
 // Processes the rebuild subcommand.
 static int32_t ProcessRebuild(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"--address", 1}, {"--timeout", 1}, {"--index", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -412,11 +414,11 @@ static int32_t ProcessRebuild(int32_t argc, const char** args) {
     PrintUsageAndDie();
   }
   const std::string params_expr = GetStringArgument(cmd_args, "", 0, "");
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -438,8 +440,7 @@ static int32_t ProcessRebuild(int32_t argc, const char** args) {
 // Processes the sync subcommand.
 static int32_t ProcessSync(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--host", 1}, {"--port", 1}, {"--index", 1},
-    {"--hard", 0},
+    {"--address", 1}, {"--timeout", 1}, {"--index", 1}, {"--hard", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -448,12 +449,12 @@ static int32_t ProcessSync(int32_t argc, const char** args) {
     PrintUsageAndDie();
   }
   const std::string params_expr = GetStringArgument(cmd_args, "", 0, "");
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const bool with_hard = CheckMap(cmd_args, "--hard");
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -482,7 +483,9 @@ int main(int argc, char** argv) {
   }
   int32_t rv = 0;
   try {
-    if (std::strcmp(args[1], "echo") == 0) {
+    if (std::strcmp(args[1], "--version") == 0) {
+      tkrzw::PrintL("Tkrzw-RPC client utilities ", tkrzw::RPC_PACKAGE_VERSION);
+    } else if (std::strcmp(args[1], "echo") == 0) {
       rv = tkrzw::ProcessEcho(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "inspect") == 0) {
       rv = tkrzw::ProcessInspect(argc - 1, args + 1);

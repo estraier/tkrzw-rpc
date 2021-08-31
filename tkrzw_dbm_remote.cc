@@ -71,7 +71,7 @@ class RemoteDBMImpl final {
   RemoteDBMImpl();
   ~RemoteDBMImpl();
   void InjectStub(void* stub);
-  Status Connect(const std::string& host, int32_t port, double timeout);
+  Status Connect(const std::string& address, double timeout);
   Status Disconnect();
   Status SetDBMIndex(int32_t dbm_index);
   Status Echo(std::string_view message, std::string* echo);
@@ -133,7 +133,7 @@ void RemoteDBMImpl::InjectStub(void* stub) {
   stub_.reset(reinterpret_cast<DBMService::StubInterface*>(stub));
 }
 
-Status RemoteDBMImpl::Connect(const std::string& host, int32_t port, double timeout) {
+Status RemoteDBMImpl::Connect(const std::string& address, double timeout) {
   std::lock_guard<SpinSharedMutex> lock(mutex_);
   if (stub_ != nullptr) {
     return Status(Status::PRECONDITION_ERROR, "connected database");
@@ -141,8 +141,7 @@ Status RemoteDBMImpl::Connect(const std::string& host, int32_t port, double time
   if (timeout < 0) {
     timeout = INT32MAX;
   }
-  const std::string server_address(StrCat(host, ":", port));
-  auto channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
+  auto channel = grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
   const auto deadline = std::chrono::system_clock::now() +
       std::chrono::microseconds(static_cast<int64_t>(timeout * 1000000));
   while (true) {
@@ -706,8 +705,8 @@ void RemoteDBM::InjectStub(void* stub) {
   impl_->InjectStub(stub);
 }
 
-Status RemoteDBM::Connect(const std::string& host, int32_t port, double timeout) {
-  return impl_->Connect(host, port, timeout);
+Status RemoteDBM::Connect(const std::string& address, double timeout) {
+  return impl_->Connect(address, timeout);
 }
 
 Status RemoteDBM::Disconnect() {

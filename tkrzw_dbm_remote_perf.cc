@@ -22,6 +22,7 @@
 
 #include "tkrzw_cmd_util.h"
 #include "tkrzw_dbm_remote.h"
+#include "tkrzw_rpc_common.h"
 
 namespace tkrzw {
 
@@ -36,8 +37,8 @@ static void PrintUsageAndDie() {
   P("    : Checks echoing/setting/getting/removing performance in sequence.\n");
   P("\n");
   P("Common options:\n");
-  P("  --host : The binding address/hostname of the service (default: localhost)\n");
-  P("  --port : The port number of the service. (default: 1978)\n");
+  P("  --address : The address and the port of the service (default: localhost:1978)\n");
+  P("  --timeout : The timeout in seconds for connection and each operation.\n");
   P("  --index : The index of the DBM to access. (default: 0)\n");
   P("  --iter num : The number of iterations. (default: 10000)\n");
   P("  --size num : The size of each record value. (default: 8)\n");
@@ -59,7 +60,7 @@ static void PrintUsageAndDie() {
 // Processes the sequence subcommand.
 static int32_t ProcessSequence(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 0}, {"--host", 1}, {"--port", 1}, {"--index", 1},
+    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
     {"--iter", 1}, {"--size", 1}, {"--threads", 1},
     {"--random_seed", 1}, {"--random_key", 0}, {"--random_value", 0},
     {"--echo_only", 0}, {"--set_only", 0}, {"--get_only", 0},
@@ -71,8 +72,8 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     EPrint("Invalid command: ", cmd_error, "\n\n");
     PrintUsageAndDie();
   }
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const int32_t num_iterations = GetIntegerArgument(cmd_args, "--iter", 0, 10000);
   const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
@@ -103,7 +104,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   }
   const int64_t start_mem_rss = GetMemoryUsage();
   RemoteDBM dbm;
-  Status status = dbm.Connect(host, port);
+  Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;

@@ -1,5 +1,5 @@
 /*************************************************************************************************
- * Server utilities
+ * Common library features
  *
  * Copyright 2020 Google LLC
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
@@ -11,12 +11,24 @@
  * and limitations under the License.
  *************************************************************************************************/
 
-#ifndef _TKRZW_SERVER_UTIL_H
-#define _TKRZW_SERVER_UTIL_H
+#ifndef _TKRZW_RPC_COMMON_H
+#define _TKRZW_RPC_COMMON_H
 
 #include "tkrzw_cmd_util.h"
 
 namespace tkrzw {
+
+/** The string expression of the package version. */
+extern const char* const RPC_PACKAGE_VERSION;
+
+/** The string expression of the library version. */
+extern const char* const RPC_LIBRARY_VERSION;
+
+/**
+ * Set the logger for global events.
+ * @param logger The pointer to the logger object.  The ownership is not taken.
+ */
+void SetGlobalLogger(tkrzw::Logger* logger);
 
 /**
  * Switches the process into the background.
@@ -26,6 +38,6 @@ Status DaemonizeProcess();
 
 }  // namespace tkrzw
 
-#endif  // _TKRZW_SERVER_UTIL_H
+#endif  // _TKRZW_RPC_COMMON_H
 
 // END OF FILE

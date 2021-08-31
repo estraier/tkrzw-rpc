@@ -24,8 +24,8 @@
 #include <vector>
 
 #include "tkrzw_cmd_util.h"
+#include "tkrzw_rpc_common.h"
 #include "tkrzw_server_impl.h"
-#include "tkrzw_server_util.h"
 
 namespace tkrzw {
 
@@ -39,9 +39,8 @@ static void PrintUsageAndDie() {
   P("  %s [options] [db_configs]\n", progname);
   P("\n");
   P("Options:\n");
-  P("  --version : Prints the version number and exit.\n");
-  P("  --host str : The binding address/hostname of the service (default: 0.0.0.0)\n");
-  P("  --port num : The port number of the service. (default: 1978)\n");
+  P("  --version : Prints the version number and exits.\n");
+  P("  --address str : The address/hostname and the port of the server (default: 0.0.0.0:1978)\n");
   P("  --log_file str : The file path of the log file. (default: /dev/stdout)\n");
   P("  --log_level str : The minimum log level to be stored:"
     " debug, info, warn, error, fatal. (default: info)\n");
@@ -115,7 +114,7 @@ void ShutdownServer(int signum) {
 // Processes the command.
 static int32_t Process(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--version", 0}, {"--host", 1}, {"--port", 1},
+    {"--version", 0}, {"--address", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
     {"--pid_file", 1}, {"--daemon", 0},
     {"--read_only", 0},
@@ -127,11 +126,10 @@ static int32_t Process(int32_t argc, const char** args) {
     PrintUsageAndDie();
   }
   if (CheckMap(cmd_args, "--version")) {
-    PrintL("Tkrzw server ", _TKRPC_PKG_VERSION);
+    PrintL("Tkrzw-RPC server ", RPC_PACKAGE_VERSION);
     return 0;
   }
-  const std::string host = GetStringArgument(cmd_args, "--host", 0, "0.0.0.0");
-  const int32_t port = GetIntegerArgument(cmd_args, "--port", 0, 1978);
+  const std::string server_address = GetStringArgument(cmd_args, "--address", 0, "0.0.0.0:1978");
   const std::string log_file = GetStringArgument(cmd_args, "--log_file", 0, "/dev/stdout");
   const std::string log_level = GetStringArgument(cmd_args, "--log_level", 0, "info");
   const std::string log_date = GetStringArgument(cmd_args, "--log_date", 0, "simple");
@@ -159,10 +157,15 @@ static int32_t Process(int32_t argc, const char** args) {
   std::ofstream log_stream;
   g_log_stream = &log_stream;
   ConfigLogger();
+  SetGlobalLogger(&logger);
   bool has_error = false;
   const int32_t pid = GetProcessID();
   logger.LogF(Logger::INFO, "==== Starting the process %s ====",
               (as_daemon ? "as a daemon" : "as a command"));
+  logger.LogCat(Logger::INFO, "Version: ", "rpc_pkg=", RPC_PACKAGE_VERSION,
+                ", rpc_lib=", RPC_LIBRARY_VERSION,
+                ", core_pkg=", PACKAGE_VERSION,
+                ", core_lib=", LIBRARY_VERSION);
   if (!pid_file.empty()) {
     logger.LogCat(Logger::INFO, "Writing the PID file: ", pid_file);
     const Status status = WriteFile(pid_file, StrCat(pid, "\n"));
@@ -196,20 +199,24 @@ static int32_t Process(int32_t argc, const char** args) {
     }
     dbms.emplace_back(std::move(dbm));
   }
-  const std::string server_address(StrCat(host, ":", port));
+  logger.LogCat(Logger::INFO, "Building the server: address=", server_address, ", pid=", pid);
   DBMServiceImpl service(dbms, &logger);
   grpc::ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
-  logger.LogCat(Logger::INFO, "address=", server_address, ", pid=", pid);
-  g_server.store(server.get());
-  std::signal(SIGHUP, ReconfigServer);
-  std::signal(SIGINT, ShutdownServer);
-  std::signal(SIGTERM, ShutdownServer);
-  std::signal(SIGQUIT, ShutdownServer);
-  server->Wait();
-  logger.Log(Logger::INFO, "The server finished");
+  if (server == nullptr) {
+    logger.LogCat(Logger::FATAL, "ServerBuilder::BuildAndStart failed: ", server_address);
+    has_error = true;
+  } else {
+    g_server.store(server.get());
+    std::signal(SIGHUP, ReconfigServer);
+    std::signal(SIGINT, ShutdownServer);
+    std::signal(SIGTERM, ShutdownServer);
+    std::signal(SIGQUIT, ShutdownServer);
+    server->Wait();
+    logger.Log(Logger::INFO, "The server finished");
+  }
   for (auto& dbm : dbms) {
     logger.Log(Logger::INFO, "Closing a database");
     const Status status = dbm->Close();

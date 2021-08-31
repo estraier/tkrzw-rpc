@@ -119,10 +119,9 @@ $ sudo make install
 $ make testrun
 ]]></code></pre>
 
-<p>You can run end-to-end tests with the following procedures.  First, run the server.  On MacOS, you use DYLD_LIBRARY_PATH intead of LD_LIBRARY_PATH.</p>
+<p>You can run end-to-end tests with the following procedures.  First, run the server.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ export LD_LIBRARY_PATH=.
-$ tkrzw_server --log_level debug
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --log_level debug
 ]]></code></pre>
 
 <p>While the server is running, run the client commands on another terminal.</p>
@@ -166,21 +165,22 @@ two      second
 <p>Stop the server by inputting Ctrl-C on the terminal of the server command.  Such logs as the following are printed.</p>
 
 <pre class="log"><![CDATA[2021/08/30 21:44:55 [INFO] ==== Starting the process as a command ====
+2021/08/30 21:44:55 [INFO] Version: rpc_pkg=0.5.0, rpc_lib=1.1.0, core_pkg=1.0.6, core_lib=1.49.0
 2021/08/30 21:44:55 [INFO] Opening a database: #dbm=tiny
-2021/08/30 21:44:55 [INFO] address=0.0.0.0:1978, pid=1175899
-2021/08/30 21:45:20 [DEBUG] ipv4:127.0.0.1:59208 [Set] key: "one" value: "first" overwrite: true
-2021/08/30 21:45:24 [DEBUG] ipv4:127.0.0.1:59210 [Set] key: "two" value: "second" overwrite: true
-2021/08/30 21:45:29 [DEBUG] ipv4:127.0.0.1:59212 [Set] key: "three" value: "third" overwrite: true
-2021/08/30 21:45:38 [DEBUG] ipv4:127.0.0.1:59214 [Get] key: "one"
-2021/08/30 21:45:48 [DEBUG] ipv4:127.0.0.1:59216 [Get] key: "two"
-2021/08/30 21:46:01 [DEBUG] ipv4:127.0.0.1:59218 [Get] key: "three"
-2021/08/30 21:46:11 [DEBUG] ipv4:127.0.0.1:59220 [Remove] key: "one"
-2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_FIRST
-2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_GET
-2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_NEXT
-2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_GET
-2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_NEXT
-2021/08/30 21:46:21 [DEBUG] ipv4:127.0.0.1:59224 [Iterate] operation: OP_GET
+2021/08/30 21:44:55 [INFO] Server: address=0.0.0.0:1978, pid=1175899
+2021/08/30 21:45:20 [DEBUG] 127.0.0.1:59208 [Set] key: "one" value: "first" overwrite: true
+2021/08/30 21:45:24 [DEBUG] 127.0.0.1:59210 [Set] key: "two" value: "second" overwrite: true
+2021/08/30 21:45:29 [DEBUG] 127.0.0.1:59212 [Set] key: "three" value: "third" overwrite: true
+2021/08/30 21:45:38 [DEBUG] 127.0.0.1:59214 [Get] key: "one"
+2021/08/30 21:45:48 [DEBUG] 127.0.0.1:59216 [Get] key: "two"
+2021/08/30 21:46:01 [DEBUG] 127.0.0.1:59218 [Get] key: "three"
+2021/08/30 21:46:11 [DEBUG] 127.0.0.1:59220 [Remove] key: "one"
+2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_FIRST
+2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_GET
+2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_NEXT
+2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_GET
+2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_NEXT
+2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_GET
 2021/08/30 21:48:53 [INFO] Shutting down by signal: 2
 2021/08/30 21:48:53 [INFO] The server finished
 2021/08/30 21:48:53 [INFO] Closing a database
@@ -297,11 +297,132 @@ world
 
 <h3 id="commands_tkrzw_server">tkrzw_server: Database Server</h3>
 
-<p>TBD</p>
+<p>tkrzw_server is a command to run the database service of Tkrzw-RPC.  One server process can handle multiple databases at the same time.  The process can be a daemon process to run in the background.  The server can use either of IPv4, IPv6, or UNIX domain socket as the network interface.</p>
+
+<dl>
+<dt><code>tkrzw_server [<var>options</var>] [<var>db_configs</var>]</code></dt>
+<dd>Runs the database service.</dd>
+</dl>
+
+<dl>
+<dt>Options:</dt>
+<dd><code>--version</code> : Prints the version number and exit.</dd>
+<dd><code>--address <var>str</var></code> : The address/hostname and the port of the server (default: 0.0.0.0:1978)</dd>
+<dd><code>--log_file <var>str</var></code> : The file path of the log file. (default: /dev/stdout)</dd>
+<dd><code>--log_level <var>str</var></code> : The minimum log level to be stored: debug, info, warn, error, fatal. (default: info)</dd>
+<dd><code>--log_date <var>str</var></code> : The log date format: simple, simple_micro, w3cdtf, w3cdtf_micro, rfc1123, epoch, epoch_micro. (default: simple)</dd>
+<dd><code>--log_td <var>num</var></code> : The log time difference in seconds. (default: 99999=local)</dd>
+<dd><code>--pid_file <var>str</var></code> : The file path of the store the process ID.</dd>
+<dd><code>--daemon</code> : Runs the process as a daemon process.</dd>
+<dd><code>--read_only</code> : Opens the databases in the read-only mode.</dd>
+</dl>
+
+<p>If you don't set database configurations, an on-memory database of TinyDBM with the default tuning is served.  You can set one or more database configurations too.  Each confituration is in the format of "path#name1=value1,name2=value2,..." which is composed of the file path of the database, "#", and CSV of tuning parameters.  The extension of the database path determines the database class.  ".tkh" for HashDBM, ".tkt" for TreeDBM, ".tks" for SkipDBM, ".tkmt" for TinyDBM, ".tkmb" for BabyDBM, and ".tkmc" for CacheDBM.  The database path can be empty for on-memory databases.  The "dbm" parameter overwrites the decision by the extension.  The following are samples.  See <a href="https://dbmx.net/tkrzw/#polydbm_overview">PolyDBM</a> for details.</p>
+
+<dl>
+<dt>#dbm=BabyDBM</dt>
+<dd>Opens a BabyDBM without associating any file.</dd>
+<dt>casket#dbm=HashDBM</dt>
+<dd>Opens the file "casket" as a HashDBM.</dd>
+<dt>casket.tkh#num_buckets=10M,update_mode=appending,restore_mode=sync</dt>
+<dd>Opens the file "casket.tkh" as a HashDBM.  The bucket number is set to 10 million.  Uses the appending update mode and the synchronous restore mode.</dd>
+<dt>casket.tkh#num_buckets=100M,align_pow=8,cache_buckets=1,file=pos-para,block_size=512,access_options=direct:padding:pagecache</dt>
+<dd>Opens the file "casket.tkh" as a HashDBM.  The bucket number is set to 100 million.  The other parameters are tuned for direct I/O.</dd>
+<dt>casket.tkt#num_buckets=1M,max_cached_pages=100K</dt>
+<dd>Opens the file "casket.tkt" as a TreeDBM.  The bucket number is set to 1 million.  The maximum number of cached pages is 100 thousand.</dd>
+<dt>casket.tks#sort_mem_size=2Gi,max_cached_records=100K</dt>
+<dd>Opens the file "casket.tkt" as a TreeDBM.  The memory size for sorting is 2GiB.  The maximum number of cached records is 100 thousand.</dd>
+<dt>casket.tkmt#num_buckets=10M</dt>
+<dd>Opens the file "casket.tkmt" as a TinyDBM.  The bucket number is set to 10 million.</dd>
+<dt>casket.tkmb</dt>
+<dd>Opens the file "casket.tkmb" as a BabyDBM.</dd>
+<dt>casket.tkmc#cap_rec_num=10M,cap_mem_size=2Gi</dt>
+<dd>Opens the file "casket.tkmc" as a CacheDBM.  The maximum number of records is 10 million.  The total memory size to use is 2GiB.</dd>
+</dl>
+
+<p>By default, the server address is "0.0.0.0:1978", which means that the socket is bound to all network interfaces of IPv4 and IPv6 on the machine and that the port number is 1978.  To use a UNIX domain socket, specify the socket file path like "unix:/var/tkrzw_server".</p>
+
+<p>To finish the server process running on foreground, input Ctrl-C on the terminal.  If you run the server as a system service, run the process as a daemon with the "--daemon" flag.  To finish the daemon process, send a termination signal such as SIGTERM by the "kill" command.  If a daemon process catches SIGHUP, the log file is re-opened.  To send signals to the process, you have to know the process ID.  So, it's a good practice to write the process ID to a file by the "--pid" flag.  Because thr current directory of a daemon process is changed to the root directory, paths of related files should be described as their absolute paths.</p>
+
+<p>The following command starts the database service as a daemon process.  Usually, it is run by the start up script of the system.</p>
+
+<pre><code class="language-shell-session"><![CDATA[tkrzw_server --address 0.0.0.0:1978 --daemon \
+  --log_file /var/log/tkrzw_server.log \
+  --pid_file /run/tkrzw_server.pid \
+  "/var/db/casket-1.tkh#num_buckets=10M"
+]]></code></pre>
+
+<p>The following command stops the database service gracefully.  Usually, it is run by the the shutdown script of the system.</p>
+
+<pre><code class="language-shell-session"><![CDATA[if test -f /run/tkrzw_server.pid
+then
+  kill -TERM `cat /run/tkrzw_server.pid`
+fi
+]]></code></pre>
+
+<p>For log rotation, you run the following script.  Usually, it is run by a cron script invoked periodically.</p>
+
+<pre><code class="language-shell-session"><![CDATA[mv /var/log/tkrzw_server.log /var/log/tkrzw_server.log.`date "+%Y%m%d%H%M%S"`
+if test -f /run/tkrzw_server.pid
+then
+  kill -HUP `cat /run/tkrzw_server.pid`
+fi
+]]></code></pre>
 
 <h3 id="commands_tkrzw_dbm_remote_util">tkrzw_dbm_remote_util: Database Client</h3>
 
-<p>TBD</p>
+<p>tkrzw_dbm_remote_util is a client command to invoke RPCs.  Thereby, you can set records, retrieve records, remove records, and rebuild databases.  A subcommand name comes as the first argument.  Some options and other arguments can follow.</p>
+
+<dl>
+<dt><code>tkrzw_dbm_remote_util echo [<var>options</var>] [<var>message</var>]</code></dt>
+<dd>Invokes an echoing back test.</dd>
+<dt><code>tkrzw_dbm_remote_util inspect [<var>options</var>] [<var>attr</var>]</code></dt>
+<dd>Prints inspection of a database file.</dd>
+<dt><code>tkrzw_dbm_remote_util get [<var>options</var>] <var>key</var></code></dt>
+<dd>Gets a record and prints it.</dd>
+<dt><code>tkrzw_dbm_remote_util set [<var>options</var>] <var>key</var> <var>value</var></code></dt>
+<dd>Sets a record.</dd>
+<dt><code>tkrzw_dbm_remote_util remove [<var>options</var>] <var>key</var></code></dt>
+<dd>Removes a record.</dd>
+<dt><code>tkrzw_dbm_remote_util list [<var>options</var>]</code></dt>
+<dd>Lists up records and prints them.</dd>
+<dt><code>tkrzw_dbm_remote_util clear [<var>options</var>]</code></dt>
+<dd>Removes all records.</dd>
+<dt><code>tkrzw_dbm_remote_util rebuild [<var>options</var>] [<var>params</var>]</code></dt>
+<dd>Rebuilds a database file for optimization.</dd>
+<dt><code>tkrzw_dbm_remote_util sync [<var>options</var>] [<var>params</var>]</code></dt>
+<dd>Synchronizes a database file.</dd>
+</dl>
+
+<dl>
+<dt>Common options:</dt>
+<dd><code>--version</code> : Prints the version number and exits.</dd>
+<dd><code>--address</code> : The address and the port of the service (default: localhost:1978)</dd>
+<dd><code>--timeout</code> : The timeout in seconds for connection and each operation.</dd>
+<dd><code>--index</code> : The index of the DBM to access. (default: 0)</dd>
+</dl>
+
+<dl>
+<dt>Options for the set subcommand:</dt>
+<dd><code>--no_overwrite</code> : Fails if there's an existing record wit the same key.</dd>
+<dd><code>--append <var>str</var></code> : Appends the value at the end after the given delimiter.</dd>
+<dd><code>--incr <var>num</var></code> : Increments the value with the given initial value.</dd>
+</dl>
+
+<dl>
+<dt>Options for the list subcommand:</dt>
+<dd><code>--move <var>type</var></code> : Type of movement: first, jump, jumplower, jumplowerinc, jumpupper, jumpupperinc. (default: first)</dd>
+<dd><code>--jump_key <var>str</var></code> : Specifies the jump key. (default: empty string)</dd>
+<dd><code>--items <var>num</var></code> : The number of items to print.</dd>
+<dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
+</dl>
+
+<dl>
+<dt>Options for the sync subcommand:</dt>
+<dd><code>--hard</code> : Does physical synchronization with the hardware.</dd>
+</dl>
+
+
 
 <h2 id="license">License</h2>
 

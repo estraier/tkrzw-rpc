@@ -238,8 +238,8 @@ tkrzw_dbm_remote.o tkrzw_server.o tkrzw_server_impl.h : tkrzw_rpc.pb.h tkrzw_rpc
 tkrzw_rpc_build_util : tkrzw_rpc_build_util.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
-tkrzw_server : tkrzw_server.o tkrzw_server_util.o $(LIBRARYFILES)
-	$(CXX) $(CXXFLAGS) -o $@ $< tkrzw_server_util.o $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
+tkrzw_server : tkrzw_server.o $(LIBRARYFILES)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)
 
 tkrzw_dbm_remote_util : tkrzw_dbm_remote_util.o $(LIBRARYFILES)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(CMDLDFLAGS) $(CMDLIBS) $(LIBS)

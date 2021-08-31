@@ -2115,7 +2115,7 @@ MYLIBFMT=0
 # Targets
 MYHEADERFILES="tkrzw_dbm_remote.h"
 MYLIBRARYFILES="libtkrzw_rpc.a"
-MYLIBOBJFILES="tkrzw_dbm_remote.o tkrzw_rpc.pb.o tkrzw_rpc.grpc.pb.o"
+MYLIBOBJFILES="tkrzw_rpc_common.o tkrzw_dbm_remote.o tkrzw_rpc.pb.o tkrzw_rpc.grpc.pb.o"
 MYCOMMANDFILES="tkrzw_rpc_build_util tkrzw_server tkrzw_dbm_remote_util tkrzw_dbm_remote_perf"
 MYDATAFILES="tkrzw_rpc.proto"
 MYTESTFILES="tkrzw_server_test tkrzw_dbm_remote_test"

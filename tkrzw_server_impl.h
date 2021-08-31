@@ -33,6 +33,7 @@
 #include <grpcpp/server_context.h>
 
 #include "tkrzw_cmd_util.h"
+#include "tkrzw_rpc_common.h"
 #include "tkrzw_rpc.grpc.pb.h"
 #include "tkrzw_rpc.pb.h"
 
@@ -53,7 +54,16 @@ class DBMServiceImpl : public DBMService::Service {
     while (!proto_text.empty() && proto_text.back() == ' ') {
       proto_text.resize(proto_text.size() - 1);
     }
-    std::string message = StrCat(context->peer(), " [", name, "]");
+    std::string message;
+    const std::string peer = context->peer();
+    if (StrBeginsWith(peer, "ipv4:")) {
+      message += peer.substr(5) + " ";
+    } else if (StrBeginsWith(peer, "ipv6:")) {
+      message += peer.substr(5) + " ";
+    }
+    message += "[";
+    message += name;
+    message += "]";
     if (!proto_text.empty()) {
       message += " ";
       message += proto_text;
@@ -86,7 +96,7 @@ class DBMServiceImpl : public DBMService::Service {
     } else {
       auto* out_record = response->add_records();
       out_record->set_first("version");
-      out_record->set_second(_TKRPC_PKG_VERSION);
+      out_record->set_second(RPC_PACKAGE_VERSION);
       out_record = response->add_records();
       out_record->set_first("num_dbms");
       out_record->set_second(ToString(dbms_.size()));

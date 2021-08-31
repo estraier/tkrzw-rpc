@@ -1,5 +1,5 @@
 /*************************************************************************************************
- * Server utilities
+ * Common library features
  *
  * Copyright 2020 Google LLC
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
@@ -21,10 +21,36 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
+#include <grpc/impl/codegen/log.h>
+#include <grpc/impl/codegen/port_platform.h>
+
 #include "tkrzw_cmd_util.h"
-#include "tkrzw_server_util.h"
+#include "tkrzw_rpc_common.h"
 
 namespace tkrzw {
+
+const char* const RPC_PACKAGE_VERSION = _TKRPC_PKG_VERSION;;
+const char* const RPC_LIBRARY_VERSION = _TKRPC_LIB_VERSION;;
+
+static tkrzw::Logger* g_logger = nullptr;
+
+static void PrintGlobalLog(gpr_log_func_args *args) {
+  if (g_logger == nullptr) {
+    return;
+  }
+  Logger::Level log_level = Logger::DEBUG;
+  if (args->severity == GPR_LOG_SEVERITY_INFO) {
+    log_level = Logger::INFO;
+  } else if (args->severity == GPR_LOG_SEVERITY_ERROR) {
+    log_level = Logger::ERROR;
+  }
+  g_logger->LogF(log_level, "GPR: %s: %d: %s", args->file, args->line, args->message);
+}
+
+void SetGlobalLogger(tkrzw::Logger* logger) {
+  g_logger = logger;
+  gpr_set_log_function(PrintGlobalLog);
+}
 
 Status DaemonizeProcess() {
   std::cout << std::flush;
@@ -74,8 +100,6 @@ Status DaemonizeProcess() {
   }
   return Status(Status::SUCCESS);
 }
-
-
 
 }  // namespace tkrzw
 

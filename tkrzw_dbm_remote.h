@@ -194,13 +194,12 @@ class RemoteDBM final {
 
   /**
    * Connects to the server.
-   * @param host The host name of the server.
-   * @param port The port number of the server.
-   * @param timeout The timeout in seconds for connection and each operation.  Negative
-   * means unlimited.
+   * @param address The address of the server.
+   * @param timeout The timeout in seconds for connection and each operation.  Negative means
+   * unlimited.
    * @return The result status.
    */
-  Status Connect(const std::string& host, int32_t port, double timeout = -1);
+  Status Connect(const std::string& address, double timeout = -1);
 
   /**
    * Disconnects the connection to the server.
