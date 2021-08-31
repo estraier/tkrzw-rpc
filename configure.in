@@ -198,6 +198,8 @@ MYLDLIBPATH="$LD_LIBRARY_PATH"
 AC_CHECK_HEADER(stdlib.h, true, AC_MSG_ERROR([stdlib.h is required]))
 AC_CHECK_HEADER(stdint.h, true, AC_MSG_ERROR([stdint.h is required]))
 AC_CHECK_HEADER(tkrzw_langc.h, true, AC_MSG_ERROR([tkrzw_langc.h is required]))
+AC_CHECK_HEADER(tkrzw_langc.h, true, AC_MSG_ERROR([tkrzw_langc.h is required]))
+AC_CHECK_HEADER(grpc/grpc.h, true, AC_MSG_ERROR([grpc/grpc.h is required]))
 
 # Checking the version of Tkrzw with pkg-config
 if type pkg-config >config.tmp 2>&1

@@ -4345,6 +4345,22 @@ else
 fi
 
 
+ac_fn_cxx_check_header_mongrel "$LINENO" "tkrzw_langc.h" "ac_cv_header_tkrzw_langc_h" "$ac_includes_default"
+if test "x$ac_cv_header_tkrzw_langc_h" = xyes; then :
+  true
+else
+  as_fn_error $? "tkrzw_langc.h is required" "$LINENO" 5
+fi
+
+
+ac_fn_cxx_check_header_mongrel "$LINENO" "grpc/grpc.h" "ac_cv_header_grpc_grpc_h" "$ac_includes_default"
+if test "x$ac_cv_header_grpc_grpc_h" = xyes; then :
+  true
+else
+  as_fn_error $? "grpc/grpc.h is required" "$LINENO" 5
+fi
+
+
 
 # Checking the version of Tkrzw with pkg-config
 if type pkg-config >config.tmp 2>&1
