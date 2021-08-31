@@ -45,6 +45,7 @@ static void PrintUsageAndDie() {
   P("  --iter num : The number of iterations. (default: 10000)\n");
   P("  --size num : The size of each record value. (default: 8)\n");
   P("  --threads num : The number of threads. (default: 1)\n");
+  P("  --separate : Use separate instances for each thread.\n");
   P("  --random_seed num : The random seed or negative for real RNG. (default: 0)\n");
   P("\n");
   P("Options for the sequence subcommand:\n");
@@ -63,7 +64,7 @@ static void PrintUsageAndDie() {
 static int32_t ProcessSequence(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
-    {"--iter", 1}, {"--size", 1}, {"--threads", 1},
+    {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0},
     {"--random_seed", 1}, {"--random_key", 0}, {"--random_value", 0},
     {"--echo_only", 0}, {"--set_only", 0}, {"--get_only", 0},
     {"--iter_only", 0}, {"--remove_only", 0},
@@ -80,6 +81,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   const int32_t num_iterations = GetIntegerArgument(cmd_args, "--iter", 0, 10000);
   const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
   const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 1);
+  const bool with_separate = CheckMap(cmd_args, "--separate");
   const int32_t random_seed = GetIntegerArgument(cmd_args, "--random_seed", 0, 0);
   const bool is_random_key = CheckMap(cmd_args, "--random_key");
   const bool is_random_value = CheckMap(cmd_args, "--random_value");
@@ -116,6 +118,16 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   const int32_t dot_mod = std::max(num_iterations / 1000, 1);
   const int32_t fold_mod = std::max(num_iterations / 20, 1);
   auto echoing_task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
     const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
     std::mt19937 key_mt(mt_seed + id);
     std::mt19937 misc_mt(mt_seed * 2 + id + 1);
@@ -128,7 +140,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
       const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
       const std::string_view key(key_buf, key_size);
       std::string echo;
-      const Status status = dbm.Echo(key, &echo);
+      const Status status = task_dbm->Echo(key, &echo);
       if (status != Status::SUCCESS) {
         EPrintL("Echo failed: ", status);
         has_error = true;
@@ -168,6 +180,16 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     PrintL();
   }
   auto setting_task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
     const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
     std::mt19937 key_mt(mt_seed + id);
     std::mt19937 misc_mt(mt_seed * 2 + id + 1);
@@ -183,7 +205,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
       const std::string_view key(key_buf, key_size);
       const std::string_view value(
           value_buf, is_random_value ? value_size_dist(misc_mt) : value_size);
-      const Status status = dbm.Set(key, value);
+      const Status status = task_dbm->Set(key, value);
       if (status != Status::SUCCESS) {
         EPrintL("Set failed: ", status);
         has_error = true;
@@ -224,6 +246,16 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     PrintL();
   }
   auto getting_task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
     const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
     std::mt19937 key_mt(mt_seed + id);
     std::uniform_int_distribution<int32_t> key_num_dist(0, num_iterations * num_threads - 1);
@@ -235,7 +267,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
       const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
       const std::string_view key(key_buf, key_size);
       std::string value;
-      const Status status = dbm.Get(key, &value);
+      const Status status = task_dbm->Get(key, &value);
       if (status != Status::SUCCESS &&
           !(is_random_key && random_seed < 0 && status == Status::NOT_FOUND_ERROR)) {
         EPrintL("Get failed: ", status);
@@ -276,6 +308,16 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     PrintL();
   }
   auto iterating_task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
     const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
     std::mt19937 key_mt(mt_seed + id);
     std::uniform_int_distribution<int32_t> key_num_dist(0, num_iterations * num_threads - 1);
@@ -285,7 +327,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     std::unique_ptr<tkrzw::RemoteDBM::Iterator> iter;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
       if (i % 100 == 0) {
-        iter = dbm.MakeIterator();
+        iter = task_dbm->MakeIterator();
       }
       const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
       const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
@@ -339,6 +381,16 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     PrintL();
   }
   auto removing_task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
     const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
     std::mt19937 key_mt(mt_seed + id);
     std::uniform_int_distribution<int32_t> key_num_dist(0, num_iterations * num_threads - 1);
@@ -349,7 +401,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
       const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
       const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
       const std::string_view key(key_buf, key_size);
-      const Status status = dbm.Remove(key);
+      const Status status = task_dbm->Remove(key);
       if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
         EPrintL("Remove failed: ", status);
         has_error = true;
@@ -395,7 +447,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
 static int32_t ProcessWicked(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
-    {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--random_seed", 1},
+    {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0}, {"--random_seed", 1},
     {"--iterator", 0}, {"--sync", 0}, {"--clear", 0}, {"--rebuild", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
@@ -410,6 +462,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   const int32_t num_iterations = GetIntegerArgument(cmd_args, "--iter", 0, 10000);
   const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
   const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 1);
+  const bool with_separate = CheckMap(cmd_args, "--separate");
   const int32_t random_seed = GetIntegerArgument(cmd_args, "--random_seed", 0, 0);
   const bool with_iterator = CheckMap(cmd_args, "--iterator");
   const bool with_sync = CheckMap(cmd_args, "--sync");
@@ -435,6 +488,16 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   const int32_t dot_mod = std::max(num_iterations / 1000, 1);
   const int32_t fold_mod = std::max(num_iterations / 20, 1);
   auto task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
     const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
     std::mt19937 key_mt(mt_seed + id);
     std::mt19937 misc_mt(mt_seed * 2 + id + 1);
@@ -449,28 +512,28 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
       const std::string& key = SPrintF("%08d", key_num);
       std::string_view value(value_buf, value_size_dist(misc_mt));
       if (with_rebuild && op_dist(misc_mt) % (num_iterations / 2) == 0) {
-        const Status status = dbm.Rebuild();
+        const Status status = task_dbm->Rebuild();
         if (status != Status::SUCCESS) {
           EPrintL("Rebuild failed: ", status);
           has_error = true;
           break;
         }
       } else if (with_clear && op_dist(misc_mt) % (num_iterations / 2) == 0) {
-        const Status status = dbm.Clear();
+        const Status status = task_dbm->Clear();
         if (status != Status::SUCCESS) {
           EPrintL("Clear failed: ", status);
           has_error = true;
           break;
         }
       } else if (with_sync && op_dist(misc_mt) % (num_iterations / 2) == 0) {
-        const Status status = dbm.Synchronize(false);
+        const Status status = task_dbm->Synchronize(false);
         if (status != Status::SUCCESS) {
           EPrintL("Synchronize failed: ", status);
           has_error = true;
           break;
         }
       } else if (with_iterator && op_dist(misc_mt) % 100 == 0) {
-        auto iter = dbm.MakeIterator();
+        auto iter = task_dbm->MakeIterator();
         if (op_dist(misc_mt) % 2 == 0) {
           const Status status = iter->First();
           if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
@@ -526,14 +589,14 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
           }
         }
       } else if (op_dist(misc_mt) % 8 == 0) {
-        const Status status = dbm.Append(key, value, ",");
+        const Status status = task_dbm->Append(key, value, ",");
         if (status != Status::SUCCESS) {
           EPrintL("Append failed: ", status);
           has_error = true;
           break;
         }
       } else if (op_dist(misc_mt) % 5 == 0) {
-        const Status status = dbm.Remove(key);
+        const Status status = task_dbm->Remove(key);
         if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
           EPrintL("Remove failed: ", status);
           has_error = true;
@@ -541,7 +604,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
         }
       } else if (op_dist(misc_mt) % 3 == 0) {
         const bool overwrite = op_dist(misc_mt) % 3 != 0;
-        const Status status = dbm.Set(key, value, overwrite);
+        const Status status = task_dbm->Set(key, value, overwrite);
         if (status != Status::SUCCESS && status != Status::DUPLICATION_ERROR) {
           EPrintL("Set failed: ", status);
           has_error = true;
@@ -549,7 +612,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
         }
       } else {
         std::string rec_value;
-        const Status status = dbm.Get(key, &rec_value);
+        const Status status = task_dbm->Get(key, &rec_value);
         if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
           EPrintL("Get failed: ", status);
           has_error = true;
@@ -557,7 +620,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
         }
       }
       if (id == 0 && i == num_iterations / 2) {
-        const Status status = dbm.Synchronize(false);
+        const Status status = task_dbm->Synchronize(false);
         if (status != Status::SUCCESS) {
           EPrintL("Synchronize failed: ", status);
           has_error = true;
@@ -580,7 +643,6 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   };
   PrintF("Doing: num_iterations=%d value_size=%d num_threads=%d\n",
          num_iterations, value_size, num_threads);
-  const double start_time = GetWallTime();
   std::vector<std::thread> threads;
   for (int32_t i = 0; i < num_threads; i++) {
     threads.emplace_back(std::thread(task, i));

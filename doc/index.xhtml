@@ -82,7 +82,6 @@ window.onload = function(){
 <li><strong><a href="https://dbmx.net/tkrzw/#tinydbm_overview">TinyDBM</a></strong> : On-memory database manager implementation based on hash table.</li>
 <li><strong><a href="https://dbmx.net/tkrzw/#babydbm_overview">BabyDBM</a></strong> : On-memory database manager implementation based on B+ tree.</li>
 <li><strong><a href="https://dbmx.net/tkrzw/#cachedbm_overview">CacheDBM</a></strong> : On-memory database manager implementation with LRU deletion.</li>
-<li><strong><a href="https://dbmx.net/tkrzw/#stddbm_overview">Std(Hash|Tree)DBM</a></strong> : On-memory DBM implementations using std::unordered_map and std::map.</li>
 </ul>
 
 <p>The library of Tkrzw-RPC is a C++ library to access the database service via gRPC protocol.  Thus, you can easily write application programs in C++.  Moreover, gRPC automates to generate client interfaces in various languages, based on the service definition in the protocol buffers <a href="https://github.com/estraier/tkrzw-rpc/blob/master/tkrzw_rpc.proto">tkrzw_rpc.proto</a>.  Tkrzw-RPC also provides command line utilities to access the database service.</p>
@@ -422,7 +421,60 @@ fi
 <dd><code>--hard</code> : Does physical synchronization with the hardware.</dd>
 </dl>
 
+<p>The following is a sample usage to make a remove database to associate country names to their capital cities' names.  If the extension of the file is "tkh", the type of the database is regarded as HashDBM.</p>
 
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util clear
+$ tkrzw_dbm_remote_util set Japan Tokyo
+$ tkrzw_dbm_remote_util set Korea Seoul
+$ tkrzw_dbm_remote_util set China Beijing
+$ tkrzw_dbm_remote_util get Japan
+Tokyo
+$ tkrzw_dbm_remote_util remove Japan
+$ tkrzw_dbm_remote_util rebuild "num_buckets=100"
+$ tkrzw_dbm_remote_util sync --hard
+$ tkrzw_dbm_remote_util list
+China  Beijing
+Korea  Seoul
+]]></code></pre>
+
+<h3 id="commands_tkrzw_dbm_remote_perf">tkrzw_dbm_remote_perf: Performance Checker</h3>
+
+<p>tkrzw_dbm_remote_perf is a command for checking performance of RPC invodation.  Thereby, you can check performance of remote database operations in various scenarios including multithreading.  A subcommand name comes as the first argument.  Some options and other arguments can follow.</p>
+
+<dl>
+<dt><code>tkrzw_dbm_remote_perf sequence [<var>options</var>]</code></dt>
+<dd>Checks echoing/setting/getting/removing performance in sequence.</dd>
+<dt><code>tkrzw_dbm_remote_perf wicked [<var>options</var>]</code></dt>
+<dd>Checks consistency with various operations.</dd>
+</dl>
+
+<dl>
+<dt>Common options:</dt>
+<dd><code>--address</code> : The address and the port of the service (default: localhost:1978)</dd>
+<dd><code>--timeout</code> : The timeout in seconds for connection and each operation.</dd>
+<dd><code>--index</code> : The index of the DBM to access. (default: 0)</dd>
+<dd><code>--iter <var>num</var></code> : The number of iterations. (default: 10000)</dd>
+<dd><code>--size <var>num</var></code> : The size of each record value. (default: 8)</dd>
+<dd><code>--threads <var>num</var></code> : The number of threads. (default: 1)</dd>
+<dd><code>--separate</code> : Use separate instances for each thread.</dd>
+<dd><code>--random_seed <var>num</var></code> : The random seed or negative for real RNG. (default: 0)</dd>
+</dl>
+
+<dl>
+<dt>Options for the sequence subcommand:</dt>
+<dd><code>--random_key</code> : Uses random keys rather than sequential ones.</dd>
+<dd><code>--random_value</code> : Uses random length values rather than fixed ones.</dd>
+<dd><code>--echo_only</code> : Does only echoing.</dd>
+<dd><code>--set_only</code> : Does only setting.</dd>
+<dd><code>--get_only</code> : Does only getting.</dd>
+<dd><code>--iter_only</code> : Does only iterating.</dd>
+<dd><code>--remove_only</code> : Does only removing.</dd>
+</dl>
+
+<p>The following is a sample usage to echo back 1 million messages, to store 1 million records of 8-byte keys and 8-byte values, to retrieve all of them, and to remove all of them in sequence.  The number of threads is 10 and each thread does 100 thousand operations.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_perf sequence --iter 100k --threads 10
+]]></code></pre>
 
 <h2 id="license">License</h2>
 
