@@ -48,18 +48,39 @@ h2:hover a.headanc, h3:hover a.headanc {
   font-size: 10pt;
   vertical-align: super;
 }
+#toc_div { zoom: 85%; }
+.toc_line_h2 { margin-left: 2ex; }
+.toc_line_h3 { margin-left: 5ex; }
 /*]]>*/</style>
 <script type="text/javascript">/*<![CDATA[*/
-window.onload = function(){
-  for (let tag of ['h2', 'h3']) {
-    for (let header of document.getElementsByTagName(tag)) {
-      let anchor = document.createElement('a');
-      anchor.textContent = "#"
-      anchor.href = "#" + header.id;
-      anchor.className = "headanc";
-      header.appendChild(anchor);
+function insert_toc() {
+  let first_head = document.querySelector("h2, h3");
+  let toc_div = document.createElement('div');
+  toc_div.id = "toc_div";
+  let toc_head = document.createElement('h2');
+  toc_head.textContent = "Table of Contents";
+  toc_head.id = "toc";
+  toc_div.appendChild(toc_head);
+  first_head.parentNode.insertBefore(toc_div, first_head);
+  for (let header of document.querySelectorAll("h2, h3")) {
+    if (header != toc_head) {
+      let toc_line = document.createElement('div');
+      toc_line.className = "toc_line_" + header.tagName;
+      let toc_anchor = document.createElement('a');
+      toc_anchor.href = "#" + header.id;
+      toc_anchor.textContent = header.textContent
+      toc_line.appendChild(toc_anchor);
+      toc_div.appendChild(toc_line);
     }
+    let anchor = document.createElement('a');
+    anchor.textContent = "#"
+    anchor.href = "#" + header.id;
+    anchor.className = "headanc";
+    header.appendChild(anchor);
   }
+}
+window.onload = function(){
+  insert_toc();
 }
 /*]]>*/</script>
 </head>
@@ -84,13 +105,29 @@ window.onload = function(){
 <li><strong><a href="https://dbmx.net/tkrzw/#cachedbm_overview">CacheDBM</a></strong> : On-memory database manager implementation with LRU deletion.</li>
 </ul>
 
-<p>The library of Tkrzw-RPC is a C++ library to access the database service via gRPC protocol.  Thus, you can easily write application programs in C++.  Moreover, gRPC automates to generate client interfaces in various languages, based on the service definition in the protocol buffers <a href="https://github.com/estraier/tkrzw-rpc/blob/master/tkrzw_rpc.proto">tkrzw_rpc.proto</a>.  Tkrzw-RPC also provides command line utilities to access the database service.</p>
+<p>The library of Tkrzw-RPC is a C++ library to access the database service via gRPC protocol.  Thus, you can easily write application programs in C++.  You use the class <a href="#remotedbm_overview">RemoteDBM</a> whose API is very similar to the PolyDBM class so that you can use it as if you operates local databases.  Moreover, gRPC automates to generate client interfaces in various languages, based on the service definition in the protocol buffers <a href="https://github.com/estraier/tkrzw-rpc/blob/master/tkrzw_rpc.proto">tkrzw_rpc.proto</a>.  Tkrzw-RPC also provides command line utilities to access the database service.</p>
+
+<h2 id="download">Download</h2>
+
+<p>You can download source packages in the following directories.</p>
+
+<ul>
+<li><a href="http://dbmx.net/tkrzw-rpc/pkg/">C++ source packages</a></li>
+</ul>
+
+<h2 id="api_documents">API Documents</h2>
+
+<p>The following are API documents for each language.</p>
+
+<ul>
+<li><a href="http://dbmx.net/tkrzw-rpc/api/">C++ API documents</a></li>
+</ul>
 
 <h2 id="installation">Installation</h2>
 
 <p>Tkrzw-RPC is implemented based on the C++17 standard and POSIX API.  It works on Unix-like systems (Linux, FreeBSD, and Mac OS X), and GCC (version 7.3 or later) is required to build programs.</p>
 
-<p>Download the latest version of the source packages in <a href="https://dbmx.net/tkrzw-rpc/pkg/">this directory</a>.  The core library of <a href="https://grpc.io/">gRPC</a> is also required so install it beforehand.</p>
+<p>Download the latest version of the source packages.  The core library of <a href="https://grpc.io/">gRPC</a> is also required so install it beforehand.</p>
 
 <p>To build the server and the library, usually, you will run the following commands.  If you have installed Tkrzw and gRPC into another location than "/usr/local", specify the prefix by the "--with-extra" of "./configure", such as "--with-extra=/opt/homebrew".</p>
 
@@ -474,6 +511,142 @@ Korea  Seoul
 <p>The following is a sample usage to echo back 1 million messages, to store 1 million records of 8-byte keys and 8-byte values, to retrieve all of them, and to remove all of them in sequence.  The number of threads is 10 and each thread does 100 thousand operations.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_perf sequence --iter 100k --threads 10
+]]></code></pre>
+
+<h2 id="remotedbm_overview">RemoteDBM: The Remote Database</h2>
+
+<p>The remote database is an interface to access the database service of Tkrzw-RPC.  It encapsulates the existence of the network layer so that you can use the features as if you operate local databases.  RemoteDBM is thread-safe so multiple threads can share the same instance, which saves the number of connections.</p>
+
+<h3 id="hashdbm_example">Example Code</h3>
+
+<p>This is a code example where basic operations are done without checking errors.</p>
+
+<pre><code class="language-cpp"><![CDATA[#include "tkrzw_dbm_remote.h"
+
+// Main routine.
+int main(int argc, char** argv) {
+  // All symbols of Tkrzw are under the namespace "tkrzw".
+  using namespace tkrzw;
+
+  // Creates the database manager.
+  RemoteDBM dbm;
+
+  // Connects to the database service.
+  dbm.Connect("localhost", 1978);
+  
+  // Stores records.
+  dbm.Set("foo", "hop");
+  dbm.Set("bar", "step");
+  dbm.Set("baz", "jump");
+
+  // Retrieves records.
+  std::cout << dbm.GetSimple("foo", "*") << std::endl;
+  std::cout << dbm.GetSimple("bar", "*") << std::endl;
+  std::cout << dbm.GetSimple("baz", "*") << std::endl;
+  std::cout << dbm.GetSimple("outlier", "*") << std::endl;
+
+  // Traverses records.
+  std::unique_ptr<RemoteDBM::Iterator> iter = dbm.MakeIterator();
+  iter->First();
+  std::string key, value;
+  while (iter->Get(&key, &value) == Status::SUCCESS) {
+    std::cout << key << ":" << value << std::endl;
+    iter->Next();
+  }
+  
+  // Disconnects the connection.
+  dbm.Disconnect();
+
+  return 0;
+}
+]]></code></pre>
+
+<p>This is a code example which represents a more serious use case with thorough error checks.</p>
+
+<pre><code class="language-cpp"><![CDATA[#include "tkrzw_cmd_util.h"
+#include "tkrzw_dbm_remote.h"
+
+// Main routine.
+int main(int argc, char** argv) {
+  // All symbols of Tkrzw are under the namespace "tkrzw".
+  using namespace tkrzw;
+
+  // Creates the database manager.
+  RemoteDBM dbm;
+
+  // Connects to the database service.
+  // The timeout is set to 1.5 seconds.
+  Status status = dbm.Connect("localhost", 1978, 1.5);
+  if (status != Status::SUCCESS) {
+    // Failure of the Connect operation is critical so we stop.
+    Die("Connect failed: ", status);
+  }
+
+  // Stores records.
+  // Bit-or assignment to the status updates the status if the original
+  // state is SUCCESS and the new state is an error.
+  status |= dbm.Set("foo", "hop");
+  status |= dbm.Set("bar", "step");
+  status |= dbm.Set("baz", "jump");
+  if (status != Status::SUCCESS) {
+    // The Set operation shouldn't fail.  So we stop if it happens.
+    Die("Set failed: ", status);
+  }
+
+  // Retrieves records.
+  // If there was no record, NOT_FOUND_ERROR would be returned.
+  std::string value;
+  status = dbm.Get("foo", &value);
+  if (status == Status::SUCCESS) {
+    std::cout << value << std::endl;
+  } else {
+    std::cerr << "missing: " << status << std::endl;
+  }
+
+  // Traverses records.
+  std::unique_ptr<RemoteDBM::Iterator> iter = dbm.MakeIterator();
+  if (iter->First() != Status::SUCCESS) {
+    // Failure of the First operation is critical so we stop.
+    Die("First failed: ", status);
+  }
+  while (true) {
+    // Retrieves the current record data.
+    std::string iter_key, iter_value;
+    status = iter->Get(&iter_key, &iter_value);
+    if (status == Status::SUCCESS) {
+      std::cout << iter_key << ":" << iter_value << std::endl;
+    } else {
+      // This happens at the end of iteration.
+      if (status != Status::NOT_FOUND_ERROR) {
+        // Error types other than NOT_FOUND_ERROR are critical.
+        Die("Iterator::Get failed: ", status);
+      }
+      break;
+    }
+    // Moves the iterator to the next record.
+    status = iter->Next();
+    if (status != Status::SUCCESS) {
+      // This could happen if another thread removed the current record.
+      if (status != Status::NOT_FOUND_ERROR) {
+        // Error types other than NOT_FOUND_ERROR are critical.
+        Die("Iterator::Get failed: ", status);
+      }
+      std::cerr << "missing: " << status << std::endl;
+      break;
+    }
+  }
+  
+  // Disconnects the connection.
+  // Even if you forgot to disconnect it, the destructor would do it.
+  // However, checking the status is a good manner.
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    // The Disconnect operation shouldn't fail.  So we stop if it happens.
+    Die("Disconnect failed: ", status);
+  }
+
+  return 0;
+}
 ]]></code></pre>
 
 <h2 id="license">License</h2>
