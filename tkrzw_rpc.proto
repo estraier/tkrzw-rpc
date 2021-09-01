@@ -130,6 +130,28 @@ message AppendResponse {
   StatusProto status = 1;
 }
 
+// Request of the CompareExchange method.
+message CompareExchangeRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The key of the record.
+  bytes key = 2;
+  // Whether the record is expected to exist.
+  bool expected_existence = 3;
+  // The expected value.
+  bytes expected_value = 4;
+  // Whether the record is desired to exists.
+  bool desired_existence = 5;
+  // The desired value.
+  bytes desired_value = 6;
+}
+
+// Response of the CompareExchange method.
+message CompareExchangeResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
 // Request of the Increment method.
 message IncrementRequest {
   // The index of the DBM object.  The origin is 0.
@@ -294,6 +316,7 @@ service DBMService {
   rpc Get(GetRequest) returns (GetResponse);
   rpc Set(SetRequest) returns (SetResponse);
   rpc Append(AppendRequest) returns (AppendResponse);
+  rpc CompareExchange(CompareExchangeRequest) returns (CompareExchangeResponse);
   rpc Increment(IncrementRequest) returns (IncrementResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
   rpc Count(CountRequest) returns (CountResponse);

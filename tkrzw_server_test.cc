@@ -170,6 +170,26 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(0, response.status().code());
     EXPECT_EQ(0, dbms[0]->CountSimple());
   }
+
+  {
+    tkrzw::CompareExchangeRequest request;
+    request.set_key("one");
+    request.set_desired_existence(true);
+    request.set_desired_value("ichi");
+    tkrzw::CompareExchangeResponse response;
+    grpc::Status status = server.CompareExchange(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ("ichi", dbms[0]->GetSimple("one"));
+    request.set_expected_existence(true);
+    request.set_expected_value("ichi");
+    request.set_desired_existence(false);
+    request.clear_desired_value();
+    status = server.CompareExchange(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ("*", dbms[0]->GetSimple("one", "*"));
+  }
   {
     tkrzw::IncrementRequest request;
     request.set_key("num");

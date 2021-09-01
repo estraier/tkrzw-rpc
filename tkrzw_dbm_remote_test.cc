@@ -147,6 +147,22 @@ TEST_F(RemoteDBMTest, Append) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Append("key", "value", ":"));
 }
 
+TEST_F(RemoteDBMTest, CompareExchange) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::CompareExchangeRequest request;
+  request.set_key("key");
+  request.set_expected_existence(true);
+  request.set_expected_value("expected");
+  request.set_desired_existence(true);
+  request.set_desired_value("desired");
+  tkrzw::CompareExchangeResponse response;
+  EXPECT_CALL(*stub, CompareExchange(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.CompareExchange("key", "expected", "desired"));
+}
+
 TEST_F(RemoteDBMTest, Increment) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::IncrementRequest request;

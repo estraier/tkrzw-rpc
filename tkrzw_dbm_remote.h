@@ -194,7 +194,9 @@ class RemoteDBM final {
 
   /**
    * Connects to the server.
-   * @param address The address of the server.
+   * @param address The address or the host name of the server and its port number.  For IPv4
+   * address, it's like "127.0.0.1:1978".  For IPv6, it's like "[::1]:1978".  For UNIX domain
+   * sockets, it's like "unix:/path/to/file".
    * @param timeout The timeout in seconds for connection and each operation.  Negative means
    * unlimited.
    * @return The result status.
@@ -277,6 +279,16 @@ class RemoteDBM final {
    * @details If there's no existing record, the value is set without the delimiter.
    */
   Status Append(std::string_view key, std::string_view value, std::string_view delim = "");
+
+  /**
+   * Compares the value of a record and exchanges if the condition meets.
+   * @param key The key of the record.
+   * @param expected The expected value.  If the data is nullptr, no existing record is expected.
+   * @param desired The desired value.  If the data is nullptr, the record is to be removed.
+   * @return The result status.  If the condition doesn't meet, INFEASIBLE_ERROR is returned.
+   */
+  Status CompareExchange(std::string_view key, std::string_view expected,
+                         std::string_view desired);
 
   /**
    * Increments the numeric value of a record.

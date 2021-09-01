@@ -80,6 +80,8 @@ class RemoteDBMImpl final {
   Status Set(std::string_view key, std::string_view value, bool overwrite);
   Status Remove(std::string_view key);
   Status Append(std::string_view key, std::string_view value, std::string_view delim);
+  Status CompareExchange(std::string_view key, std::string_view expected,
+                         std::string_view desired);
   Status Increment(std::string_view key, int64_t increment, int64_t* current, int64_t initial);
   Status Count(int64_t* count);
   Status GetFileSize(int64_t* file_size);
@@ -298,6 +300,34 @@ Status RemoteDBMImpl::Append(
   request.set_delim(delim.data(), delim.size());
   AppendResponse response;
   grpc::Status status = stub_->Append(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMImpl::CompareExchange(std::string_view key, std::string_view expected,
+                                      std::string_view desired) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+  CompareExchangeRequest request;
+  request.set_dbm_index(dbm_index_);
+  request.set_key(key.data(), key.size());
+  if (expected.data() != nullptr) {
+    request.set_expected_existence(true);
+    request.set_expected_value(std::string(expected));
+  }
+  if (desired.data() != nullptr) {
+    request.set_desired_existence(true);
+    request.set_desired_value(std::string(desired));
+  }
+  CompareExchangeResponse response;
+  grpc::Status status = stub_->CompareExchange(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
   }
@@ -739,6 +769,11 @@ Status RemoteDBM::Remove(std::string_view key) {
 
 Status RemoteDBM::Append(std::string_view key, std::string_view value, std::string_view delim) {
   return impl_->Append(key, value, delim);
+}
+
+Status RemoteDBM::CompareExchange(std::string_view key, std::string_view expected,
+                                  std::string_view desired) {
+  return impl_->CompareExchange(key, expected, desired);
 }
 
 Status RemoteDBM::Increment(

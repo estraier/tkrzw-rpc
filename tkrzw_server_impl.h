@@ -188,6 +188,28 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
+  grpc::Status CompareExchange(
+      grpc::ServerContext* context, const CompareExchangeRequest* request,
+      CompareExchangeResponse* response) override {
+    LogRequest(context, "CompareExchange", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::string_view expected;
+    if (request->expected_existence()) {
+      expected = request->expected_value();
+    }
+    std::string_view desired;
+    if (request->desired_existence()) {
+      desired = request->desired_value();
+    }
+    const Status status = dbm.CompareExchange(request->key(), expected, desired);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
   grpc::Status Increment(
       grpc::ServerContext* context, const IncrementRequest* request,
       IncrementResponse* response) override {
