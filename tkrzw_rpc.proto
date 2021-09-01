@@ -37,6 +37,16 @@ message BytesPair {
   bytes second = 2;
 }
 
+// Record existence and value.
+message RecordState {
+  // Whether the record exists.
+  bool existence = 1;
+  // The key.
+  bytes key = 2;
+  // The value.
+  bytes value = 3;
+}
+
 // Request of the Echo method.
 message EchoRequest {
   // The message.
@@ -80,6 +90,22 @@ message GetResponse {
   bytes value = 2;
 }
 
+// Request of the GetMulti method.
+message GetMultiRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The keys of records.
+  repeated bytes keys = 2;
+}
+
+// Response of the GetMulti method.
+message GetMultiResponse {
+  // The result status.
+  StatusProto status = 1;
+  // Retrieved records.
+  repeated BytesPair records = 2;
+}
+
 // Request of the Set method.
 message SetRequest {
   // The index of the DBM object.  The origin is 0.
@@ -98,6 +124,22 @@ message SetResponse {
   StatusProto status = 1;
 }
 
+// Request of the SetMulti method.
+message SetMultiRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // Records to store.
+  repeated BytesPair records = 2;
+  // True to overwrite the existing record.
+  bool overwrite = 3;
+}
+
+// Response of the SetMulti method.
+message SetMultiResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
 // Request of the Remove method.
 message RemoveRequest {
   // The index of the DBM object.  The origin is 0.
@@ -108,6 +150,20 @@ message RemoveRequest {
 
 // Response of the Remove method.
 message RemoveResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
+// Request of the RemoveMulti method.
+message RemoveMultiRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The keys of records.
+  repeated bytes keys = 2;
+}
+
+// Response of the RemoveMulti method.
+message RemoveMultiResponse {
   // The result status.
   StatusProto status = 1;
 }
@@ -126,6 +182,22 @@ message AppendRequest {
 
 // Response of the Append method.
 message AppendResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
+// Request of the AppendMulti method.
+message AppendMultiRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // Records to store.
+  repeated BytesPair records = 2;
+  // The delimiter to put after the existing record.
+  bytes delim = 3;
+}
+
+// Response of the AppendMulti method.
+message AppendMultiResponse {
   // The result status.
   StatusProto status = 1;
 }
@@ -170,6 +242,22 @@ message IncrementResponse {
   StatusProto status = 1;
   // The current value.
   int64 current = 2;
+}
+
+// Request of the CompareExchangeMulti method.
+message CompareExchangeMultiRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // Expected record states.
+  repeated RecordState expected = 2;
+  // Desired record states.
+  repeated RecordState desired = 3;
+}
+
+// Response of the CompareExchangeMulti method.
+message CompareExchangeMultiResponse {
+  // The result status.
+  StatusProto status = 1;
 }
 
 // Request of the Count method.
@@ -314,10 +402,14 @@ service DBMService {
   rpc Echo(EchoRequest) returns (EchoResponse);
   rpc Inspect(InspectRequest) returns (InspectResponse);
   rpc Get(GetRequest) returns (GetResponse);
+  rpc GetMulti(GetMultiRequest) returns (GetMultiResponse);
   rpc Set(SetRequest) returns (SetResponse);
+  rpc SetMulti(SetMultiRequest) returns (SetMultiResponse);
   rpc Append(AppendRequest) returns (AppendResponse);
+  rpc AppendMulti(AppendRequest) returns (AppendMultiResponse);
   rpc CompareExchange(CompareExchangeRequest) returns (CompareExchangeResponse);
   rpc Increment(IncrementRequest) returns (IncrementResponse);
+  rpc CompareExchangeMulti(CompareExchangeMultiRequest) returns (CompareExchangeMultiResponse);
   rpc Remove(RemoveRequest) returns (RemoveResponse);
   rpc Count(CountRequest) returns (CountResponse);
   rpc GetFileSize(GetFileSizeRequest) returns (GetFileSizeResponse);

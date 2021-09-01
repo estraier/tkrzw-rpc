@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
   RemoteDBM dbm;
 
   // Connects to the database service.
-  dbm.Connect("localhost", 1978);
+  dbm.Connect("localhost:1978");
   
   // Stores records.
   dbm.Set("foo", "hop");

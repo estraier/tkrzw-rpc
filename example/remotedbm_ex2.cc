@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
 
   // Connects to the database service.
   // The timeout is set to 1.5 seconds.
-  Status status = dbm.Connect("localhost", 1978, 1.5);
+  Status status = dbm.Connect("localhost:1978", 1.5);
   if (status != Status::SUCCESS) {
     // Failure of the Connect operation is critical so we stop.
     Die("Connect failed: ", status);

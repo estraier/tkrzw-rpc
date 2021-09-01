@@ -77,12 +77,22 @@ class RemoteDBMImpl final {
   Status Echo(std::string_view message, std::string* echo);
   Status Inspect(std::vector<std::pair<std::string, std::string>>* records);
   Status Get(std::string_view key, std::string* value);
+  Status GetMulti(
+      const std::vector<std::string_view>& keys, std::map<std::string, std::string>* records);
   Status Set(std::string_view key, std::string_view value, bool overwrite);
+  Status SetMulti(
+      const std::map<std::string_view, std::string_view>& records, bool overwrite);
   Status Remove(std::string_view key);
+  Status RemoveMulti(const std::vector<std::string_view>& keys);
   Status Append(std::string_view key, std::string_view value, std::string_view delim);
+  Status AppendMulti(
+      const std::map<std::string_view, std::string_view>& records, std::string_view delim);
   Status CompareExchange(std::string_view key, std::string_view expected,
                          std::string_view desired);
   Status Increment(std::string_view key, int64_t increment, int64_t* current, int64_t initial);
+  Status CompareExchangeMulti(
+      const std::vector<std::pair<std::string_view, std::string_view>>& expected,
+      const std::vector<std::pair<std::string_view, std::string_view>>& desired);
   Status Count(int64_t* count);
   Status GetFileSize(int64_t* file_size);
   Status Clear();
@@ -244,6 +254,19 @@ Status RemoteDBMImpl::Get(std::string_view key, std::string* value) {
   return MakeStatusFromProto(response.status());
 }
 
+Status RemoteDBMImpl::GetMulti(
+    const std::vector<std::string_view>& keys, std::map<std::string, std::string>* records) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+
+  return Status(Status::SUCCESS);
+}
+
 Status RemoteDBMImpl::Set(std::string_view key, std::string_view value, bool overwrite) {
   std::shared_lock<SpinSharedMutex> lock(mutex_);
   if (stub_ == nullptr) {
@@ -265,6 +288,22 @@ Status RemoteDBMImpl::Set(std::string_view key, std::string_view value, bool ove
   return MakeStatusFromProto(response.status());
 }
 
+Status RemoteDBMImpl::SetMulti(
+    const std::map<std::string_view, std::string_view>& records, bool overwrite) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+
+
+
+  return Status(Status::SUCCESS);
+}
+
+
 Status RemoteDBMImpl::Remove(std::string_view key) {
   std::shared_lock<SpinSharedMutex> lock(mutex_);
   if (stub_ == nullptr) {
@@ -282,6 +321,20 @@ Status RemoteDBMImpl::Remove(std::string_view key) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
   }
   return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMImpl::RemoveMulti(const std::vector<std::string_view>& keys) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+
+
+
+  return Status(Status::SUCCESS);
 }
 
 Status RemoteDBMImpl::Append(
@@ -304,6 +357,21 @@ Status RemoteDBMImpl::Append(
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
   }
   return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMImpl::AppendMulti(
+    const std::map<std::string_view, std::string_view>& records, std::string_view delim) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+
+
+
+  return Status(Status::SUCCESS);
 }
 
 Status RemoteDBMImpl::CompareExchange(std::string_view key, std::string_view expected,
@@ -357,6 +425,22 @@ Status RemoteDBMImpl::Increment(
     *current = response.current();
   }
   return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMImpl::CompareExchangeMulti(
+    const std::vector<std::pair<std::string_view, std::string_view>>& expected,
+    const std::vector<std::pair<std::string_view, std::string_view>>& desired) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+
+
+
+  return Status(Status::SUCCESS);
 }
 
 Status RemoteDBMImpl::Count(int64_t* count) {
@@ -759,16 +843,35 @@ Status RemoteDBM::Get(std::string_view key, std::string* value) {
   return impl_->Get(key, value);
 }
 
+Status RemoteDBM::GetMulti(
+    const std::vector<std::string_view>& keys, std::map<std::string, std::string>* records) {
+  return impl_->GetMulti(keys, records);
+}
+
 Status RemoteDBM::Set(std::string_view key, std::string_view value, bool overwrite) {
   return impl_->Set(key, value, overwrite);
+}
+
+Status RemoteDBM::SetMulti(
+    const std::map<std::string_view, std::string_view>& records, bool overwrite) {
+  return impl_->SetMulti(records, overwrite);
 }
 
 Status RemoteDBM::Remove(std::string_view key) {
   return impl_->Remove(key);
 }
 
+Status RemoteDBM::RemoveMulti(const std::vector<std::string_view>& keys) {
+  return impl_->RemoveMulti(keys);
+}
+
 Status RemoteDBM::Append(std::string_view key, std::string_view value, std::string_view delim) {
   return impl_->Append(key, value, delim);
+}
+
+Status RemoteDBM::AppendMulti(
+    const std::map<std::string_view, std::string_view>& records, std::string_view delim) {
+  return impl_->AppendMulti(records, delim);
 }
 
 Status RemoteDBM::CompareExchange(std::string_view key, std::string_view expected,
@@ -779,6 +882,12 @@ Status RemoteDBM::CompareExchange(std::string_view key, std::string_view expecte
 Status RemoteDBM::Increment(
     std::string_view key, int64_t increment, int64_t* current, int64_t initial) {
   return impl_->Increment(key, increment, current, initial);
+}
+
+Status RemoteDBM::CompareExchangeMulti(
+    const std::vector<std::pair<std::string_view, std::string_view>>& expected,
+    const std::vector<std::pair<std::string_view, std::string_view>>& desired) {
+  return impl_->CompareExchangeMulti(expected, desired);
 }
 
 Status RemoteDBM::Count(int64_t* count) {

@@ -291,7 +291,11 @@ class DBMServiceImpl : public DBMService::Service {
     for (const auto& param : request->params()) {
       params.emplace(std::make_pair(param.first(), param.second()));
     }
+    logger_->LogCat(Logger::INFO, "Rebuilding the database");
     const Status status = dbm.RebuildAdvanced(params);
+    if (status != Status::SUCCESS) {
+      logger_->LogCat(Logger::ERROR, "Rebuilding the database failed: ", status);
+    }
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
     return grpc::Status::OK;
@@ -324,10 +328,32 @@ class DBMServiceImpl : public DBMService::Service {
     }
     auto& dbm = *dbms_[request->dbm_index()];
     std::map<std::string, std::string> params;
+    bool make_backup = false;
     for (const auto& param : request->params()) {
-      params.emplace(std::make_pair(param.first(), param.second()));
+      if (param.first() == "reducer") {
+        params.emplace(std::make_pair(param.first(), param.second()));
+      } else if (param.first() == "make_backup") {
+        make_backup = StrToBool(param.second());
+      }
     }
-    const Status status = dbm.SynchronizeAdvanced(request->hard(), nullptr, params);
+    Status status(Status::SUCCESS);
+    if (make_backup) {
+      const std::string orig_path = dbm.GetFilePathSimple();
+      if (orig_path.empty()) {
+        status = Status(Status::INFEASIBLE_ERROR, "no file is associated");
+      } else {
+        struct std::tm cal;
+        GetLocalCalendar(GetWallTime(), &cal);
+        const std::string dest_path = orig_path + SPrintF(
+            ".backup.%04d%02d%02d%2d%2d%2d",
+            cal.tm_year + 1900, cal.tm_mon + 1, cal.tm_mday,
+            cal.tm_hour, cal.tm_min, cal.tm_sec);
+        logger_->LogCat(Logger::INFO, "Making a backup file: ", dest_path);
+        status = dbm.CopyFileData(dest_path, request->hard());
+      }
+    } else {
+      status = dbm.SynchronizeAdvanced(request->hard(), nullptr, params);
+    }
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
     return grpc::Status::OK;

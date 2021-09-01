@@ -18,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <tkrzw_lib_common.h>
+#include <tkrzw_str_util.h>
 #include <utility>
 #include <vector>
 
@@ -44,7 +45,7 @@ class RemoteDBM final {
     /**
      * Destructor.
      */
-    virtual ~Iterator();
+    ~Iterator();
 
     /**
      * Copy and assignment are disabled.
@@ -253,6 +254,47 @@ class RemoteDBM final {
   }
 
   /**
+   * Gets the values of multiple records of keys, with a string view vector.
+   * @param keys The keys of records to retrieve.
+   * @param records The pointer to a map to store retrieved records.  Keys which don't match
+   * existing records are ignored.
+   * @return The result status.  If all records of the given keys are found, SUCCESS is returned.
+   * If one or more records are missing, NOT_FOUND_ERROR is returned.  Thus, even with an error
+   * code, the result map can have elements.
+   */
+  Status GetMulti(
+      const std::vector<std::string_view>& keys, std::map<std::string, std::string>* records);
+
+  /**
+   * Gets the values of multiple records of keys, with an initializer list.
+   * @param keys The keys of records to retrieve.
+   * @param records The pointer to a map to store retrieved records.  Keys which don't match
+   * existing records are ignored.
+   * @return The result status.  If all records of the given keys are found, SUCCESS is returned.
+   * If one or more records are missing, NOT_FOUND_ERROR is returned.  Thus, even with an error
+   * code, the result map can have elements.
+   */
+  Status GetMulti(const std::initializer_list<std::string_view>& keys,
+                  std::map<std::string, std::string>* records) {
+    std::vector<std::string_view> vector_keys(keys.begin(), keys.end());
+    return GetMulti(vector_keys, records);
+  }
+
+  /**
+   * Gets the values of multiple records of keys, with a string vector.
+   * @param keys The keys of records to retrieve.
+   * @param records The pointer to a map to store retrieved records.  Keys which don't match
+   * existing records are ignored.
+   * @return The result status.  If all records of the given keys are found, SUCCESS is returned.
+   * If one or more records are missing, NOT_FOUND_ERROR is returned.  Thus, even with an error
+   * code, the result map can have elements.
+   */
+  Status GetMulti(
+      const std::vector<std::string>& keys, std::map<std::string, std::string>* records) {
+    return GetMulti(MakeStrViewVectorFromValues(keys), records);
+  }
+
+  /**
    * Sets a record of a key and a value.
    * @param key The key of the record.
    * @param value The value of the record.
@@ -264,11 +306,83 @@ class RemoteDBM final {
   Status Set(std::string_view key, std::string_view value, bool overwrite = true);
 
   /**
+   * Sets multiple records, with a map of string views.
+   * @param records The records to store.
+   * @param overwrite Whether to overwrite the existing value if there's a record with the same
+   * key.  If true, the existing value is overwritten by the new value.  If false, the operation
+   * is given up and an error status is returned.
+   * @return The result status.  If there are records avoiding overwriting, DUPLICATION_ERROR
+   * is returned.
+   */
+  Status SetMulti(
+      const std::map<std::string_view, std::string_view>& records, bool overwrite = true);
+
+  /**
+   * Sets multiple records, with an initializer list.
+   * @param records The records to store.
+   * @param overwrite Whether to overwrite the existing value if there's a record with the same
+   * key.  If true, the existing value is overwritten by the new value.  If false, the operation
+   * is given up and an error status is returned.
+   * @return The result status.  If there are records avoiding overwriting, DUPLICATION_ERROR
+   * is returned.
+   */
+  Status SetMulti(
+      const std::initializer_list<std::pair<std::string_view, std::string_view>>& records,
+      bool overwrite = true) {
+    std::map<std::string_view, std::string_view> map_records;
+    for (const auto& record : records) {
+      map_records.emplace(std::pair(
+          std::string_view(record.first), std::string_view(record.second)));
+    }
+    return SetMulti(map_records, overwrite);
+  }
+
+  /**
+   * Sets multiple records, with a map of strings.
+   * @param records The records to store.
+   * @param overwrite Whether to overwrite the existing value if there's a record with the same
+   * key.  If true, the existing value is overwritten by the new value.  If false, the operation
+   * is given up and an error status is returned.
+   * @return The result status.  If there are records avoiding overwriting, DUPLICATION_ERROR
+   * is returned.
+   */
+  Status SetMulti(
+      const std::map<std::string, std::string>& records, bool overwrite = true) {
+    return SetMulti(MakeStrViewMapFromRecords(records), overwrite);
+  }
+
+  /**
    * Removes a record of a key.
    * @param key The key of the record.
    * @return The result status.  If there's no matching record, NOT_FOUND_ERROR is returned.
    */
   Status Remove(std::string_view key);
+
+  /**
+   * Removes records of keys, with a string view vector.
+   * @param keys The keys of records to remove.
+   * @return The result status.  If there are missing records, NOT_FOUND_ERROR is returned.
+   */
+  Status RemoveMulti(const std::vector<std::string_view>& keys);
+
+  /**
+   * Removes records of keys, with an initializer list.
+   * @param keys The keys of records to remove.
+   * @return The result status.
+   */
+  Status RemoveMulti(const std::initializer_list<std::string_view>& keys) {
+    std::vector<std::string_view> vector_keys(keys.begin(), keys.end());
+    return RemoveMulti(vector_keys);
+  }
+
+  /**
+   * Removes records of keys, with a string vector.
+   * @param keys The keys of records to remove.
+   * @return The result status.  If there are missing records, NOT_FOUND_ERROR is returned.
+   */
+  Status RemoveMulti(const std::vector<std::string>& keys) {
+    return RemoveMulti(MakeStrViewVectorFromValues(keys));
+  }
 
   /**
    * Appends data at the end of a record of a key.
@@ -279,6 +393,46 @@ class RemoteDBM final {
    * @details If there's no existing record, the value is set without the delimiter.
    */
   Status Append(std::string_view key, std::string_view value, std::string_view delim = "");
+
+  /**
+   * Appends data to multiple records, with a map of string views.
+   * @param records The records to append.
+   * @param delim The delimiter to put after the existing record.
+   * @return The result status.
+   * @details If there's no existing record, the value is set without the delimiter.
+   */
+  Status AppendMulti(
+      const std::map<std::string_view, std::string_view>& records, std::string_view delim = "");
+
+  /**
+   * Appends data to multiple records, with an initializer list.
+   * @param records The records to store.
+   * @param delim The delimiter to put after the existing record.
+   * @return The result status.
+   * @details If there's no existing record, the value is set without the delimiter.
+   */
+  Status AppendMulti(
+      const std::initializer_list<std::pair<std::string_view, std::string_view>>& records,
+      std::string_view delim = "") {
+    std::map<std::string_view, std::string_view> map_records;
+    for (const auto& record : records) {
+      map_records.emplace(std::pair(
+          std::string_view(record.first), std::string_view(record.second)));
+    }
+    return AppendMulti(map_records, delim);
+  }
+
+  /**
+   * Appends data to multiple records, with a map of strings.
+   * @param records The records to append.
+   * @param delim The delimiter to put after the existing record.
+   * @return The result status.
+   * @details If there's no existing record, the value is set without the delimiter.
+   */
+  Status AppendMulti(
+      const std::map<std::string, std::string>& records, std::string_view delim = "") {
+    return AppendMulti(MakeStrViewMapFromRecords(records), delim);
+  }
 
   /**
    * Compares the value of a record and exchanges if the condition meets.
@@ -317,6 +471,18 @@ class RemoteDBM final {
     int64_t current = 0;
     return Increment(key, increment, &current, initial) == Status::SUCCESS ? current : INT64MIN;
   }
+
+  /**
+   * Compares the values of records and exchanges if the condition meets.
+   * @param expected The record keys and their expected values.  If the value is nullptr, no
+   * existing record is expected.
+   * @param desired The record keys and their desired values.  If the value is nullptr, the
+   * record is to be removed.
+   * @return The result status.  If the condition doesn't meet, INFEASIBLE_ERROR is returned.
+   */
+  Status CompareExchangeMulti(
+      const std::vector<std::pair<std::string_view, std::string_view>>& expected,
+      const std::vector<std::pair<std::string_view, std::string_view>>& desired);
 
   /**
    * Gets the number of records.
@@ -360,6 +526,13 @@ class RemoteDBM final {
    * Rebuilds the entire database.
    * @param params Optional parameters.
    * @return The result status.
+   * @details Tuning options can be given by the optional parameters, as with the Open method.
+   * A unset parameter means that the current setting is succeeded or calculated implicitly.
+   * In addition, HashDBM, TreeDBM, and SkipDBM supports the following parameters.
+   *   - skip_broken_records (bool): If true, the operation continues even if there are broken
+   *     records which can be skipped.
+   *   - sync_hard (bool): If true, physical synchronization with the hardware is done before
+   *     finishing the rebuilt file.
    */
   Status Rebuild(const std::map<std::string, std::string>& params = {});
 
@@ -376,6 +549,10 @@ class RemoteDBM final {
    * logical synchronization with the file system.
    * @param params Optional parameters.
    * @return The result status.
+   * @details The "reducer" parameter specifies the reducer for SkipDBM.  "ReduceToFirst",
+   * "ReduceToSecond", "ReduceToLast", etc are supported.  If the value of the "make_backup"
+   * parameter is true, a backup file is created in the same directory as the database file.
+   * The backup file name has a suffix like ".backup.20210831213749".
    */
   Status Synchronize(bool hard, const std::map<std::string, std::string>& params = {});
 

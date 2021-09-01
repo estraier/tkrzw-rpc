@@ -376,7 +376,7 @@ world
 <dd>Opens the file "casket.tkmc" as a CacheDBM.  The maximum number of records is 10 million.  The total memory size to use is 2GiB.</dd>
 </dl>
 
-<p>By default, the server address is "0.0.0.0:1978", which means that the socket is bound to all network interfaces of IPv4 and IPv6 on the machine and that the port number is 1978.  To use a UNIX domain socket, specify the socket file path like "unix:/var/tkrzw_server".</p>
+<p>By default, the server address is "0.0.0.0:1978", which means that the socket is bound to all network interfaces of IPv4 and IPv6 on the machine and that the port number is 1978.  To use a UNIX domain socket, specify the socket file path like "unix:/run/tkrzw_server.socket".</p>
 
 <p>To finish the server process running on foreground, input Ctrl-C on the terminal.  If you run the server as a system service, run the process as a daemon with the "--daemon" flag.  To finish the daemon process, send a termination signal such as SIGTERM by the "kill" command.  If a daemon process catches SIGHUP, the log file is re-opened.  To send signals to the process, you have to know the process ID.  So, it's a good practice to write the process ID to a file by the "--pid" flag.  Because thr current directory of a daemon process is changed to the root directory, paths of related files should be described as their absolute paths.</p>
 
@@ -474,6 +474,11 @@ China  Beijing
 Korea  Seoul
 ]]></code></pre>
 
+<p>To make a backup file of a database while the server is running, you can use the "sync" subcommand and set the "make_backup" parameter true.  A prefix like ".backup.20210901233046" is added to the database file name to generage the backup file name.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util sync "make_backup=true"
+]]></code></pre>
+
 <h3 id="commands_tkrzw_dbm_remote_perf">tkrzw_dbm_remote_perf: Performance Checker</h3>
 
 <p>tkrzw_dbm_remote_perf is a command for checking performance of RPC invodation.  Thereby, you can check performance of remote database operations in various scenarios including multithreading.  A subcommand name comes as the first argument.  Some options and other arguments can follow.</p>
@@ -517,6 +522,14 @@ Korea  Seoul
 
 <p>The remote database is an interface to access the database service of Tkrzw-RPC.  It encapsulates the existence of the network layer so that you can use the features as if you operate local databases.  RemoteDBM is thread-safe so multiple threads can share the same instance, which saves the number of connections.</p>
 
+<p>Before any operation, you have to call the Connect method to make a connection to the database server.  You set the server address and the port number, like "192.168.0.8:1978" and "example.com:8080".  To use a UNIX domain socket, set the path like "unix:/run/tkrzw_server.socket".  You can disconnect the connection by calling the Disconnect method.</p>
+
+<p>The database service can handle multiple databases at the same time.  By default, the target database of operation by a RemoteDBM instance is the first database of the service.  If you access the second database, call the SetDBMIndex method with the parameter 1.  If you access the third database, set the parameter 2.  If multiple threads uses different indices, they should use separate instances of RemoteDBM.</p>
+
+<p>To retrieve, store, and remove a record, you call the Get, Set, and Remove methods respectively.  If you handle multiple records at once, calling the GetMulti, SetMulti, and RemoveMulti methods is better in terms of performance.  CompareExchange, CompareExchangeMulti, and Increment are useful methods to do atomic operations.</p>
+
+<p>Most methods return a Status object to represent the result of the operation.  The meaning of the status code is the same as the local API except for the code NETWORK_ERROR which represents errors from gRPC.</p>
+
 <h3 id="hashdbm_example">Example Code</h3>
 
 <p>This is a code example where basic operations are done without checking errors.</p>
@@ -532,7 +545,7 @@ int main(int argc, char** argv) {
   RemoteDBM dbm;
 
   // Connects to the database service.
-  dbm.Connect("localhost", 1978);
+  dbm.Connect("localhost:1978");
   
   // Stores records.
   dbm.Set("foo", "hop");
@@ -576,7 +589,7 @@ int main(int argc, char** argv) {
 
   // Connects to the database service.
   // The timeout is set to 1.5 seconds.
-  Status status = dbm.Connect("localhost", 1978, 1.5);
+  Status status = dbm.Connect("localhost:1978", 1.5);
   if (status != Status::SUCCESS) {
     // Failure of the Connect operation is critical so we stop.
     Die("Connect failed: ", status);
