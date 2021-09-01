@@ -41,6 +41,7 @@ static void PrintUsageAndDie() {
   P("Options:\n");
   P("  --version : Prints the version number and exits.\n");
   P("  --address str : The address/hostname and the port of the server (default: 0.0.0.0:1978)\n");
+  P("  --threads num : The maximum number of worker threads. (default: 16)\n");
   P("  --log_file str : The file path of the log file. (default: /dev/stdout)\n");
   P("  --log_level str : The minimum log level to be stored:"
     " debug, info, warn, error, fatal. (default: info)\n");
@@ -114,7 +115,7 @@ void ShutdownServer(int signum) {
 // Processes the command.
 static int32_t Process(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--version", 0}, {"--address", 1},
+    {"--version", 0}, {"--address", 1}, {"--threads", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
     {"--pid_file", 1}, {"--daemon", 0},
     {"--read_only", 0},
@@ -129,7 +130,8 @@ static int32_t Process(int32_t argc, const char** args) {
     PrintL("Tkrzw-RPC server ", RPC_PACKAGE_VERSION);
     return 0;
   }
-  const std::string server_address = GetStringArgument(cmd_args, "--address", 0, "0.0.0.0:1978");
+  const std::string addresss = GetStringArgument(cmd_args, "--address", 0, "0.0.0.0:1978");
+  const int32_t num_tthreads = GetIntegerArgument(cmd_args, "--threads", 0, 16);
   const std::string log_file = GetStringArgument(cmd_args, "--log_file", 0, "/dev/stdout");
   const std::string log_level = GetStringArgument(cmd_args, "--log_level", 0, "info");
   const std::string log_date = GetStringArgument(cmd_args, "--log_date", 0, "simple");
@@ -199,16 +201,16 @@ static int32_t Process(int32_t argc, const char** args) {
     }
     dbms.emplace_back(std::move(dbm));
   }
-  logger.LogCat(Logger::INFO, "Building the server: address=", server_address, ", pid=", pid);
+  logger.LogCat(Logger::INFO, "Building the server: address=", addresss, ", pid=", pid);
   DBMServiceImpl service(dbms, &logger);
   grpc::ServerBuilder builder;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-  builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, 8);
+  builder.AddListeningPort(addresss, grpc::InsecureServerCredentials());
+  builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, num_tthreads);
   builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::CQ_TIMEOUT_MSEC, 60000);
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
   if (server == nullptr) {
-    logger.LogCat(Logger::FATAL, "ServerBuilder::BuildAndStart failed: ", server_address);
+    logger.LogCat(Logger::FATAL, "ServerBuilder::BuildAndStart failed: ", addresss);
     has_error = true;
   } else {
     g_server.store(server.get());
