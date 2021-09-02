@@ -127,6 +127,19 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(0, response.status().code());
   }
   {
+    tkrzw::SetMultiRequest request;
+    auto *record = request.add_records();
+    record->set_first("two");
+    record->set_second("second");
+    record = request.add_records();
+    record->set_first("three");
+    record->set_second("third");
+    tkrzw::SetMultiResponse response;
+    grpc::Status status = server.SetMulti(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+  }
+  {
     tkrzw::AppendRequest request;
     request.set_key("one");
     request.set_value("1");
@@ -137,12 +150,26 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(0, response.status().code());
   }
   {
+    tkrzw::AppendMultiRequest request;
+    auto *record = request.add_records();
+    record->set_first("two");
+    record->set_second("2");
+    record = request.add_records();
+    record->set_first("three");
+    record->set_second("3");
+    request.set_delim(":");
+    tkrzw::AppendMultiResponse response;
+    grpc::Status status = server.AppendMulti(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+  }
+  {
     tkrzw::CountRequest request;
     tkrzw::CountResponse response;
     grpc::Status status = server.Count(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
-    EXPECT_EQ(1, response.count());
+    EXPECT_EQ(3, response.count());
   }
   {
     tkrzw::GetFileSizeRequest request;
@@ -162,15 +189,40 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ("first:1", response.value());
   }
   {
+    tkrzw::GetMultiRequest request;
+    request.add_keys("two");
+    request.add_keys("three");
+    tkrzw::GetMultiResponse response;
+    grpc::Status status = server.GetMulti(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ(2, response.records_size());
+    std::map<std::string, std::string> records;
+    for (const auto& record : response.records()) {
+      records.emplace(record.first(), record.second());
+    }
+    EXPECT_EQ("second:2", records["two"]);
+    EXPECT_EQ("third:3", records["three"]);
+  }
+  {
     tkrzw::RemoveRequest request;
     request.set_key("one");
     tkrzw::RemoveResponse response;
     grpc::Status status = server.Remove(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ(2, dbms[0]->CountSimple());
+  }
+  {
+    tkrzw::RemoveMultiRequest request;
+    request.add_keys("two");
+    request.add_keys("three");
+    tkrzw::RemoveMultiResponse response;
+    grpc::Status status = server.RemoveMulti(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
     EXPECT_EQ(0, dbms[0]->CountSimple());
   }
-
   {
     tkrzw::CompareExchangeRequest request;
     request.set_key("one");
@@ -189,6 +241,44 @@ TEST_F(ServerTest, Basic) {
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
     EXPECT_EQ("*", dbms[0]->GetSimple("one", "*"));
+  }
+  {
+    tkrzw::CompareExchangeMultiRequest request;
+    auto* record = request.add_expected();
+    record->set_key("two");
+    record = request.add_expected();
+    record->set_key("three");
+    record = request.add_desired();
+    record->set_existence(true);
+    record->set_key("two");
+    record->set_value("ni");
+    record = request.add_desired();
+    record->set_existence(true);
+    record->set_key("three");
+    record->set_value("san");
+    tkrzw::CompareExchangeMultiResponse response;
+    grpc::Status status = server.CompareExchangeMulti(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ("ni", dbms[0]->GetSimple("two", "*"));
+    EXPECT_EQ("san", dbms[0]->GetSimple("three", "*"));
+    request.Clear();
+    record = request.add_expected();
+    record->set_existence(true);
+    record->set_key("two");
+    record->set_value("ni");
+    record = request.add_expected();
+    record->set_existence(true);
+    record->set_key("three");
+    record->set_value("san");
+    record = request.add_desired();
+    record->set_key("two");
+    record = request.add_desired();
+    record->set_key("three");
+    status = server.CompareExchangeMulti(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ(0, dbms[0]->CountSimple());
   }
   {
     tkrzw::IncrementRequest request;

@@ -105,6 +105,24 @@ TEST_F(RemoteDBMTest, Get) {
   EXPECT_EQ("value", value);
 }
 
+TEST_F(RemoteDBMTest, GetMulti) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::GetMultiRequest request;
+  request.add_keys("key");
+  tkrzw::GetMultiResponse response;
+  auto* record = response.add_records();
+  record->set_first("key");
+  record->set_second("value");
+  EXPECT_CALL(*stub, GetMulti(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  std::map<std::string, std::string> records;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.GetMulti({"key"}, &records));
+  EXPECT_EQ(1, records.size());
+  EXPECT_EQ("value", records["key"]);
+}
+
 TEST_F(RemoteDBMTest, Set) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::SetRequest request;
@@ -120,6 +138,21 @@ TEST_F(RemoteDBMTest, Set) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Set("key", "value"));
 }
 
+TEST_F(RemoteDBMTest, SetMulti) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::SetMultiRequest request;
+  auto* record = request.add_records();
+  record->set_first("key");
+  record->set_second("value");
+  request.set_overwrite(true);
+  tkrzw::SetMultiResponse response;
+  EXPECT_CALL(*stub, SetMulti(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.SetMulti({{"key", "value"}}));
+}
+
 TEST_F(RemoteDBMTest, Remove) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
   tkrzw::RemoveRequest request;
@@ -130,6 +163,18 @@ TEST_F(RemoteDBMTest, Remove) {
   tkrzw::RemoteDBM dbm;
   dbm.InjectStub(stub.release());
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Remove("key"));
+}
+
+TEST_F(RemoteDBMTest, RemoveMulti) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::RemoveMultiRequest request;
+  request.add_keys("key");
+  tkrzw::RemoveMultiResponse response;
+  EXPECT_CALL(*stub, RemoveMulti(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.RemoveMulti({"key"}));
 }
 
 TEST_F(RemoteDBMTest, Append) {
@@ -143,8 +188,22 @@ TEST_F(RemoteDBMTest, Append) {
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::RemoteDBM dbm;
   dbm.InjectStub(stub.release());
-  std::string value;
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Append("key", "value", ":"));
+}
+
+TEST_F(RemoteDBMTest, AppendMulti) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::AppendMultiRequest request;
+  auto* record = request.add_records();
+  record->set_first("key");
+  record->set_second("value");
+  request.set_delim(":");
+  tkrzw::AppendMultiResponse response;
+  EXPECT_CALL(*stub, AppendMulti(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.AppendMulti({{"key", "value"}}, ":"));
 }
 
 TEST_F(RemoteDBMTest, CompareExchange) {
@@ -178,6 +237,31 @@ TEST_F(RemoteDBMTest, Increment) {
   int64_t current = 0;
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Increment("key", 5, &current, 100));
   EXPECT_EQ(105, current);
+}
+
+TEST_F(RemoteDBMTest, CompareExchangeMulti) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::CompareExchangeMultiRequest request;
+  auto* req_expected = request.add_expected();
+  req_expected->set_existence(true);
+  req_expected->set_key("expected_key");
+  req_expected->set_value("expected_value");
+  auto* req_desired = request.add_desired();
+  req_desired->set_existence(true);
+  req_desired->set_key("desired_key");
+  req_desired->set_value("desired_value");
+  tkrzw::CompareExchangeMultiResponse response;
+  EXPECT_CALL(*stub, CompareExchangeMulti(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  std::vector<std::pair<std::string_view, std::string_view>> expected;
+  expected.emplace_back(std::make_pair(
+      std::string_view("expected_key"), std::string_view("expected_value")));
+  std::vector<std::pair<std::string_view, std::string_view>> desired;
+  desired.emplace_back(std::make_pair(
+      std::string_view("desired_key"), std::string_view("desired_value")));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.CompareExchangeMulti(expected, desired));
 }
 
 TEST_F(RemoteDBMTest, Count) {

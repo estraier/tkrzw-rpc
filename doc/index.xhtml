@@ -92,7 +92,7 @@ window.onload = function(){
 
 <h2 id="overview">Overview</h2>
 
-<p>Tkrzw-RPC is a package of a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to mange key-value storages in various algorithms.  With Tkrzw, the application can handle database files efficiently in process without any network overhead.  However, multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves the issue by using a server program which manages database files and allowing other processes access the contents via RPC.</p>
+<p>Tkrzw-RPC is a package of a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to mange key-value storages in various algorithms.  With Tkrzw, the application can handle database files efficiently in process without any network overhead.  However, multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves the issue by using a server program which manages database files and allowing other processes to access the contents via RPC.</p>
 
 <p>One server process can handle multiple databases, each of which can be different data structure and tuning parameters.  Each database is an instance of the <a href="https://dbmx.net/tkrzw/#polydbm_overview">PolyDBM</a> class, which is an adapter class to handle the following classes with the same interface.</p>
 

@@ -146,6 +146,31 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
+  grpc::Status GetMulti(
+      grpc::ServerContext* context, const GetMultiRequest* request,
+      GetMultiResponse* response) override {
+    LogRequest(context, "GetMulti", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::vector<std::string_view> keys;
+    keys.reserve(request->keys_size());
+    for (const auto& key : request->keys()) {
+      keys.emplace_back(key);
+    }
+    std::map<std::string, std::string> records;
+    const Status status = dbm.GetMulti(keys, &records);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    for (const auto& record : records) {
+      auto* res_record = response->add_records();
+      res_record->set_first(record.first);
+      res_record->set_second(record.second);
+    }
+    return grpc::Status::OK;
+  }
+
   grpc::Status Set(
       grpc::ServerContext* context, const SetRequest* request,
       SetResponse* response) override {
@@ -155,6 +180,24 @@ class DBMServiceImpl : public DBMService::Service {
     }
     auto& dbm = *dbms_[request->dbm_index()];
     const Status status = dbm.Set(request->key(), request->value(), request->overwrite());
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
+  grpc::Status SetMulti(
+      grpc::ServerContext* context, const SetMultiRequest* request,
+      SetMultiResponse* response) override {
+    LogRequest(context, "SetMulti", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::map<std::string_view, std::string_view> records;
+    for (const auto& record : request->records()) {
+      records.emplace(std::string_view(record.first()), std::string_view(record.second()));
+    }
+    const Status status = dbm.SetMulti(records, request->overwrite());
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
     return grpc::Status::OK;
@@ -174,6 +217,25 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
+  grpc::Status RemoveMulti(
+      grpc::ServerContext* context, const RemoveMultiRequest* request,
+      RemoveMultiResponse* response) override {
+    LogRequest(context, "RemoveMulti", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::vector<std::string_view> keys;
+    keys.reserve(request->keys_size());
+    for (const auto& key : request->keys()) {
+      keys.emplace_back(key);
+    }
+    const Status status = dbm.RemoveMulti(keys);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
   grpc::Status Append(
       grpc::ServerContext* context, const AppendRequest* request,
       AppendResponse* response) override {
@@ -183,6 +245,24 @@ class DBMServiceImpl : public DBMService::Service {
     }
     auto& dbm = *dbms_[request->dbm_index()];
     const Status status = dbm.Append(request->key(), request->value(), request->delim());
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
+  grpc::Status AppendMulti(
+      grpc::ServerContext* context, const AppendMultiRequest* request,
+      AppendMultiResponse* response) override {
+    LogRequest(context, "AppendMulti", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::map<std::string_view, std::string_view> records;
+    for (const auto& record : request->records()) {
+      records.emplace(std::string_view(record.first()), std::string_view(record.second()));
+    }
+    const Status status = dbm.AppendMulti(records, request->delim());
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
     return grpc::Status::OK;
@@ -226,6 +306,34 @@ class DBMServiceImpl : public DBMService::Service {
     if (status == Status::SUCCESS) {
       response->set_current(current);
     }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status CompareExchangeMulti(
+      grpc::ServerContext* context, const CompareExchangeMultiRequest* request,
+      CompareExchangeMultiResponse* response) override {
+    LogRequest(context, "CompareExchangeMulti", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::vector<std::pair<std::string_view, std::string_view>> expected;
+    expected.resize(request->expected_size());
+    for (const auto& record : request->expected()) {
+      expected.emplace_back(std::make_pair(
+          std::string_view(record.key()),
+          record.existence() ? std::string_view(record.value()) : std::string_view()));
+    }
+    std::vector<std::pair<std::string_view, std::string_view>> desired;
+    desired.resize(request->desired_size());
+    for (const auto& record : request->desired()) {
+      desired.emplace_back(std::make_pair(
+          std::string_view(record.key()),
+          record.existence() ? std::string_view(record.value()) : std::string_view()));
+    }
+    const Status status = dbm.CompareExchangeMulti(expected, desired);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
     return grpc::Status::OK;
   }
 
@@ -289,7 +397,7 @@ class DBMServiceImpl : public DBMService::Service {
     auto& dbm = *dbms_[request->dbm_index()];
     std::map<std::string, std::string> params;
     for (const auto& param : request->params()) {
-      params.emplace(std::make_pair(param.first(), param.second()));
+      params.emplace(param.first(), param.second());
     }
     logger_->LogCat(Logger::INFO, "Rebuilding the database");
     const Status status = dbm.RebuildAdvanced(params);
@@ -331,7 +439,7 @@ class DBMServiceImpl : public DBMService::Service {
     bool make_backup = false;
     for (const auto& param : request->params()) {
       if (param.first() == "reducer") {
-        params.emplace(std::make_pair(param.first(), param.second()));
+        params.emplace(param.first(), param.second());
       } else if (param.first() == "make_backup") {
         make_backup = StrToBool(param.second());
       }

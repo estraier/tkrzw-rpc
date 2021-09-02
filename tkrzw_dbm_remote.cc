@@ -263,8 +263,20 @@ Status RemoteDBMImpl::GetMulti(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-
-  return Status(Status::SUCCESS);
+  GetMultiRequest request;
+  request.set_dbm_index(dbm_index_);
+  for (const auto& key : keys) {
+    request.add_keys(std::string(key));
+  }
+  GetMultiResponse response;
+  grpc::Status status = stub_->GetMulti(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  for (const auto& record : response.records()) {
+    records->emplace(std::make_pair(record.first(), record.second()));
+  }
+  return MakeStatusFromProto(response.status());
 }
 
 Status RemoteDBMImpl::Set(std::string_view key, std::string_view value, bool overwrite) {
@@ -297,12 +309,21 @@ Status RemoteDBMImpl::SetMulti(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-
-
-
-  return Status(Status::SUCCESS);
+  SetMultiRequest request;
+  request.set_dbm_index(dbm_index_);
+  for (const auto& record : records) {
+    auto* req_record = request.add_records();
+    req_record->set_first(std::string(record.first));
+    req_record->set_second(std::string(record.second));
+  }
+  request.set_overwrite(overwrite);
+  SetMultiResponse response;
+  grpc::Status status = stub_->SetMulti(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
 }
-
 
 Status RemoteDBMImpl::Remove(std::string_view key) {
   std::shared_lock<SpinSharedMutex> lock(mutex_);
@@ -331,10 +352,17 @@ Status RemoteDBMImpl::RemoveMulti(const std::vector<std::string_view>& keys) {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-
-
-
-  return Status(Status::SUCCESS);
+  RemoveMultiRequest request;
+  request.set_dbm_index(dbm_index_);
+  for (const auto& key : keys) {
+    request.add_keys(std::string(key));
+  }
+  RemoveMultiResponse response;
+  grpc::Status status = stub_->RemoveMulti(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
 }
 
 Status RemoteDBMImpl::Append(
@@ -368,10 +396,20 @@ Status RemoteDBMImpl::AppendMulti(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-
-
-
-  return Status(Status::SUCCESS);
+  AppendMultiRequest request;
+  request.set_dbm_index(dbm_index_);
+  for (const auto& record : records) {
+    auto* req_record = request.add_records();
+    req_record->set_first(std::string(record.first));
+    req_record->set_second(std::string(record.second));
+  }
+  request.set_delim(std::string(delim));
+  AppendMultiResponse response;
+  grpc::Status status = stub_->AppendMulti(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
 }
 
 Status RemoteDBMImpl::CompareExchange(std::string_view key, std::string_view expected,
@@ -437,10 +475,30 @@ Status RemoteDBMImpl::CompareExchangeMulti(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-
-
-
-  return Status(Status::SUCCESS);
+  CompareExchangeMultiRequest request;
+  request.set_dbm_index(dbm_index_);
+  for (const auto& record : expected) {
+    auto* req_record = request.add_expected();
+    req_record->set_key(std::string(record.first));
+    if (record.second.data() != nullptr) {
+      req_record->set_existence(true);
+      req_record->set_value(std::string(record.second));
+    }
+  }
+  for (const auto& record : desired) {
+    auto* req_record = request.add_desired();
+    req_record->set_key(std::string(record.first));
+    if (record.second.data() != nullptr) {
+      req_record->set_existence(true);
+      req_record->set_value(std::string(record.second));
+    }
+  }
+  CompareExchangeMultiResponse response;
+  grpc::Status status = stub_->CompareExchangeMulti(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
 }
 
 Status RemoteDBMImpl::Count(int64_t* count) {
