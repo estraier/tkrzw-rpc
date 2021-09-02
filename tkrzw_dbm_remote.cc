@@ -65,7 +65,9 @@ Status MakeStatusFromProto(const tkrzw::StatusProto& proto) {
 }
 
 class RemoteDBMImpl final {
+  friend class RemoteDBMStreamImpl;
   friend class RemoteDBMIteratorImpl;
+  typedef std::list<RemoteDBMStreamImpl*> StreamList;
   typedef std::list<RemoteDBMIteratorImpl*> IteratorList;
  public:
   RemoteDBMImpl();
@@ -104,8 +106,27 @@ class RemoteDBMImpl final {
   std::unique_ptr<DBMService::StubInterface> stub_;
   double timeout_;
   int32_t dbm_index_;
+  StreamList streams_;
   IteratorList iterators_;
   SpinSharedMutex mutex_;
+};
+
+class RemoteDBMStreamImpl final {
+  friend class RemoteDBMImpl;
+ public:
+  explicit RemoteDBMStreamImpl(RemoteDBMImpl* dbm);
+  ~RemoteDBMStreamImpl();
+  void InjectStream(void* stream);
+  Status Echo(std::string_view message, std::string* echo);
+  Status Get(std::string_view key, std::string* value);
+  Status Set(std::string_view key, std::string_view value, bool overwrite, bool ignore_result);
+  Status Remove(std::string_view key, bool ignore_result);
+
+ private:
+  RemoteDBMImpl* dbm_;
+  grpc::ClientContext context_;
+  std::unique_ptr<grpc::ClientReaderWriterInterface<
+                    tkrzw::StreamRequest, tkrzw::StreamResponse>> stream_;
 };
 
 class RemoteDBMIteratorImpl final {
@@ -133,9 +154,12 @@ class RemoteDBMIteratorImpl final {
 };
 
 RemoteDBMImpl::RemoteDBMImpl()
-    : stub_(nullptr), timeout_(0), dbm_index_(0), iterators_(), mutex_() {}
+    : stub_(nullptr), timeout_(0), dbm_index_(0), streams_(), iterators_(), mutex_() {}
 
 RemoteDBMImpl::~RemoteDBMImpl() {
+  for (auto* stream : streams_) {
+    stream->dbm_ = nullptr;
+  }
   for (auto* iterator : iterators_) {
     iterator->dbm_ = nullptr;
   }
@@ -623,6 +647,141 @@ Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::st
   return MakeStatusFromProto(response.status());
 }
 
+RemoteDBMStreamImpl::RemoteDBMStreamImpl(RemoteDBMImpl* dbm)
+    : dbm_(dbm), context_(), stream_(nullptr) {
+  {
+    std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
+    dbm_->streams_.emplace_back(this);
+  }
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  stream_ = dbm_->stub_->Stream(&context_);
+}
+
+RemoteDBMStreamImpl::~RemoteDBMStreamImpl() {
+  if (dbm_ != nullptr) {
+    {
+      std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+      stream_->WritesDone();
+      stream_->Finish();
+    }
+    std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
+    dbm_->streams_.remove(this);
+  }
+}
+
+Status RemoteDBMStreamImpl::Echo(std::string_view message, std::string* echo) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  StreamRequest stream_request;
+  auto* request = stream_request.mutable_echo_request();
+  request->set_message(std::string(message));
+  if (!stream_->Write(stream_request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  StreamResponse stream_response;
+  if (!stream_->Read(&stream_response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  const EchoResponse& response = stream_response.echo_response();
+  *echo = response.echo();
+  return Status(Status::SUCCESS);
+}
+
+Status RemoteDBMStreamImpl::Get(std::string_view key, std::string* value) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  StreamRequest stream_request;
+  auto* request = stream_request.mutable_get_request();
+  request->set_dbm_index(dbm_->dbm_index_);
+  request->set_key(key.data(), key.size());
+  if (value == nullptr) {
+    request->set_omit_value(true);
+  }
+  if (!stream_->Write(stream_request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  StreamResponse stream_response;
+  if (!stream_->Read(&stream_response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  const GetResponse& response = stream_response.get_response();
+  if (response.status().code() == 0) {
+    if (value != nullptr) {
+      *value = response.value();
+    }
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMStreamImpl::Set(std::string_view key, std::string_view value,
+                                bool overwrite, bool ignore_result) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  StreamRequest stream_request;
+  auto* request = stream_request.mutable_set_request();
+  request->set_dbm_index(dbm_->dbm_index_);
+  request->set_key(key.data(), key.size());
+  request->set_value(value.data(), value.size());
+  request->set_overwrite(overwrite);
+  if (ignore_result) {
+    stream_request.set_omit_response(true);
+  }
+  if (!stream_->Write(stream_request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  if (ignore_result) {
+    return Status(Status::SUCCESS);
+  }
+  StreamResponse stream_response;
+  if (!stream_->Read(&stream_response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  const SetResponse& response = stream_response.set_response();
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMStreamImpl::Remove(std::string_view key, bool ignore_result) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  StreamRequest stream_request;
+  auto* request = stream_request.mutable_remove_request();
+  request->set_dbm_index(dbm_->dbm_index_);
+  request->set_key(key.data(), key.size());
+  if (ignore_result) {
+    stream_request.set_omit_response(true);
+  }
+  if (!stream_->Write(stream_request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  if (ignore_result) {
+    return Status(Status::SUCCESS);
+  }
+  StreamResponse stream_response;
+  if (!stream_->Read(&stream_response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  const RemoveResponse& response = stream_response.remove_response();
+  return MakeStatusFromProto(response.status());
+}
+
 RemoteDBMIteratorImpl::RemoteDBMIteratorImpl(RemoteDBMImpl* dbm)
     : dbm_(dbm), context_(), stream_(nullptr) {
   {
@@ -972,9 +1131,39 @@ Status RemoteDBM::Synchronize(bool hard, const std::map<std::string, std::string
   return impl_->Synchronize(hard, params);
 }
 
+std::unique_ptr<RemoteDBM::Stream> RemoteDBM::MakeStream() {
+  std::unique_ptr<RemoteDBM::Stream> iter(new RemoteDBM::Stream(impl_));
+  return iter;
+}
+
 std::unique_ptr<RemoteDBM::Iterator> RemoteDBM::MakeIterator() {
   std::unique_ptr<RemoteDBM::Iterator> iter(new RemoteDBM::Iterator(impl_));
   return iter;
+}
+
+RemoteDBM::Stream::Stream(RemoteDBMImpl* dbm_impl) {
+  impl_ = new RemoteDBMStreamImpl(dbm_impl);
+}
+
+RemoteDBM::Stream::~Stream() {
+  delete impl_;
+}
+
+Status RemoteDBM::Stream::Echo(std::string_view message, std::string* echo) {
+  return impl_->Echo(message, echo);
+}
+
+Status RemoteDBM::Stream::Get(std::string_view key, std::string* value) {
+  return impl_->Get(key, value);
+}
+
+Status RemoteDBM::Stream::Set(std::string_view key, std::string_view value,
+                              bool overwrite, bool ignore_result) {
+  return impl_->Set(key, value, overwrite, ignore_result);
+}
+
+Status RemoteDBM::Stream::Remove(std::string_view key, bool ignore_result) {
+  return impl_->Remove(key, ignore_result);
 }
 
 RemoteDBM::Iterator::Iterator(RemoteDBMImpl* dbm_impl) {

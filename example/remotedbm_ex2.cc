@@ -30,29 +30,41 @@ int main(int argc, char** argv) {
     Die("Connect failed: ", status);
   }
 
+  // Makes a stream for better performance of intensive operations.
+  std::unique_ptr<RemoteDBM::Stream> stream = dbm.MakeStream();
+
   // Stores records.
   // Bit-or assignment to the status updates the status if the original
   // state is SUCCESS and the new state is an error.
-  status |= dbm.Set("foo", "hop");
-  status |= dbm.Set("bar", "step");
-  status |= dbm.Set("baz", "jump");
+  status |= stream->Set("foo", "hop");
+  status |= stream->Set("bar", "step");
+  status |= stream->Set("baz", "jump");
   if (status != Status::SUCCESS) {
     // The Set operation shouldn't fail.  So we stop if it happens.
     Die("Set failed: ", status);
   }
 
+  // Store records, ignoring the result status.
+  stream->Set("quux", "land", true, true);
+  stream->Set("xyzzy", "rest", true, true);
+
   // Retrieves records.
   // If there was no record, NOT_FOUND_ERROR would be returned.
   std::string value;
-  status = dbm.Get("foo", &value);
+  status = stream->Get("foo", &value);
   if (status == Status::SUCCESS) {
     std::cout << value << std::endl;
   } else {
     std::cerr << "missing: " << status << std::endl;
   }
 
-  // Traverses records.
+  // Destroys the stream if it is not used any longer.
+  stream.reset(nullptr);
+
+  // Makes an iterator for traversal operations.
   std::unique_ptr<RemoteDBM::Iterator> iter = dbm.MakeIterator();
+
+  // Traverses records.
   if (iter->First() != Status::SUCCESS) {
     // Failure of the First operation is critical so we stop.
     Die("First failed: ", status);
@@ -83,6 +95,9 @@ int main(int argc, char** argv) {
       break;
     }
   }
+
+  // Destroys the iterator if it is not used any longer.
+  iter.reset(nullptr);
   
   // Disconnects the connection.
   // Even if you forgot to disconnect it, the destructor would do it.

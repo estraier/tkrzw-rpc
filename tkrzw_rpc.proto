@@ -344,6 +344,29 @@ message SynchronizeResponse {
   StatusProto status = 1;
 }
 
+// Request of the Stream method.
+message StreamRequest {
+  // For each stream operation.
+  oneof request_oneof {
+    EchoRequest echo_request = 1;
+    GetRequest get_request = 2;
+    SetRequest set_request = 3;
+    RemoveRequest remove_request = 4;
+  }
+  // If true, the response is omitted.
+  bool omit_response = 101;
+}
+
+// Response of the Stream method.
+message StreamResponse {
+  oneof response_oneof {
+    EchoResponse echo_response = 1;
+    GetResponse get_response = 2;
+    SetResponse set_response = 3;
+    RemoveResponse remove_response = 4;
+  }
+}
+
 // Request of the Iterate method.
 message IterateRequest {
   // Enumeration for operations.
@@ -418,5 +441,6 @@ service DBMService {
   rpc Rebuild(RebuildRequest) returns (RebuildResponse);
   rpc ShouldBeRebuilt(ShouldBeRebuiltRequest) returns (ShouldBeRebuiltResponse);
   rpc Synchronize(SynchronizeRequest) returns (SynchronizeResponse);
+  rpc Stream(stream StreamRequest) returns (stream StreamResponse);
   rpc Iterate(stream IterateRequest) returns (stream IterateResponse);
 }

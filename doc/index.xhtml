@@ -437,24 +437,15 @@ fi
 <dd><code>--timeout</code> : The timeout in seconds for connection and each operation.</dd>
 <dd><code>--index</code> : The index of the DBM to access. (default: 0)</dd>
 <dd><code>--multi</code> : Calls xxxMulti methods for get, set, and remove subcommands.</dd>
-</dl>
-
-<dl>
 <dt>Options for the set subcommand:</dt>
 <dd><code>--no_overwrite</code> : Fails if there's an existing record wit the same key.</dd>
 <dd><code>--append <var>str</var></code> : Appends the value at the end after the given delimiter.</dd>
 <dd><code>--incr <var>num</var></code> : Increments the value with the given initial value.</dd>
-</dl>
-
-<dl>
 <dt>Options for the list subcommand:</dt>
 <dd><code>--move <var>type</var></code> : Type of movement: first, jump, jumplower, jumplowerinc, jumpupper, jumpupperinc. (default: first)</dd>
 <dd><code>--jump_key <var>str</var></code> : Specifies the jump key. (default: empty string)</dd>
 <dd><code>--items <var>num</var></code> : The number of items to print.</dd>
 <dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
-</dl>
-
-<dl>
 <dt>Options for the sync subcommand:</dt>
 <dd><code>--hard</code> : Does physical synchronization with the hardware.</dd>
 </dl>
@@ -501,9 +492,6 @@ Korea  Seoul
 <dd><code>--threads <var>num</var></code> : The number of threads. (default: 1)</dd>
 <dd><code>--separate</code> : Use separate instances for each thread.</dd>
 <dd><code>--random_seed <var>num</var></code> : The random seed or negative for real RNG. (default: 0)</dd>
-</dl>
-
-<dl>
 <dt>Options for the sequence subcommand:</dt>
 <dd><code>--random_key</code> : Uses random keys rather than sequential ones.</dd>
 <dd><code>--random_value</code> : Uses random length values rather than fixed ones.</dd>
@@ -512,7 +500,13 @@ Korea  Seoul
 <dd><code>--get_only</code> : Does only getting.</dd>
 <dd><code>--iter_only</code> : Does only iterating.</dd>
 <dd><code>--remove_only</code> : Does only removing.</dd>
+<dd><code>--stream</code> : Uses the stream API.</dd>
+<dd><code>--ignore_result</code> : Ignores the result status of streaming updates.</dd>
 <dd><code>--multi <var>num</var></code> : Sets the size of a batch operation with xxxMulti methods.</dd>
+<dt>Options for the wicked subcommand:</dt>
+<dd><code>--iterator</code> : Uses iterators occasionally.</dd>
+<dd><code>--clear</code> : Clears the database occasionally.</dd>
+<dd><code>--rebuild</code> : Rebuilds the database occasionally.</dd>
 </dl>
 
 <p>The following is a sample usage to echo back 1 million messages, to store 1 million records of 8-byte keys and 8-byte values, to retrieve all of them, and to remove all of them in sequence.  The number of threads is 10 and each thread does 100 thousand operations.</p>
@@ -529,6 +523,8 @@ Korea  Seoul
 <p>The database service can handle multiple databases at the same time.  By default, the target database of operation by a RemoteDBM instance is the first database of the service.  If you access the second database, call the SetDBMIndex method with the parameter 1.  If you access the third database, set the parameter 2.  If multiple threads uses different indices, they should use separate instances of RemoteDBM.</p>
 
 <p>To retrieve, store, and remove a record, you call the Get, Set, and Remove methods respectively.  If you handle multiple records at once, calling the GetMulti, SetMulti, and RemoveMulti methods is better in terms of performance.  CompareExchange, CompareExchangeMulti, and Increment are useful methods to do atomic operations.</p>
+
+<p>The MakeStream method makes an instance of the Stream class.  A stream is bound to one thread on the server.  If you can call Get, Set, and Remove intensively, calling them via the stream gives you better performance.  The MakeIterator method makes an instance of the Iterator class.  An iterator is also bound to one thread on the server and it allows you stateful operations like First, Jump, Next, and Get.  Stream objects and iterator objects should be destructed as soon as possible, in order to release the server threads.</p>
 
 <p>Most methods return a Status object to represent the result of the operation.  The meaning of the status code is the same as the local API except for the code NETWORK_ERROR which represents errors from gRPC.</p>
 
@@ -597,29 +593,41 @@ int main(int argc, char** argv) {
     Die("Connect failed: ", status);
   }
 
+  // Makes a stream for better performance of intensive operations.
+  std::unique_ptr<RemoteDBM::Stream> stream = dbm.MakeStream();
+
   // Stores records.
   // Bit-or assignment to the status updates the status if the original
   // state is SUCCESS and the new state is an error.
-  status |= dbm.Set("foo", "hop");
-  status |= dbm.Set("bar", "step");
-  status |= dbm.Set("baz", "jump");
+  status |= stream->Set("foo", "hop");
+  status |= stream->Set("bar", "step");
+  status |= stream->Set("baz", "jump");
   if (status != Status::SUCCESS) {
     // The Set operation shouldn't fail.  So we stop if it happens.
     Die("Set failed: ", status);
   }
 
+  // Store records, ignoring the result status.
+  stream->Set("quux", "land", true, true);
+  stream->Set("xyzzy", "rest", true, true);
+
   // Retrieves records.
   // If there was no record, NOT_FOUND_ERROR would be returned.
   std::string value;
-  status = dbm.Get("foo", &value);
+  status = stream->Get("foo", &value);
   if (status == Status::SUCCESS) {
     std::cout << value << std::endl;
   } else {
     std::cerr << "missing: " << status << std::endl;
   }
 
-  // Traverses records.
+  // Destroys the stream if it is not used any longer.
+  stream.reset(nullptr);
+
+  // Makes an iterator for traversal operations.
   std::unique_ptr<RemoteDBM::Iterator> iter = dbm.MakeIterator();
+
+  // Traverses records.
   if (iter->First() != Status::SUCCESS) {
     // Failure of the First operation is critical so we stop.
     Die("First failed: ", status);
@@ -650,6 +658,9 @@ int main(int argc, char** argv) {
       break;
     }
   }
+
+  // Destroys the iterator if it is not used any longer.
+  iter.reset(nullptr);
   
   // Disconnects the connection.
   // Even if you forgot to disconnect it, the destructor would do it.

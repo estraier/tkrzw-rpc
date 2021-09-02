@@ -25,6 +25,7 @@
 namespace tkrzw {
 
 class RemoteDBMImpl;
+class RemoteDBMStreamImpl;
 class RemoteDBMIteratorImpl;
 
 /**
@@ -34,6 +35,81 @@ class RemoteDBMIteratorImpl;
  */
 class RemoteDBM final {
  public:
+
+  class Stream {
+    friend class tkrzw::RemoteDBM;
+   public:
+    /**
+     * Destructor.
+     */
+    ~Stream();
+
+    /**
+     * Copy and assignment are disabled.
+     */
+    explicit Stream(const Stream& rhs) = delete;
+    Stream& operator =(const Stream& rhs) = delete;
+
+    /**
+     * Sends a message and gets back the echo message.
+     * @param message The message to send.
+     * @param echo The pointer to a string object to contain the echo message.
+     * @return The result status.
+     */
+    Status Echo(std::string_view message, std::string* echo);
+
+    /**
+     * Gets the value of a record of a key.
+     * @param key The key of the record.
+     * @param value The pointer to a string object to contain the result value.  If it is nullptr,
+     * the value data is ignored.
+     * @return The result status.  If there's no matching record, NOT_FOUND_ERROR is returned.
+     */
+    Status Get(std::string_view key, std::string* value = nullptr);
+
+    /**
+     * Gets the value of a record of a key, in a simple way.
+     * @param key The key of the record.
+     * @param default_value The value to be returned on failure.
+     * @return The value of the matching record on success, or the default value on failure.
+     */
+    std::string GetSimple(std::string_view key, std::string_view default_value = "") {
+      std::string value;
+      return Get(key, &value) == Status::SUCCESS ? value : std::string(default_value);
+    }
+
+    /**
+     * Sets a record of a key and a value.
+     * @param key The key of the record.
+     * @param value The value of the record.
+     * @param overwrite Whether to overwrite the existing value if there's a record with the same
+     * key.  If true, the existing value is overwritten by the new value.  If false, the operation
+     * is given up and an error status is returned.
+     * @param ignore_result If true, the result status is not checked.
+     * @return The result status.  If overwriting is abandoned, DUPLICATION_ERROR is returned.
+     */
+    Status Set(std::string_view key, std::string_view value, bool overwrite = true,
+               bool ignore_result = false);
+
+    /**
+     * Removes a record of a key.
+     * @param key The key of the record.
+     * @param ignore_result If true, the result status is not checked.
+     * @return The result status.  If there's no matching record, NOT_FOUND_ERROR is returned.
+     */
+    Status Remove(std::string_view key, bool ignore_result = false);
+
+   private:
+    /**
+     * Constructor.
+     * @param dbm_impl The database implementation object.
+     */
+    explicit Stream(RemoteDBMImpl* dbm_impl);
+
+    /** Pointer to the actual implementation. */
+    RemoteDBMStreamImpl* impl_;
+  };
+
   /**
    * Iterator for each record.
    * @details When the database is updated, some iterators may or may not be invalided.
@@ -555,6 +631,12 @@ class RemoteDBM final {
    * The backup file name has a suffix like ".backup.20210831213749".
    */
   Status Synchronize(bool hard, const std::map<std::string, std::string>& params = {});
+
+  /**
+   * Makes a stream for intensive operations.
+   * @return The stream for intensive operations.
+   */
+  std::unique_ptr<Stream> MakeStream();
 
   /**
    * Makes an iterator for each record.

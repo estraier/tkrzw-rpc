@@ -160,10 +160,13 @@ check-remotedbm-perf :
 	$(RUNENV) ./tkrzw_dbm_remote_util clear
 	$(RUNENV) ./tkrzw_dbm_remote_util rebuild "num_buckets=10000"
 	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 1 --iter 10000
+	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 1 --iter 10000 --stream
 	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 1 --iter 10000 --multi 10
 	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 4 --iter 5000 --random_key --random_value
 	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 4 --separate \
 	  --iter 5000 --random_key --random_value
+	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 4 --separate \
+	  --iter 5000 --random_key --random_value --stream --ignore_result
 	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 4 --separate \
 	  --iter 5000 --random_key --random_value --multi 10
 	$(RUNENV) ./tkrzw_dbm_remote_perf wicked --threads 1 --iter 10000

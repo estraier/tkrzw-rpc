@@ -56,7 +56,14 @@ static void PrintUsageAndDie() {
   P("  --get_only : Does only getting.\n");
   P("  --iter_only : Does only iterating.\n");
   P("  --remove_only : Does only removing.\n");
+  P("  --stream : Uses the stream API.\n");
+  P("  --ignore_result : Ignores the result status of streaming updates.\n");
   P("  --multi num : Sets the size of a batch operation with xxxMulti methods.\n");
+  P("\n");
+  P("Options for the wicked subcommand:\n");
+  P("  --iterator : Uses iterators occasionally.\n");
+  P("  --clear : Clears the database occasionally.\n");
+  P("  --rebuild : Rebuilds the database occasionally.\n");
   P("\n");
   std::exit(1);
 }
@@ -68,7 +75,8 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0},
     {"--random_seed", 1}, {"--random_key", 0}, {"--random_value", 0},
     {"--echo_only", 0}, {"--set_only", 0}, {"--get_only", 0},
-    {"--iter_only", 0}, {"--remove_only", 0}, {"--multi", 1},
+    {"--iter_only", 0}, {"--remove_only", 0},
+    {"--stream", 0}, {"--ignore_result", 0}, {"--multi", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -91,6 +99,8 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   bool get_only = CheckMap(cmd_args, "--get_only");
   bool iter_only = CheckMap(cmd_args, "--iter_only");
   bool remove_only = CheckMap(cmd_args, "--remove_only");
+  const bool with_stream = CheckMap(cmd_args, "--stream");
+  const bool ignore_result = CheckMap(cmd_args, "--ignore_result");
   const int32_t num_multi = GetIntegerArgument(cmd_args, "--multi", 0, 0);
   if (num_iterations < 1) {
     Die("Invalid number of iterations");
@@ -137,8 +147,23 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     std::uniform_int_distribution<int32_t> value_size_dist(0, value_size);
     char key_buf[32];
     bool midline = false;
+    std::unique_ptr<tkrzw::RemoteDBM::Stream> stream;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
-      if (num_multi > 0) {
+      if (with_stream) {
+        if (i % 100 == 0) {
+          stream = task_dbm->MakeStream();
+        }
+        const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const std::string_view key(key_buf, key_size);
+        std::string echo;
+        const Status status = stream->Echo(key, &echo);
+        if (status != Status::SUCCESS) {
+          EPrintL("Echo failed: ", status);
+          has_error = true;
+          break;
+        }
+      } else if (num_multi > 0) {
         if (i % num_multi == 0) {
           std::vector<std::string> keys;
           for (int32_t j = i; j < i + num_multi; j++) {
@@ -219,8 +244,24 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     char* value_buf = new char[value_size];
     std::memset(value_buf, '0' + id % 10, value_size);
     bool midline = false;
+    std::unique_ptr<tkrzw::RemoteDBM::Stream> stream;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
-      if (num_multi > 0) {
+      if (with_stream) {
+        if (i % 100 == 0) {
+          stream = task_dbm->MakeStream();
+        }
+        const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const std::string_view key(key_buf, key_size);
+        const std::string_view value(
+            value_buf, is_random_value ? value_size_dist(misc_mt) : value_size);
+        const Status status = stream->Set(key, value, true, ignore_result);
+        if (status != Status::SUCCESS) {
+          EPrintL("Set failed: ", status);
+          has_error = true;
+          break;
+        }
+      } else if (num_multi > 0) {
         if (i % num_multi == 0) {
           std::map<std::string, std::string> records;
           for (int32_t j = i; j < i + num_multi; j++) {
@@ -301,8 +342,24 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     std::uniform_int_distribution<int32_t> value_size_dist(0, value_size);
     char key_buf[32];
     bool midline = false;
+    std::unique_ptr<tkrzw::RemoteDBM::Stream> stream;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
-      if (num_multi > 0) {
+      if (with_stream) {
+        if (i % 100 == 0) {
+          stream = task_dbm->MakeStream();
+        }
+        const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const std::string_view key(key_buf, key_size);
+        std::string value;
+        const Status status = stream->Get(key, &value);
+        if (status != Status::SUCCESS &&
+            !(is_random_key && random_seed < 0 && status == Status::NOT_FOUND_ERROR)) {
+          EPrintL("Get failed: ", status);
+          has_error = true;
+          break;
+        }
+      } else if (num_multi > 0) {
         if (i % num_multi == 0) {
           std::vector<std::string> keys;
           for (int32_t j = i; j < i + num_multi; j++) {
@@ -455,8 +512,22 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     std::uniform_int_distribution<int32_t> value_size_dist(0, value_size);
     char key_buf[32];
     bool midline = false;
+    std::unique_ptr<tkrzw::RemoteDBM::Stream> stream;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
-      if (num_multi > 0) {
+      if (with_stream) {
+        if (i % 100 == 0) {
+          stream = task_dbm->MakeStream();
+        }
+        const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const std::string_view key(key_buf, key_size);
+        const Status status = stream->Remove(key, ignore_result);
+        if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+          EPrintL("Remove failed: ", status);
+          has_error = true;
+          break;
+        }
+      } else if (num_multi > 0) {
         if (i % num_multi == 0) {
           std::vector<std::string> keys;
           for (int32_t j = i; j < i + num_multi; j++) {
@@ -582,7 +653,11 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
     char* value_buf = new char[value_size];
     std::memset(value_buf, '0' + id % 10, value_size);
     bool midline = false;
+    std::unique_ptr<tkrzw::RemoteDBM::Stream> stream;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
+      if (i % 100 == 0) {
+        stream = task_dbm->MakeStream();
+      }
       const int32_t key_num = key_num_dist(key_mt);
       const std::string& key = SPrintF("%08d", key_num);
       std::string_view value(value_buf, value_size_dist(misc_mt));
@@ -671,27 +746,58 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
           break;
         }
       } else if (op_dist(misc_mt) % 5 == 0) {
-        const Status status = task_dbm->Remove(key);
-        if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
-          EPrintL("Remove failed: ", status);
-          has_error = true;
-          break;
+        if (op_dist(misc_mt) % 3 == 0) {
+          const bool ignore_result = op_dist(misc_mt) % 3 == 0;
+          const Status status = stream->Remove(key, ignore_result);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("Remove failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else {
+          const Status status = task_dbm->Remove(key);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("Remove failed: ", status);
+            has_error = true;
+            break;
+          }
         }
       } else if (op_dist(misc_mt) % 3 == 0) {
-        const bool overwrite = op_dist(misc_mt) % 3 != 0;
-        const Status status = task_dbm->Set(key, value, overwrite);
-        if (status != Status::SUCCESS && status != Status::DUPLICATION_ERROR) {
-          EPrintL("Set failed: ", status);
-          has_error = true;
-          break;
+        if (op_dist(misc_mt) % 3 == 0) {
+          const bool overwrite = op_dist(misc_mt) % 3 != 0;
+          const bool ignore_result = op_dist(misc_mt) % 3 == 0;
+          const Status status = stream->Set(key, value, overwrite, ignore_result);
+          if (status != Status::SUCCESS && status != Status::DUPLICATION_ERROR) {
+            EPrintL("Set failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else {
+          const bool overwrite = op_dist(misc_mt) % 3 != 0;
+          const Status status = task_dbm->Set(key, value, overwrite);
+          if (status != Status::SUCCESS && status != Status::DUPLICATION_ERROR) {
+            EPrintL("Set failed: ", status);
+            has_error = true;
+            break;
+          }
         }
       } else {
-        std::string rec_value;
-        const Status status = task_dbm->Get(key, &rec_value);
-        if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
-          EPrintL("Get failed: ", status);
-          has_error = true;
-          break;
+        if (op_dist(misc_mt) % 3 == 0) {
+          std::string rec_value;
+          const Status status = stream->Get(key, &rec_value);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("Get failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else {
+          std::string rec_value;
+          const Status status = task_dbm->Get(key, &rec_value);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("Get failed: ", status);
+            has_error = true;
+            break;
+          }
         }
       }
       if (id == 0 && i == num_iterations / 2) {

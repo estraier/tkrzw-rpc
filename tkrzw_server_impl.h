@@ -467,6 +467,72 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
+  grpc::Status Stream(
+      grpc::ServerContext* context,
+      grpc::ServerReaderWriter<tkrzw::StreamResponse, tkrzw::StreamRequest>* stream) override {
+    return StreamImpl(context, stream);
+  }
+
+  grpc::Status StreamImpl(grpc::ServerContext* context,
+                          grpc::ServerReaderWriterInterface<
+                          tkrzw::StreamResponse, tkrzw::StreamRequest>* stream) {
+    while (true) {
+      if (context->IsCancelled()) {
+        return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
+      }
+      tkrzw::StreamRequest request;
+      if (!stream->Read(&request)) {
+        break;
+      }
+      tkrzw::StreamResponse response;
+      switch (request.request_oneof_case()) {
+        case tkrzw::StreamRequest::kEchoRequest: {
+          const grpc::Status status =
+              Echo(context, &request.echo_request(), response.mutable_echo_response());
+          if (!status.ok()) {
+            return status;
+          }
+          break;
+        }
+        case tkrzw::StreamRequest::kGetRequest: {
+          const grpc::Status status =
+              Get(context, &request.get_request(), response.mutable_get_response());
+          if (!status.ok()) {
+            return status;
+          }
+          break;
+        }
+        case tkrzw::StreamRequest::kSetRequest: {
+          const grpc::Status status =
+              Set(context, &request.set_request(), response.mutable_set_response());
+          if (!status.ok()) {
+            return status;
+          }
+          break;
+        }
+        case tkrzw::StreamRequest::kRemoveRequest: {
+          const grpc::Status status =
+              Remove(context, &request.remove_request(), response.mutable_remove_response());
+          if (!status.ok()) {
+            return status;
+          }
+          break;
+        }
+
+
+
+
+        default: {
+          return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknow request");
+        }
+      }
+      if (!request.omit_response() && !stream->Write(response)) {
+        break;
+      }
+    }
+    return grpc::Status::OK;
+  }
+
   grpc::Status Iterate(
       grpc::ServerContext* context,
       grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) override {
@@ -474,7 +540,7 @@ class DBMServiceImpl : public DBMService::Service {
   }
 
   grpc::Status IterateImpl(grpc::ServerContext* context,
-      grpc::ServerReaderWriterInterface<
+                           grpc::ServerReaderWriterInterface<
                            tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) {
     std::unique_ptr<DBM::Iterator> iter;
     int32_t dbm_index = -1;
