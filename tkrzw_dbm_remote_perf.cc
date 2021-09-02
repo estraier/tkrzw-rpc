@@ -56,6 +56,7 @@ static void PrintUsageAndDie() {
   P("  --get_only : Does only getting.\n");
   P("  --iter_only : Does only iterating.\n");
   P("  --remove_only : Does only removing.\n");
+  P("  --multi num : Sets the size of a batch operation with xxxMulti methods.\n");
   P("\n");
   std::exit(1);
 }
@@ -67,7 +68,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0},
     {"--random_seed", 1}, {"--random_key", 0}, {"--random_value", 0},
     {"--echo_only", 0}, {"--set_only", 0}, {"--get_only", 0},
-    {"--iter_only", 0}, {"--remove_only", 0},
+    {"--iter_only", 0}, {"--remove_only", 0}, {"--multi", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -90,6 +91,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   bool get_only = CheckMap(cmd_args, "--get_only");
   bool iter_only = CheckMap(cmd_args, "--iter_only");
   bool remove_only = CheckMap(cmd_args, "--remove_only");
+  const int32_t num_multi = GetIntegerArgument(cmd_args, "--multi", 0, 0);
   if (num_iterations < 1) {
     Die("Invalid number of iterations");
   }
@@ -136,15 +138,33 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     char key_buf[32];
     bool midline = false;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
-      const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-      const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
-      const std::string_view key(key_buf, key_size);
-      std::string echo;
-      const Status status = task_dbm->Echo(key, &echo);
-      if (status != Status::SUCCESS) {
-        EPrintL("Echo failed: ", status);
-        has_error = true;
-        break;
+      if (num_multi > 0) {
+        if (i % num_multi == 0) {
+          std::vector<std::string> keys;
+          for (int32_t j = i; j < i + num_multi; j++) {
+            const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
+            const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+            keys.emplace_back(std::string(key_buf, key_size));
+          }
+          std::string echo;
+          const Status status = task_dbm->Echo(StrJoin(keys, ":"), &echo);
+          if (status != Status::SUCCESS) {
+            EPrintL("Echo failed: ", status);
+            has_error = true;
+            break;
+          }
+        }
+      } else {
+        const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const std::string_view key(key_buf, key_size);
+        std::string echo;
+        const Status status = task_dbm->Echo(key, &echo);
+        if (status != Status::SUCCESS) {
+          EPrintL("Echo failed: ", status);
+          has_error = true;
+          break;
+        }
       }
       if (id == 0 && (i + 1) % dot_mod == 0) {
         PutChar('.');
@@ -200,16 +220,35 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     std::memset(value_buf, '0' + id % 10, value_size);
     bool midline = false;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
-      const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-      const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
-      const std::string_view key(key_buf, key_size);
-      const std::string_view value(
-          value_buf, is_random_value ? value_size_dist(misc_mt) : value_size);
-      const Status status = task_dbm->Set(key, value);
-      if (status != Status::SUCCESS) {
-        EPrintL("Set failed: ", status);
-        has_error = true;
-        break;
+      if (num_multi > 0) {
+        if (i % num_multi == 0) {
+          std::map<std::string, std::string> records;
+          for (int32_t j = i; j < i + num_multi; j++) {
+            const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
+            const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+            records.emplace(
+                std::string(key_buf, key_size),
+                std::string(value_buf, is_random_value ? value_size_dist(misc_mt) : value_size));
+          }
+          const Status status = task_dbm->SetMulti(records);
+          if (status != Status::SUCCESS) {
+            EPrintL("SetMulti failed: ", status);
+            has_error = true;
+            break;
+          }
+        }
+      } else {
+        const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const std::string_view key(key_buf, key_size);
+        const std::string_view value(
+            value_buf, is_random_value ? value_size_dist(misc_mt) : value_size);
+        const Status status = task_dbm->Set(key, value);
+        if (status != Status::SUCCESS) {
+          EPrintL("Set failed: ", status);
+          has_error = true;
+          break;
+        }
       }
       if (id == 0 && (i + 1) % dot_mod == 0) {
         PutChar('.');
@@ -263,16 +302,35 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     char key_buf[32];
     bool midline = false;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
-      const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-      const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
-      const std::string_view key(key_buf, key_size);
-      std::string value;
-      const Status status = task_dbm->Get(key, &value);
-      if (status != Status::SUCCESS &&
-          !(is_random_key && random_seed < 0 && status == Status::NOT_FOUND_ERROR)) {
-        EPrintL("Get failed: ", status);
-        has_error = true;
-        break;
+      if (num_multi > 0) {
+        if (i % num_multi == 0) {
+          std::vector<std::string> keys;
+          for (int32_t j = i; j < i + num_multi; j++) {
+            const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
+            const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+            keys.emplace_back(std::string(key_buf, key_size));
+          }
+          std::map<std::string, std::string> records;
+          const Status status = task_dbm->GetMulti(keys, &records);
+          if (status != Status::SUCCESS &&
+              !(is_random_key && random_seed < 0 && status == Status::NOT_FOUND_ERROR)) {
+            EPrintL("GetMulti failed: ", status);
+            has_error = true;
+            break;
+          }
+        }
+      } else {
+        const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const std::string_view key(key_buf, key_size);
+        std::string value;
+        const Status status = task_dbm->Get(key, &value);
+        if (status != Status::SUCCESS &&
+            !(is_random_key && random_seed < 0 && status == Status::NOT_FOUND_ERROR)) {
+          EPrintL("Get failed: ", status);
+          has_error = true;
+          break;
+        }
       }
       if (id == 0 && (i + 1) % dot_mod == 0) {
         PutChar('.');
@@ -398,14 +456,31 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     char key_buf[32];
     bool midline = false;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
-      const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-      const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
-      const std::string_view key(key_buf, key_size);
-      const Status status = task_dbm->Remove(key);
-      if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
-        EPrintL("Remove failed: ", status);
-        has_error = true;
-        break;
+      if (num_multi > 0) {
+        if (i % num_multi == 0) {
+          std::vector<std::string> keys;
+          for (int32_t j = i; j < i + num_multi; j++) {
+            const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
+            const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+            keys.emplace_back(std::string(key_buf, key_size));
+          }
+          const Status status = task_dbm->RemoveMulti(keys);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("RemoveMulti failed: ", status);
+            has_error = true;
+            break;
+          }
+        }
+      } else {
+        const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
+        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const std::string_view key(key_buf, key_size);
+        const Status status = task_dbm->Remove(key);
+        if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+          EPrintL("Remove failed: ", status);
+          has_error = true;
+          break;
+        }
       }
       if (id == 0 && (i + 1) % dot_mod == 0) {
         PutChar('.');

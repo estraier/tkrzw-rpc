@@ -144,6 +144,10 @@ check-remotedbm-util :
 	$(RUNENV) ./tkrzw_dbm_remote_util set "two" "second"
 	$(RUNENV) ./tkrzw_dbm_remote_util set "three" "third"
 	$(RUNENV) ./tkrzw_dbm_remote_util get "one"
+	$(RUNENV) ./tkrzw_dbm_remote_util set --multi 1 hop 2 step 3 jump
+	$(RUNENV) ./tkrzw_dbm_remote_util set --append ":" --multi 1 hop 2 step 3 jump
+	$(RUNENV) ./tkrzw_dbm_remote_util get --multi 1 2 3
+	$(RUNENV) ./tkrzw_dbm_remote_util remove --multi 1 2 3
 	$(RUNENV) ./tkrzw_dbm_remote_util list
 	$(RUNENV) ./tkrzw_dbm_remote_util list --move jump --jump_key two
 	$(RUNENV) ./tkrzw_dbm_remote_util remove "one"
@@ -156,9 +160,12 @@ check-remotedbm-perf :
 	$(RUNENV) ./tkrzw_dbm_remote_util clear
 	$(RUNENV) ./tkrzw_dbm_remote_util rebuild "num_buckets=10000"
 	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 1 --iter 10000
+	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 1 --iter 10000 --multi 10
 	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 4 --iter 5000 --random_key --random_value
 	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 4 --separate \
 	  --iter 5000 --random_key --random_value
+	$(RUNENV) ./tkrzw_dbm_remote_perf sequence --threads 4 --separate \
+	  --iter 5000 --random_key --random_value --multi 10
 	$(RUNENV) ./tkrzw_dbm_remote_perf wicked --threads 1 --iter 10000
 	$(RUNENV) ./tkrzw_dbm_remote_perf wicked --threads 4 --iter 5000 \
 	  --iterator --sync --clear --rebuild
