@@ -38,11 +38,11 @@ static void PrintGlobalLog(gpr_log_func_args *args) {
   if (g_logger == nullptr) {
     return;
   }
-  Logger::Level log_level = Logger::DEBUG;
+  Logger::Level log_level = Logger::LEVEL_DEBUG;
   if (args->severity == GPR_LOG_SEVERITY_INFO) {
-    log_level = Logger::INFO;
+    log_level = Logger::LEVEL_INFO;
   } else if (args->severity == GPR_LOG_SEVERITY_ERROR) {
-    log_level = Logger::ERROR;
+    log_level = Logger::LEVEL_ERROR;
   }
   g_logger->LogF(log_level, "GPR: %s: %d: %s", args->file, args->line, args->message);
 }

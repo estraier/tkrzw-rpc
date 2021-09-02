@@ -57,6 +57,7 @@ static void PrintUsageAndDie() {
   P("  --address : The address and the port of the service (default: localhost:1978)\n");
   P("  --timeout : The timeout in seconds for connection and each operation.\n");
   P("  --index : The index of the DBM to access. (default: 0)\n");
+  P("  --multi : Calls xxxMulti methods for get, set, and remove subcommands.\n");
   P("\n");
   P("Options for the set subcommand:\n");
   P("  --no_overwrite : Fails if there's an existing record wit the same key.\n");
@@ -157,7 +158,7 @@ static int32_t ProcessInspect(int32_t argc, const char** args) {
 // Processes the get subcommand.
 static int32_t ProcessGet(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 1}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"--address", 1}, {"--timeout", 1}, {"--index", 1}, {"--multi", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -169,6 +170,10 @@ static int32_t ProcessGet(int32_t argc, const char** args) {
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const bool is_multi = CheckMap(cmd_args, "--multi");
+  if (!is_multi && cmd_args[""].size() != 1) {
+    Die("The key must be specified");
+  }
   RemoteDBM dbm;
   Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
@@ -177,13 +182,31 @@ static int32_t ProcessGet(int32_t argc, const char** args) {
   }
   dbm.SetDBMIndex(dbm_index);
   bool ok = false;
-  std::string value;
-  status = dbm.Get(key, &value);
-  if (status == Status::SUCCESS) {
-    PrintL(value);
-    ok = true;
+  if (is_multi) {
+    std::vector<std::string_view> keys;
+    const auto& rec_args = cmd_args[""];
+    for (int32_t i = 0; i < static_cast<int32_t>(rec_args.size()); i++) {
+      keys.emplace_back(rec_args[i]);
+    }
+    std::map<std::string, std::string> records;
+    const Status status = dbm.GetMulti(keys, &records);
+    if (status == Status::SUCCESS || status == Status::NOT_FOUND_ERROR) {
+      for (const auto& record : records) {
+        PrintL(record.first, "\t", record.second);
+      }
+      ok = true;
+    } else {
+      EPrintL("GetMulti failed: ", status);
+    }
   } else {
-    EPrintL("Get failed: ", status);
+    std::string value;
+    status = dbm.Get(key, &value);
+    if (status == Status::SUCCESS) {
+      PrintL(value);
+      ok = true;
+    } else {
+      EPrintL("Get failed: ", status);
+    }
   }
   dbm.Disconnect();
   return ok ? 0 : 1;
@@ -192,7 +215,7 @@ static int32_t ProcessGet(int32_t argc, const char** args) {
 // Processes the set subcommand.
 static int32_t ProcessSet(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 2}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"--address", 1}, {"--timeout", 1}, {"--index", 1}, {"--multi", 0},
     {"--no_overwrite", 0}, {"--append", 1}, {"--incr", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
@@ -206,9 +229,13 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const bool is_multi = CheckMap(cmd_args, "--multi");
   const bool with_no_overwrite = CheckMap(cmd_args, "--no_overwrite");
   const std::string append_delim = GetStringArgument(cmd_args, "--append", 0, "[\xFF|\xFF|\xFF]");
   const int64_t incr_init = GetIntegerArgument(cmd_args, "--incr", 0, INT64MIN);
+  if (!is_multi && cmd_args[""].size() != 2) {
+    Die("The key and the value must be specified");
+  }
   RemoteDBM dbm;
   Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
@@ -227,18 +254,46 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
       EPrintL("Increment failed: ", status);
     }
   } else if (append_delim != "[\xFF|\xFF|\xFF]") {
-    status = dbm.Append(key, value, append_delim);
-    if (status == Status::SUCCESS) {
-      ok = true;
+    if (is_multi) {
+      std::map<std::string_view, std::string_view> records;
+      const auto& rec_args = cmd_args[""];
+      for (int32_t i = 0; i < static_cast<int32_t>(rec_args.size()) - 1; i += 2) {
+        records.emplace(rec_args[i], rec_args[i + 1]);
+      }
+      const Status status = dbm.AppendMulti(records, append_delim);
+      if (status == Status::SUCCESS) {
+        ok = true;
+      } else {
+        EPrintL("AppendMulti failed: ", status);
+      }
     } else {
-      EPrintL("Append failed: ", status);
+      status = dbm.Append(key, value, append_delim);
+      if (status == Status::SUCCESS) {
+        ok = true;
+      } else {
+        EPrintL("Append failed: ", status);
+      }
     }
   } else {
-    status = dbm.Set(key, value, !with_no_overwrite);
-    if (status == Status::SUCCESS) {
-      ok = true;
+    if (is_multi) {
+      std::map<std::string_view, std::string_view> records;
+      const auto& rec_args = cmd_args[""];
+      for (int32_t i = 0; i < static_cast<int32_t>(rec_args.size()) - 1; i += 2) {
+        records.emplace(rec_args[i], rec_args[i + 1]);
+      }
+      const Status status = dbm.SetMulti(records, !with_no_overwrite);
+      if (status == Status::SUCCESS) {
+        ok = true;
+      } else {
+        EPrintL("SetMulti failed: ", status);
+      }
     } else {
-      EPrintL("Set failed: ", status);
+      status = dbm.Set(key, value, !with_no_overwrite);
+      if (status == Status::SUCCESS) {
+        ok = true;
+      } else {
+        EPrintL("Set failed: ", status);
+      }
     }
   }
   dbm.Disconnect();
@@ -248,7 +303,7 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
 // Processes the remove subcommand.
 static int32_t ProcessRemove(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 1}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"--address", 1}, {"--timeout", 1}, {"--index", 1}, {"--multi", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -260,6 +315,10 @@ static int32_t ProcessRemove(int32_t argc, const char** args) {
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const bool is_multi = CheckMap(cmd_args, "--multi");
+  if (!is_multi && cmd_args[""].size() != 1) {
+    Die("The key must be specified");
+  }
   RemoteDBM dbm;
   Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
@@ -268,11 +327,25 @@ static int32_t ProcessRemove(int32_t argc, const char** args) {
   }
   dbm.SetDBMIndex(dbm_index);
   bool ok = false;
-  status = dbm.Remove(key);
-  if (status == Status::SUCCESS) {
-    ok = true;
+  if (is_multi) {
+    std::vector<std::string_view> keys;
+    const auto& rec_args = cmd_args[""];
+    for (int32_t i = 0; i < static_cast<int32_t>(rec_args.size()); i++) {
+      keys.emplace_back(rec_args[i]);
+    }
+    const Status status = dbm.RemoveMulti(keys);
+    if (status == Status::SUCCESS || status == Status::NOT_FOUND_ERROR) {
+      ok = true;
+    } else {
+      EPrintL("RemoveMulti failed: ", status);
+    }
   } else {
-    EPrintL("Remove failed: ", status);
+    status = dbm.Remove(key);
+    if (status == Status::SUCCESS) {
+      ok = true;
+    } else {
+      EPrintL("Remove failed: ", status);
+    }
   }
   dbm.Disconnect();
   return ok ? 0 : 1;

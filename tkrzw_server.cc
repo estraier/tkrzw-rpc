@@ -77,7 +77,7 @@ Status ConfigLogger() {
   }
   if (g_log_file.empty()) {
     g_logger->SetStream(nullptr);
-    g_logger->SetMinLevel(Logger::NONE);
+    g_logger->SetMinLevel(Logger::LEVEL_NONE);
   } else {
     g_log_stream->open(std::string(g_log_file), std::ios::app);
     if (!g_log_stream->good()) {
@@ -94,10 +94,10 @@ Status ConfigLogger() {
 void ReconfigServer(int signum) {
   grpc::Server* server = g_server.load();
   if (server != nullptr) {
-    g_logger->LogCat(Logger::INFO, "Reconfiguring by signal: ", signum);
+    g_logger->LogCat(Logger::LEVEL_INFO, "Reconfiguring by signal: ", signum);
     const Status status = ConfigLogger();
     if (status != Status::SUCCESS) {
-      g_logger->LogCat(Logger::ERROR, "ConfigLogger failed: ", status);
+      g_logger->LogCat(Logger::LEVEL_ERROR, "ConfigLogger failed: ", status);
     }
   }
 }
@@ -106,7 +106,7 @@ void ReconfigServer(int signum) {
 void ShutdownServer(int signum) {
   grpc::Server* server = g_server.load();
   if (server != nullptr && g_server.compare_exchange_strong(server, nullptr)) {
-    g_logger->LogCat(Logger::INFO, "Shutting down by signal: ", signum);
+    g_logger->LogCat(Logger::LEVEL_INFO, "Shutting down by signal: ", signum);
     const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
     server->Shutdown(deadline);
   }
@@ -162,24 +162,24 @@ static int32_t Process(int32_t argc, const char** args) {
   SetGlobalLogger(&logger);
   bool has_error = false;
   const int32_t pid = GetProcessID();
-  logger.LogF(Logger::INFO, "==== Starting the process %s ====",
+  logger.LogF(Logger::LEVEL_INFO, "==== Starting the process %s ====",
               (as_daemon ? "as a daemon" : "as a command"));
-  logger.LogCat(Logger::INFO, "Version: ", "rpc_pkg=", RPC_PACKAGE_VERSION,
+  logger.LogCat(Logger::LEVEL_INFO, "Version: ", "rpc_pkg=", RPC_PACKAGE_VERSION,
                 ", rpc_lib=", RPC_LIBRARY_VERSION,
                 ", core_pkg=", PACKAGE_VERSION,
                 ", core_lib=", LIBRARY_VERSION);
   if (!pid_file.empty()) {
-    logger.LogCat(Logger::INFO, "Writing the PID file: ", pid_file);
+    logger.LogCat(Logger::LEVEL_INFO, "Writing the PID file: ", pid_file);
     const Status status = WriteFile(pid_file, StrCat(pid, "\n"));
     if (status != Status::SUCCESS) {
-      logger.LogCat(Logger::ERROR, "WriteFile failed: ", pid_file, ": ", status);
+      logger.LogCat(Logger::LEVEL_ERROR, "WriteFile failed: ", pid_file, ": ", status);
       has_error = true;
     }
   }
   std::vector<std::unique_ptr<ParamDBM>> dbms;
   dbms.reserve(dbm_exprs.size());
   for (const auto& dbm_expr : dbm_exprs) {
-    logger.LogCat(Logger::INFO, "Opening a database: ", dbm_expr);
+    logger.LogCat(Logger::LEVEL_INFO, "Opening a database: ", dbm_expr);
     const std::vector<std::string> fields = StrSplit(dbm_expr, "#");
     const std::string path = fields.front();
     std::map<std::string, std::string> params;
@@ -196,12 +196,12 @@ static int32_t Process(int32_t argc, const char** args) {
     const bool writable = read_only ? false : true;
     const Status status = dbm->OpenAdvanced(path, writable, File::OPEN_DEFAULT, params);
     if (status != Status::SUCCESS) {
-      logger.LogCat(Logger::ERROR, "Open failed: ", path, ": ", status);
+      logger.LogCat(Logger::LEVEL_ERROR, "Open failed: ", path, ": ", status);
       has_error = true;
     }
     dbms.emplace_back(std::move(dbm));
   }
-  logger.LogCat(Logger::INFO, "Building the server: address=", addresss, ", pid=", pid);
+  logger.LogCat(Logger::LEVEL_INFO, "Building the server: address=", addresss, ", pid=", pid);
   DBMServiceImpl service(dbms, &logger);
   grpc::ServerBuilder builder;
   builder.AddListeningPort(addresss, grpc::InsecureServerCredentials());
@@ -210,7 +210,7 @@ static int32_t Process(int32_t argc, const char** args) {
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
   if (server == nullptr) {
-    logger.LogCat(Logger::FATAL, "ServerBuilder::BuildAndStart failed: ", addresss);
+    logger.LogCat(Logger::LEVEL_FATAL, "ServerBuilder::BuildAndStart failed: ", addresss);
     has_error = true;
   } else {
     g_server.store(server.get());
@@ -219,17 +219,17 @@ static int32_t Process(int32_t argc, const char** args) {
     std::signal(SIGTERM, ShutdownServer);
     std::signal(SIGQUIT, ShutdownServer);
     server->Wait();
-    logger.Log(Logger::INFO, "The server finished");
+    logger.Log(Logger::LEVEL_INFO, "The server finished");
   }
   for (auto& dbm : dbms) {
-    logger.Log(Logger::INFO, "Closing a database");
+    logger.Log(Logger::LEVEL_INFO, "Closing a database");
     const Status status = dbm->Close();
     if (status != Status::SUCCESS) {
-      logger.LogCat(Logger::ERROR, "Close failed: ", status);
+      logger.LogCat(Logger::LEVEL_ERROR, "Close failed: ", status);
       has_error = true;
     }
   }
-  logger.LogF(Logger::INFO, "==== Ending the process %s ====",
+  logger.LogF(Logger::LEVEL_INFO, "==== Ending the process %s ====",
               (has_error ? "with errors" : "in success"));
   return has_error ? 1 : 0;
 }

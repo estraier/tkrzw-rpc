@@ -46,7 +46,7 @@ class DBMServiceImpl : public DBMService::Service {
 
   void LogRequest(grpc::ServerContext* context, const char* name,
                   const google::protobuf::Message* proto) {
-    if (!logger_->CheckLevel(Logger::DEBUG)) {
+    if (!logger_->CheckLevel(Logger::LEVEL_DEBUG)) {
       return;
     }
     static std::regex regex_linehead("\\n\\s*");
@@ -68,7 +68,7 @@ class DBMServiceImpl : public DBMService::Service {
       message += " ";
       message += proto_text;
     }
-    logger_->Log(Logger::DEBUG, message);
+    logger_->Log(Logger::LEVEL_DEBUG, message);
   }
 
   grpc::Status Echo(
@@ -399,10 +399,10 @@ class DBMServiceImpl : public DBMService::Service {
     for (const auto& param : request->params()) {
       params.emplace(param.first(), param.second());
     }
-    logger_->LogCat(Logger::INFO, "Rebuilding the database");
+    logger_->LogCat(Logger::LEVEL_INFO, "Rebuilding the database");
     const Status status = dbm.RebuildAdvanced(params);
     if (status != Status::SUCCESS) {
-      logger_->LogCat(Logger::ERROR, "Rebuilding the database failed: ", status);
+      logger_->LogCat(Logger::LEVEL_ERROR, "Rebuilding the database failed: ", status);
     }
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
@@ -456,7 +456,7 @@ class DBMServiceImpl : public DBMService::Service {
             ".backup.%04d%02d%02d%2d%2d%2d",
             cal.tm_year + 1900, cal.tm_mon + 1, cal.tm_mday,
             cal.tm_hour, cal.tm_min, cal.tm_sec);
-        logger_->LogCat(Logger::INFO, "Making a backup file: ", dest_path);
+        logger_->LogCat(Logger::LEVEL_INFO, "Making a backup file: ", dest_path);
         status = dbm.CopyFileData(dest_path, request->hard());
       }
     } else {
