@@ -363,7 +363,7 @@ TEST_F(ServerTest, Stream) {
   get_req->set_key("key");
   tkrzw::StreamRequest request_remove;
   auto* remove_req = request_remove.mutable_remove_request();
-  remove_req->set_key("remove_key");
+  remove_req->set_key("missing_key");
   tkrzw::StreamResponse response_echo;
   auto* echo_res = response_echo.mutable_echo_response();
   echo_res->set_echo("hello");

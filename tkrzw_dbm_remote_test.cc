@@ -346,6 +346,49 @@ TEST_F(RemoteDBMTest, Synchronize) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Synchronize(true, {{"reducer", "last"}}));
 }
 
+TEST_F(RemoteDBMTest, Stream) {
+  auto stream = std::make_unique<grpc::testing::MockClientReaderWriter<
+    tkrzw::StreamRequest, tkrzw::StreamResponse>>();
+  tkrzw::StreamRequest request_set;
+  auto* set_req = request_set.mutable_set_request();
+  set_req->set_key("key");
+  set_req->set_value("value");
+  set_req->set_overwrite(true);
+  tkrzw::StreamRequest request_get;
+  auto* get_req = request_get.mutable_get_request();
+  get_req->set_key("key");
+  tkrzw::StreamRequest request_remove;
+  auto* remove_req = request_remove.mutable_remove_request();
+  remove_req->set_key("missing_key");
+  tkrzw::StreamResponse response_set;
+  response_set.mutable_set_response();
+  tkrzw::StreamResponse response_get;
+  auto* get_res = response_get.mutable_get_response();
+  get_res->set_value("value");
+  tkrzw::StreamResponse response_remove;
+  auto* remove_res = response_remove.mutable_remove_response();
+  remove_res->mutable_status()->set_code(tkrzw::Status::NOT_FOUND_ERROR);
+  EXPECT_CALL(*stream, Write(EqualsProto(request_set), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_get), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_remove), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Read(_))
+      .WillOnce(DoAll(SetArgPointee<0>(response_set), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_remove), Return(true)));
+  EXPECT_CALL(*stream, WritesDone()).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Finish()).WillOnce(Return(grpc::Status::OK));
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  EXPECT_CALL(*stub, StreamRaw(_)).WillRepeatedly(Return(stream.release()));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  auto strm = dbm.MakeStream();
+  EXPECT_EQ(tkrzw::Status::SUCCESS, strm->Set("key", "value"));
+  std::string value;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, strm->Get("key", &value));
+  EXPECT_EQ("value", value);
+  EXPECT_EQ(tkrzw::Status::NOT_FOUND_ERROR, strm->Remove("missing_key"));
+}
+
 TEST_F(RemoteDBMTest, IterateMove) {
   auto stream = std::make_unique<grpc::testing::MockClientReaderWriter<
     tkrzw::IterateRequest, tkrzw::IterateResponse>>();
