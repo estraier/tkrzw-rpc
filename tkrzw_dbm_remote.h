@@ -35,7 +35,11 @@ class RemoteDBMIteratorImpl;
  */
 class RemoteDBM final {
  public:
-
+  /**
+   * Stream for better performance of intensive operations.
+   * @details An instance of this class dominates a thread on the server so you should
+   * destroy when it is no longer in use.
+   */
   class Stream {
     friend class tkrzw::RemoteDBM;
    public:
@@ -114,6 +118,8 @@ class RemoteDBM final {
    * Iterator for each record.
    * @details When the database is updated, some iterators may or may not be invalided.
    * Operations with invalidated iterators fails gracefully with NOT_FOUND_ERROR.
+   * @details An instance of this class dominates a thread on the server so you should
+   * destroy when it is no longer in use.
    */
   class Iterator {
     friend class tkrzw::RemoteDBM;
