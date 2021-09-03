@@ -4,6 +4,7 @@
 	- Library version: 1.4.0
 
 	- Add test cases.
+	- Fix a compilation error on MacOS.
 
 2021-08-31  Mikio Hirabayashi  <hirarin@gmail.com>
 
