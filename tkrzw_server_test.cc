@@ -338,6 +338,58 @@ TEST_F(ServerTest, Basic) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
 }
 
+TEST_F(ServerTest, Stream) {
+  tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
+  const std::string file_path = tmp_dir.MakeUniquePath();
+  std::vector<std::unique_ptr<tkrzw::ParamDBM>> dbms(1);
+  dbms[0] = std::make_unique<tkrzw::PolyDBM>();
+  const std::map<std::string, std::string> params =
+      {{"dbm", "HashDBM"}, {"num_buckets", "10"}};
+  EXPECT_EQ(tkrzw::Status::SUCCESS,
+            dbms[0]->OpenAdvanced(file_path, true, tkrzw::File::OPEN_DEFAULT, params));
+  tkrzw::StreamLogger logger;
+  tkrzw::DBMServiceImpl server(dbms, &logger);
+  grpc::ServerContext context;
+  MockServerReaderWriter<tkrzw::StreamResponse, tkrzw::StreamRequest> stream;
+  tkrzw::StreamRequest request_echo;
+  auto* echo_req = request_echo.mutable_echo_request();
+  echo_req->set_message("hello");
+  tkrzw::StreamRequest request_set;
+  auto* set_req = request_set.mutable_set_request();
+  set_req->set_key("key");
+  set_req->set_value("value");
+  tkrzw::StreamRequest request_get;
+  auto* get_req = request_get.mutable_get_request();
+  get_req->set_key("key");
+  tkrzw::StreamRequest request_remove;
+  auto* remove_req = request_remove.mutable_remove_request();
+  remove_req->set_key("remove_key");
+  tkrzw::StreamResponse response_echo;
+  auto* echo_res = response_echo.mutable_echo_response();
+  echo_res->set_echo("hello");
+  tkrzw::StreamResponse response_set;
+  response_set.mutable_set_response();
+  tkrzw::StreamResponse response_get;
+  auto* get_res = response_get.mutable_get_response();
+  get_res->set_value("value");
+  tkrzw::StreamResponse response_remove;
+  auto* remove_res = response_remove.mutable_remove_response();
+  remove_res->mutable_status()->set_code(tkrzw::Status::NOT_FOUND_ERROR);
+  EXPECT_CALL(stream, Read(_))
+      .WillOnce(DoAll(SetArgPointee<0>(request_echo), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_set), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_remove), Return(true)))
+      .WillOnce(Return(false));
+  EXPECT_CALL(stream, Write(EqualsProto(response_echo), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_set), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_get), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_remove), _)).WillOnce(Return(true));
+  grpc::Status status = server.StreamImpl(&context, &stream);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
+}
+
 TEST_F(ServerTest, Iterator) {
   tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
   const std::string file_path = tmp_dir.MakeUniquePath();

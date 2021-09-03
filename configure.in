@@ -1,15 +1,15 @@
-# Source of configuration for Tkrzw RPC
+# Source of configuration for Tkrzw-RPC
 
 #================================================================
 # Generic Settings
 #================================================================
 
 # Package name
-AC_INIT([tkrzw-rpc], [0.7.0])
+AC_INIT([tkrzw-rpc], [0.7.1])
 
 # Package information
 MYLIBVER=1
-MYLIBREV=3
+MYLIBREV=4
 MYLIBFMT=0
 
 # Targets
