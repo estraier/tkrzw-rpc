@@ -66,6 +66,7 @@ std::string_view g_log_date;
 int32_t g_log_td = 0;
 std::ofstream* g_log_stream = nullptr;
 std::atomic<grpc::Server*> g_server(nullptr);
+bool g_is_shutdown = false;
 
 // Configures the logger.
 Status ConfigLogger() {
@@ -108,6 +109,7 @@ void ShutdownServer(int signum) {
   if (server != nullptr && g_server.compare_exchange_strong(server, nullptr)) {
     g_logger->LogCat(Logger::LEVEL_INFO, "Shutting down by signal: ", signum);
     const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
+    g_is_shutdown = true;
     server->Shutdown(deadline);
   }
 }
@@ -115,7 +117,7 @@ void ShutdownServer(int signum) {
 // Processes the command.
 static int32_t Process(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--version", 0}, {"--address", 1}, {"--threads", 1},
+    {"--version", 0}, {"--address", 1}, {"--async", 1}, {"--threads", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
     {"--pid_file", 1}, {"--daemon", 0},
     {"--read_only", 0},
@@ -131,7 +133,8 @@ static int32_t Process(int32_t argc, const char** args) {
     return 0;
   }
   const std::string addresss = GetStringArgument(cmd_args, "--address", 0, "0.0.0.0:1978");
-  const int32_t num_tthreads = GetIntegerArgument(cmd_args, "--threads", 0, 16);
+  const int32_t num_async_queues = GetIntegerArgument(cmd_args, "--async", 0, 0);
+  const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 16);
   const std::string log_file = GetStringArgument(cmd_args, "--log_file", 0, "/dev/stdout");
   const std::string log_level = GetStringArgument(cmd_args, "--log_level", 0, "info");
   const std::string log_date = GetStringArgument(cmd_args, "--log_date", 0, "simple");
@@ -162,7 +165,7 @@ static int32_t Process(int32_t argc, const char** args) {
   SetGlobalLogger(&logger);
   bool has_error = false;
   const int32_t pid = GetProcessID();
-  logger.LogF(Logger::LEVEL_INFO, "==== Starting the process %s ====",
+  logger.LogF(Logger::LEVEL_INFO, "======== Starting the process %d %s ========",  pid,
               (as_daemon ? "as a daemon" : "as a command"));
   logger.LogCat(Logger::LEVEL_INFO, "Version: ", "rpc_pkg=", RPC_PACKAGE_VERSION,
                 ", rpc_lib=", RPC_LIBRARY_VERSION,
@@ -201,13 +204,26 @@ static int32_t Process(int32_t argc, const char** args) {
     }
     dbms.emplace_back(std::move(dbm));
   }
-  logger.LogCat(Logger::LEVEL_INFO, "Building the server: address=", addresss, ", pid=", pid);
-  DBMServiceImpl service(dbms, &logger);
+  logger.LogCat(Logger::LEVEL_INFO,
+                "Building the ", (num_async_queues > 0 ? "async" : "sync"),
+                " server: address=", addresss);
   grpc::ServerBuilder builder;
   builder.AddListeningPort(addresss, grpc::InsecureServerCredentials());
-  builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, num_tthreads);
+  builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, num_threads);
   builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::CQ_TIMEOUT_MSEC, 60000);
-  builder.RegisterService(&service);
+  std::unique_ptr<grpc::Service> service;
+  std::vector<std::unique_ptr<grpc::ServerCompletionQueue>> async_queues;
+  if (num_async_queues > 0) {
+    service = std::make_unique<DBMAsyncServiceImpl>(dbms, &logger);
+    builder.RegisterService(service.get());
+    async_queues.resize(num_async_queues);
+    for (auto& async_queue : async_queues) {
+      async_queue = builder.AddCompletionQueue();
+    }
+  } else {
+    service = std::make_unique<DBMServiceImpl>(dbms, &logger);
+    builder.RegisterService(service.get());
+  }
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
   if (server == nullptr) {
     logger.LogCat(Logger::LEVEL_FATAL, "ServerBuilder::BuildAndStart failed: ", addresss);
@@ -218,7 +234,25 @@ static int32_t Process(int32_t argc, const char** args) {
     std::signal(SIGINT, ShutdownServer);
     std::signal(SIGTERM, ShutdownServer);
     std::signal(SIGQUIT, ShutdownServer);
-    server->Wait();
+    if (num_async_queues > 0) {
+      auto* async_service = (DBMAsyncServiceImpl*)service.get();
+      auto task =
+          [&](grpc::ServerCompletionQueue* queue) {
+            async_service->OperateQueue(queue, &g_is_shutdown);
+          };
+      std::vector<std::thread> threads;
+      for (auto& queue : async_queues) {
+        threads.emplace_back(std::thread(task, queue.get()));
+      }
+      for (auto& thread : threads) {
+        thread.join();
+      }
+      for (auto& queue : async_queues) {
+        async_service->ShutdownQueue(queue.get());
+      }
+    } else {
+      server->Wait();
+    }
     logger.Log(Logger::LEVEL_INFO, "The server finished");
   }
   for (auto& dbm : dbms) {
@@ -229,8 +263,8 @@ static int32_t Process(int32_t argc, const char** args) {
       has_error = true;
     }
   }
-  logger.LogF(Logger::LEVEL_INFO, "==== Ending the process %s ====",
-              (has_error ? "with errors" : "in success"));
+  logger.LogF(Logger::LEVEL_INFO, "======== Ending the process %d %s ========",
+              pid, (has_error ? "with errors" : "in success"));
   return has_error ? 1 : 0;
 }
 

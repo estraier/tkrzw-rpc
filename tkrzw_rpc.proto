@@ -428,13 +428,13 @@ service DBMService {
   rpc GetMulti(GetMultiRequest) returns (GetMultiResponse);
   rpc Set(SetRequest) returns (SetResponse);
   rpc SetMulti(SetMultiRequest) returns (SetMultiResponse);
+  rpc Remove(RemoveRequest) returns (RemoveResponse);
+  rpc RemoveMulti(RemoveMultiRequest) returns (RemoveMultiResponse);
   rpc Append(AppendRequest) returns (AppendResponse);
   rpc AppendMulti(AppendMultiRequest) returns (AppendMultiResponse);
   rpc CompareExchange(CompareExchangeRequest) returns (CompareExchangeResponse);
   rpc Increment(IncrementRequest) returns (IncrementResponse);
   rpc CompareExchangeMulti(CompareExchangeMultiRequest) returns (CompareExchangeMultiResponse);
-  rpc Remove(RemoveRequest) returns (RemoveResponse);
-  rpc RemoveMulti(RemoveMultiRequest) returns (RemoveMultiResponse);
   rpc Count(CountRequest) returns (CountResponse);
   rpc GetFileSize(GetFileSizeRequest) returns (GetFileSizeResponse);
   rpc Clear(ClearRequest) returns (ClearResponse);

@@ -275,7 +275,7 @@ int main(int argc, char** argv) {
 
 <pre><code class="language-shell-session"><![CDATA[$ g++ -std=c++17 -pthread -I/usr/local/include \
   -O2 -Wall helloworld.cc -o helloworld \
-  -L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lprotobuf \
+  -L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lgpr -lprotobuf \
   -ltkrzw -lstdc++ -lpthread
 ]]></code></pre>
 
@@ -284,7 +284,7 @@ int main(int argc, char** argv) {
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_rpc_build_util config -i
 -I/usr/local/include
 $ tkrzw_rpc_build_util config -l
--L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lprotobuf -ltkrzw -lstdc++ -lpthread -lm -lc
+-L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lgpr -lprotobuf -ltkrzw -lstdc++ -lpthread -lm -lc
 ]]></code></pre>
 
 <p>In some environments, you can also use the "pkg-config" command to list up those flags.</p>
@@ -293,7 +293,7 @@ $ tkrzw_rpc_build_util config -l
 $ pkg-config --cflags-only-I tkrzw-rpc
 -I/usr/local/include
 $ pkg-config --libs tkrzw-rpc
--L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lprotobuf -ltkrzw -lstdc++ -lpthread -lm -lc
+-L/usr/local/lib -ltkrzw_rpc -lgrpc++_reflection -lgrpc++ -lgrpc -lgpr -lprotobuf -ltkrzw -lstdc++ -lpthread -lm -lc
 ]]></code></pre>
 
 <p>Build the above sample program and run it while the server is running.</p>

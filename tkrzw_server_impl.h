@@ -39,9 +39,9 @@
 
 namespace tkrzw {
 
-class DBMServiceImpl : public DBMService::Service {
+class DBMServiceBase {
  public:
-  DBMServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
+  DBMServiceBase(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
       : dbms_(dbms), logger_(logger) {}
 
   void LogRequest(grpc::ServerContext* context, const char* name,
@@ -71,17 +71,17 @@ class DBMServiceImpl : public DBMService::Service {
     logger_->Log(Logger::LEVEL_DEBUG, message);
   }
 
-  grpc::Status Echo(
+  grpc::Status EchoImpl(
       grpc::ServerContext* context, const EchoRequest* request,
-      EchoResponse* response) override {
+      EchoResponse* response) {
     LogRequest(context, "Echo", request);
     response->set_echo(request->message());
     return grpc::Status::OK;
   }
 
-  grpc::Status Inspect(
+  grpc::Status InspectImpl(
       grpc::ServerContext* context, const InspectRequest* request,
-      InspectResponse* response) override {
+      InspectResponse* response) {
     LogRequest(context, "Inspect", request);
     if (request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -128,9 +128,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Get(
+  grpc::Status GetImpl(
       grpc::ServerContext* context, const GetRequest* request,
-      GetResponse* response) override {
+      GetResponse* response) {
     LogRequest(context, "Get", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -146,9 +146,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status GetMulti(
+  grpc::Status GetMultiImpl(
       grpc::ServerContext* context, const GetMultiRequest* request,
-      GetMultiResponse* response) override {
+      GetMultiResponse* response) {
     LogRequest(context, "GetMulti", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -171,9 +171,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Set(
+  grpc::Status SetImpl(
       grpc::ServerContext* context, const SetRequest* request,
-      SetResponse* response) override {
+      SetResponse* response) {
     LogRequest(context, "Set", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -185,9 +185,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status SetMulti(
+  grpc::Status SetMultiImpl(
       grpc::ServerContext* context, const SetMultiRequest* request,
-      SetMultiResponse* response) override {
+      SetMultiResponse* response) {
     LogRequest(context, "SetMulti", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -203,9 +203,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Remove(
+  grpc::Status RemoveImpl(
       grpc::ServerContext* context, const RemoveRequest* request,
-      RemoveResponse* response) override {
+      RemoveResponse* response) {
     LogRequest(context, "Remove", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -217,9 +217,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status RemoveMulti(
+  grpc::Status RemoveMultiImpl(
       grpc::ServerContext* context, const RemoveMultiRequest* request,
-      RemoveMultiResponse* response) override {
+      RemoveMultiResponse* response) {
     LogRequest(context, "RemoveMulti", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -236,9 +236,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Append(
+  grpc::Status AppendImpl(
       grpc::ServerContext* context, const AppendRequest* request,
-      AppendResponse* response) override {
+      AppendResponse* response) {
     LogRequest(context, "Append", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -250,9 +250,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status AppendMulti(
+  grpc::Status AppendMultiImpl(
       grpc::ServerContext* context, const AppendMultiRequest* request,
-      AppendMultiResponse* response) override {
+      AppendMultiResponse* response) {
     LogRequest(context, "AppendMulti", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -268,9 +268,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status CompareExchange(
+  grpc::Status CompareExchangeImpl(
       grpc::ServerContext* context, const CompareExchangeRequest* request,
-      CompareExchangeResponse* response) override {
+      CompareExchangeResponse* response) {
     LogRequest(context, "CompareExchange", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -290,9 +290,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Increment(
+  grpc::Status IncrementImpl(
       grpc::ServerContext* context, const IncrementRequest* request,
-      IncrementResponse* response) override {
+      IncrementResponse* response) {
     LogRequest(context, "Increment", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -309,9 +309,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status CompareExchangeMulti(
+  grpc::Status CompareExchangeMultiImpl(
       grpc::ServerContext* context, const CompareExchangeMultiRequest* request,
-      CompareExchangeMultiResponse* response) override {
+      CompareExchangeMultiResponse* response) {
     LogRequest(context, "CompareExchangeMulti", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -337,9 +337,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Count(
+  grpc::Status CountImpl(
       grpc::ServerContext* context, const CountRequest* request,
-      CountResponse* response) override {
+      CountResponse* response) {
     LogRequest(context, "Count", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -355,9 +355,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status GetFileSize(
+  grpc::Status GetFileSizeImpl(
       grpc::ServerContext* context, const GetFileSizeRequest* request,
-      GetFileSizeResponse* response) override {
+      GetFileSizeResponse* response) {
     LogRequest(context, "GetFileSize", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -373,9 +373,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Clear(
+  grpc::Status ClearImpl(
       grpc::ServerContext* context, const ClearRequest* request,
-      ClearResponse* response) override {
+      ClearResponse* response) {
     LogRequest(context, "Clear", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -387,9 +387,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Rebuild(
+  grpc::Status RebuildImpl(
       grpc::ServerContext* context, const RebuildRequest* request,
-      RebuildResponse* response) override {
+      RebuildResponse* response) {
     LogRequest(context, "Rebuild", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -409,9 +409,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status ShouldBeRebuilt(
+  grpc::Status ShouldBeRebuiltImpl(
       grpc::ServerContext* context, const ShouldBeRebuiltRequest* request,
-      ShouldBeRebuiltResponse* response) override {
+      ShouldBeRebuiltResponse* response) {
     LogRequest(context, "ShouldBeRebuilt", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -427,9 +427,9 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Synchronize(
+  grpc::Status SynchronizeImpl(
       grpc::ServerContext* context, const SynchronizeRequest* request,
-      SynchronizeResponse* response) override {
+      SynchronizeResponse* response) {
     LogRequest(context, "Synchronize", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
@@ -467,12 +467,6 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
-  grpc::Status Stream(
-      grpc::ServerContext* context,
-      grpc::ServerReaderWriter<tkrzw::StreamResponse, tkrzw::StreamRequest>* stream) override {
-    return StreamImpl(context, stream);
-  }
-
   grpc::Status StreamImpl(grpc::ServerContext* context,
                           grpc::ServerReaderWriterInterface<
                           tkrzw::StreamResponse, tkrzw::StreamRequest>* stream) {
@@ -488,7 +482,7 @@ class DBMServiceImpl : public DBMService::Service {
       switch (request.request_oneof_case()) {
         case tkrzw::StreamRequest::kEchoRequest: {
           const grpc::Status status =
-              Echo(context, &request.echo_request(), response.mutable_echo_response());
+              EchoImpl(context, &request.echo_request(), response.mutable_echo_response());
           if (!status.ok()) {
             return status;
           }
@@ -496,7 +490,7 @@ class DBMServiceImpl : public DBMService::Service {
         }
         case tkrzw::StreamRequest::kGetRequest: {
           const grpc::Status status =
-              Get(context, &request.get_request(), response.mutable_get_response());
+              GetImpl(context, &request.get_request(), response.mutable_get_response());
           if (!status.ok()) {
             return status;
           }
@@ -504,7 +498,7 @@ class DBMServiceImpl : public DBMService::Service {
         }
         case tkrzw::StreamRequest::kSetRequest: {
           const grpc::Status status =
-              Set(context, &request.set_request(), response.mutable_set_response());
+              SetImpl(context, &request.set_request(), response.mutable_set_response());
           if (!status.ok()) {
             return status;
           }
@@ -512,16 +506,12 @@ class DBMServiceImpl : public DBMService::Service {
         }
         case tkrzw::StreamRequest::kRemoveRequest: {
           const grpc::Status status =
-              Remove(context, &request.remove_request(), response.mutable_remove_response());
+              RemoveImpl(context, &request.remove_request(), response.mutable_remove_response());
           if (!status.ok()) {
             return status;
           }
           break;
         }
-
-
-
-
         default: {
           return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknow request");
         }
@@ -531,12 +521,6 @@ class DBMServiceImpl : public DBMService::Service {
       }
     }
     return grpc::Status::OK;
-  }
-
-  grpc::Status Iterate(
-      grpc::ServerContext* context,
-      grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) override {
-    return IterateImpl(context, stream);
   }
 
   grpc::Status IterateImpl(grpc::ServerContext* context,
@@ -552,90 +536,11 @@ class DBMServiceImpl : public DBMService::Service {
       if (!stream->Read(&request)) {
         break;
       }
-      LogRequest(context, "Iterate", &request);
-      if (iter == nullptr || request.dbm_index() != dbm_index) {
-        if (request.dbm_index() < 0 ||
-            request.dbm_index() >= static_cast<int32_t>(dbms_.size())) {
-          return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
-        }
-        auto& dbm = *dbms_[request.dbm_index()];
-        iter = dbm.MakeIterator();
-        dbm_index = request.dbm_index();
-      }
       tkrzw::IterateResponse response;
-      switch (request.operation()) {
-        case IterateRequest::OP_NONE: {
-          break;
-        }
-        case IterateRequest::OP_FIRST: {
-          const Status status = iter->First();
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        case IterateRequest::OP_LAST: {
-          const Status status = iter->Last();
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        case IterateRequest::OP_JUMP: {
-          const Status status = iter->Jump(request.key());
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        case IterateRequest::OP_JUMP_LOWER: {
-          const Status status = iter->JumpLower(request.key(), request.jump_inclusive());
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        case IterateRequest::OP_JUMP_UPPER: {
-          const Status status = iter->JumpUpper(request.key(), request.jump_inclusive());
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        case IterateRequest::OP_NEXT: {
-          const Status status = iter->Next();
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        case IterateRequest::OP_PREVIOUS: {
-          const Status status = iter->Previous();
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        case IterateRequest::OP_GET: {
-          std::string key, value;
-          const Status status = iter->Get(
-              request.omit_key() ? nullptr : &key, request.omit_value() ? nullptr : &value);
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          if (status == Status::SUCCESS) {
-            response.set_key(key);
-            response.set_value(value);
-          }
-          break;
-        }
-        case IterateRequest::OP_SET: {
-          const Status status = iter->Set(request.value());
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        case IterateRequest::OP_REMOVE: {
-          const Status status = iter->Remove();
-          response.mutable_status()->set_code(status.GetCode());
-          response.mutable_status()->set_message(status.GetMessage());
-          break;
-        }
-        default: {
-          return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown operation");
-        }
+      const grpc::Status status = IterateProcessOne(
+          &iter, &dbm_index, context, request, &response);
+      if (!status.ok()) {
+        return status;
       }
       if (!stream->Write(response)) {
         break;
@@ -644,10 +549,461 @@ class DBMServiceImpl : public DBMService::Service {
     return grpc::Status::OK;
   }
 
- private:
+  grpc::Status IterateProcessOne(
+      std::unique_ptr<DBM::Iterator>* iter, int32_t* dbm_index, grpc::ServerContext* context,
+      const tkrzw::IterateRequest& request, tkrzw::IterateResponse* response) {
+    LogRequest(context, "Iterate", &request);
+    if (iter == nullptr || request.dbm_index() != *dbm_index) {
+      if (request.dbm_index() < 0 ||
+          request.dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+      }
+      auto& dbm = *dbms_[request.dbm_index()];
+      *iter = dbm.MakeIterator();
+      *dbm_index = request.dbm_index();
+    }
+    switch (request.operation()) {
+      case IterateRequest::OP_NONE: {
+        break;
+      }
+      case IterateRequest::OP_FIRST: {
+        const Status status = (*iter)->First();
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      case IterateRequest::OP_LAST: {
+        const Status status = (*iter)->Last();
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      case IterateRequest::OP_JUMP: {
+        const Status status = (*iter)->Jump(request.key());
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      case IterateRequest::OP_JUMP_LOWER: {
+        const Status status = (*iter)->JumpLower(request.key(), request.jump_inclusive());
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      case IterateRequest::OP_JUMP_UPPER: {
+        const Status status = (*iter)->JumpUpper(request.key(), request.jump_inclusive());
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      case IterateRequest::OP_NEXT: {
+        const Status status = (*iter)->Next();
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      case IterateRequest::OP_PREVIOUS: {
+        const Status status = (*iter)->Previous();
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      case IterateRequest::OP_GET: {
+        std::string key, value;
+        const Status status = (*iter)->Get(
+            request.omit_key() ? nullptr : &key, request.omit_value() ? nullptr : &value);
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        if (status == Status::SUCCESS) {
+          response->set_key(key);
+          response->set_value(value);
+        }
+        break;
+      }
+      case IterateRequest::OP_SET: {
+        const Status status = (*iter)->Set(request.value());
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      case IterateRequest::OP_REMOVE: {
+        const Status status = (*iter)->Remove();
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        break;
+      }
+      default: {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown operation");
+      }
+    }
+    return grpc::Status::OK;
+  }
+
+ protected:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;
 };
+
+class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
+ public:
+  DBMServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
+      : DBMServiceBase(dbms, logger) {}
+
+  grpc::Status Echo(
+      grpc::ServerContext* context, const EchoRequest* request,
+      EchoResponse* response) override {
+    return EchoImpl(context, request, response);
+  }
+
+  grpc::Status Inspect(
+      grpc::ServerContext* context, const InspectRequest* request,
+      InspectResponse* response) override {
+    return InspectImpl(context, request, response);
+  }
+
+  grpc::Status Get(
+      grpc::ServerContext* context, const GetRequest* request,
+      GetResponse* response) override {
+    return GetImpl(context, request, response);
+  }
+
+  grpc::Status GetMulti(
+      grpc::ServerContext* context, const GetMultiRequest* request,
+      GetMultiResponse* response) override {
+    return GetMultiImpl(context, request, response);
+  }
+
+  grpc::Status Set(
+      grpc::ServerContext* context, const SetRequest* request,
+      SetResponse* response) override {
+    return SetImpl(context, request, response);
+  }
+
+  grpc::Status SetMulti(
+      grpc::ServerContext* context, const SetMultiRequest* request,
+      SetMultiResponse* response) override {
+    return SetMultiImpl(context, request, response);
+  }
+
+  grpc::Status Remove(
+      grpc::ServerContext* context, const RemoveRequest* request,
+      RemoveResponse* response) override {
+    return RemoveImpl(context, request, response);
+  }
+
+  grpc::Status RemoveMulti(
+      grpc::ServerContext* context, const RemoveMultiRequest* request,
+      RemoveMultiResponse* response) override {
+    return RemoveMultiImpl(context, request, response);
+  }
+
+  grpc::Status Append(
+      grpc::ServerContext* context, const AppendRequest* request,
+      AppendResponse* response) override {
+    return AppendImpl(context, request, response);
+  }
+
+  grpc::Status AppendMulti(
+      grpc::ServerContext* context, const AppendMultiRequest* request,
+      AppendMultiResponse* response) override {
+    return AppendMultiImpl(context, request, response);
+  }
+
+  grpc::Status CompareExchange(
+      grpc::ServerContext* context, const CompareExchangeRequest* request,
+      CompareExchangeResponse* response) override {
+    return CompareExchangeImpl(context, request, response);
+  }
+
+  grpc::Status Increment(
+      grpc::ServerContext* context, const IncrementRequest* request,
+      IncrementResponse* response) override {
+    return IncrementImpl(context, request, response);
+  }
+
+  grpc::Status CompareExchangeMulti(
+      grpc::ServerContext* context, const CompareExchangeMultiRequest* request,
+      CompareExchangeMultiResponse* response) override {
+    return CompareExchangeMultiImpl(context, request, response);
+  }
+
+  grpc::Status Count(
+      grpc::ServerContext* context, const CountRequest* request,
+      CountResponse* response) override {
+    return CountImpl(context, request, response);
+  }
+
+  grpc::Status GetFileSize(
+      grpc::ServerContext* context, const GetFileSizeRequest* request,
+      GetFileSizeResponse* response) override {
+    return GetFileSizeImpl(context, request, response);
+  }
+
+  grpc::Status Clear(
+      grpc::ServerContext* context, const ClearRequest* request,
+      ClearResponse* response) override {
+    return ClearImpl(context, request, response);
+  }
+
+  grpc::Status Rebuild(
+      grpc::ServerContext* context, const RebuildRequest* request,
+      RebuildResponse* response) override {
+    return RebuildImpl(context, request, response);
+  }
+
+  grpc::Status ShouldBeRebuilt(
+      grpc::ServerContext* context, const ShouldBeRebuiltRequest* request,
+      ShouldBeRebuiltResponse* response) override {
+    return ShouldBeRebuiltImpl(context, request, response);
+  }
+
+  grpc::Status Synchronize(
+      grpc::ServerContext* context, const SynchronizeRequest* request,
+      SynchronizeResponse* response) override {
+    return SynchronizeImpl(context, request, response);
+  }
+
+  grpc::Status Stream(
+      grpc::ServerContext* context,
+      grpc::ServerReaderWriter<tkrzw::StreamResponse, tkrzw::StreamRequest>* stream) override {
+    return StreamImpl(context, stream);
+  }
+
+  grpc::Status Iterate(
+      grpc::ServerContext* context,
+      grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) override {
+    return IterateImpl(context, stream);
+  }
+};
+
+class DBMAsyncServiceImpl : public DBMServiceBase, public DBMService::AsyncService {
+ public:
+  DBMAsyncServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
+      : DBMServiceBase(dbms, logger) {}
+
+  void OperateQueue(grpc::ServerCompletionQueue* queue, const bool* is_shutdown);
+  void ShutdownQueue(grpc::ServerCompletionQueue* queue);
+};
+
+class AsyncDBMProcessorInterface {
+ public:
+  virtual ~AsyncDBMProcessorInterface() = default;
+  virtual void Proceed() = 0;
+  virtual void Cancel() = 0;
+};
+
+template<typename REQUEST, typename RESPONSE>
+class AsyncDBMProcessor : public AsyncDBMProcessorInterface {
+ public:
+  enum ProcState {CREATE, PROCESS, FINISH};
+  typedef void (DBMService::AsyncService::*RequestCall)(
+      grpc::ServerContext*, REQUEST*, grpc::ServerAsyncResponseWriter<RESPONSE>*,
+      grpc::CompletionQueue*, grpc::ServerCompletionQueue*, void*);
+  typedef grpc::Status (DBMServiceBase::*Call)(
+      grpc::ServerContext*, const REQUEST*, RESPONSE*);
+
+  AsyncDBMProcessor(
+      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue,
+      RequestCall request_call, Call call)
+      : service_(service), queue_(queue), request_call_(request_call), call_(call),
+        context_(), responder_(&context_), proc_state_(CREATE), rpc_status_(grpc::Status::OK) {
+    Proceed();
+  }
+
+  void Proceed() override {
+    if (proc_state_ == CREATE) {
+      proc_state_ = PROCESS;
+      (service_->*request_call_)(&context_, &request_, &responder_, queue_, queue_, this);
+    } else if (proc_state_ == PROCESS) {
+      new AsyncDBMProcessor<REQUEST, RESPONSE>(service_, queue_, request_call_, call_);
+      rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
+      proc_state_ = FINISH;
+      responder_.Finish(response_, rpc_status_, this);
+    } else {
+      delete this;
+    }
+  }
+
+  void Cancel() override {
+    if (proc_state_ == PROCESS) {
+      proc_state_ = FINISH;;
+      responder_.Finish(response_, rpc_status_, this);
+    } else {
+      delete this;
+    }
+  }
+
+ private:
+  DBMAsyncServiceImpl* service_;
+  grpc::ServerCompletionQueue* queue_;
+  RequestCall request_call_;
+  Call call_;
+  grpc::ServerContext context_;
+  REQUEST request_;
+  RESPONSE response_;
+  grpc::ServerAsyncResponseWriter<RESPONSE> responder_;
+  ProcState proc_state_;
+  grpc::Status rpc_status_;
+};
+
+class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
+ public:
+  enum ProcState {CREATE, BEGIN, READ, WRITE, FINISH};
+  
+  AsyncDBMProcessorIterate(
+      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
+      : service_(service), queue_(queue),
+        context_(), stream_(&context_), proc_state_(CREATE),
+        iter_(nullptr), dbm_index_(-1), rpc_status_(grpc::Status::OK) {
+    Proceed();
+  }
+  
+  void Proceed() override {
+    if (proc_state_ == CREATE) {
+      proc_state_ = BEGIN;
+      service_->RequestIterate(&context_, &stream_, queue_, queue_, this);
+    } else if (proc_state_ == BEGIN || proc_state_ == READ) {
+      if (proc_state_ == BEGIN) {
+        new AsyncDBMProcessorIterate(service_, queue_);
+      }
+      proc_state_ = WRITE;
+      request_.Clear();
+      stream_.Read(&request_, this);
+    } else if (proc_state_ == WRITE) {
+      response_.Clear();
+      rpc_status_ = service_->IterateProcessOne(
+          &iter_, &dbm_index_, &context_, request_, &response_);
+      if (rpc_status_.ok()) {
+        proc_state_ = READ;
+        stream_.Write(response_, this);
+      } else {
+        proc_state_ = FINISH;;
+        stream_.Finish(rpc_status_, this);
+      }
+    } else {
+      delete this;
+    }
+  }
+
+  void Cancel() override {
+    if (proc_state_ == READ || proc_state_ == WRITE) {
+      proc_state_ = FINISH;;
+      stream_.Finish(rpc_status_, this);
+    } else {
+      delete this;
+    }
+  }
+
+ private:
+  DBMAsyncServiceImpl* service_;
+  grpc::ServerCompletionQueue* queue_;
+  grpc::ServerContext context_;
+  grpc::ServerAsyncReaderWriter<IterateResponse, IterateRequest> stream_;
+  ProcState proc_state_;
+  std::unique_ptr<DBM::Iterator> iter_;
+  int32_t dbm_index_;
+  tkrzw::IterateRequest request_;
+  tkrzw::IterateResponse response_;
+  grpc::Status rpc_status_;
+};
+
+inline void DBMAsyncServiceImpl::OperateQueue(
+    grpc::ServerCompletionQueue* queue, const bool* is_shutdown) {
+  logger_->Log(Logger::LEVEL_INFO, "Starting a completion queue");
+  new AsyncDBMProcessor<EchoRequest, EchoResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestEcho,
+      &DBMServiceBase::EchoImpl);
+  new AsyncDBMProcessor<InspectRequest, InspectResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestInspect,
+      &DBMServiceBase::InspectImpl);
+  new AsyncDBMProcessor<GetRequest, GetResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestGet,
+      &DBMServiceBase::GetImpl);
+  new AsyncDBMProcessor<GetMultiRequest, GetMultiResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestGetMulti,
+      &DBMServiceBase::GetMultiImpl);    
+  new AsyncDBMProcessor<SetRequest, SetResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestSet,
+      &DBMServiceBase::SetImpl);
+  new AsyncDBMProcessor<SetMultiRequest, SetMultiResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestSetMulti,
+      &DBMServiceBase::SetMultiImpl);
+  new AsyncDBMProcessor<RemoveRequest, RemoveResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestRemove,
+      &DBMServiceBase::RemoveImpl);
+  new AsyncDBMProcessor<RemoveMultiRequest, RemoveMultiResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestRemoveMulti,
+      &DBMServiceBase::RemoveMultiImpl);
+  new AsyncDBMProcessor<AppendRequest, AppendResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestAppend,
+      &DBMServiceBase::AppendImpl);
+  new AsyncDBMProcessor<AppendMultiRequest, AppendMultiResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestAppendMulti,
+      &DBMServiceBase::AppendMultiImpl);
+  new AsyncDBMProcessor<CompareExchangeRequest, CompareExchangeResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestCompareExchange,
+      &DBMServiceBase::CompareExchangeImpl);
+  new AsyncDBMProcessor<IncrementRequest, IncrementResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestIncrement,
+      &DBMServiceBase::IncrementImpl);
+  new AsyncDBMProcessor<CompareExchangeMultiRequest, CompareExchangeMultiResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestCompareExchangeMulti,
+      &DBMServiceBase::CompareExchangeMultiImpl);
+  new AsyncDBMProcessor<CountRequest, CountResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestCount,
+      &DBMServiceBase::CountImpl);
+  new AsyncDBMProcessor<GetFileSizeRequest, GetFileSizeResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestGetFileSize,
+      &DBMServiceBase::GetFileSizeImpl);
+  new AsyncDBMProcessor<ClearRequest, ClearResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestClear,
+      &DBMServiceBase::ClearImpl);
+  new AsyncDBMProcessor<RebuildRequest, RebuildResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestRebuild,
+      &DBMServiceBase::RebuildImpl);
+  new AsyncDBMProcessor<ShouldBeRebuiltRequest, ShouldBeRebuiltResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestShouldBeRebuilt,
+      &DBMServiceBase::ShouldBeRebuiltImpl);
+  new AsyncDBMProcessor<SynchronizeRequest, SynchronizeResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestSynchronize,
+      &DBMServiceBase::SynchronizeImpl);
+
+  new AsyncDBMProcessorIterate(this, queue);
+
+  while (true) {
+    void* tag = nullptr;
+    bool ok = false;
+    if (!queue->Next(&tag, &ok)) {
+      break;
+    }
+    if (tag == nullptr) {
+      continue;
+    }
+    auto* proc = static_cast<AsyncDBMProcessorInterface*>(tag);
+    if (ok) {
+      proc->Proceed();    
+    } else {
+      proc->Cancel();
+      if (*is_shutdown) {
+        break;
+      }
+    }
+  }
+  logger_->Log(Logger::LEVEL_INFO, "Finishing a completion queue");
+}
+
+void DBMAsyncServiceImpl::ShutdownQueue(grpc::ServerCompletionQueue* queue) {
+  queue->Shutdown();
+  void* tag = nullptr;
+  bool ok = false;
+  while (queue->Next(&tag, &ok)) {
+    if (tag == nullptr) {
+      continue;
+    }
+    auto* proc = static_cast<AsyncDBMProcessorInterface*>(tag);
+    delete proc;
+  }
+}
 
 }  // namespace tkrzw
 

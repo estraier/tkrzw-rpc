@@ -217,10 +217,9 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     }
     const double end_time = GetWallTime();
     const double elapsed_time = end_time - start_time;
-    const int64_t num_records = dbm.CountSimple();
     const int64_t mem_usage = GetMemoryUsage() - start_mem_rss;
-    PrintF("Echoing done: elapsed_time=%.6f num_records=%lld qps=%.0f mem=%lld\n",
-           elapsed_time, num_records, num_iterations * num_threads / elapsed_time,
+    PrintF("Echoing done: elapsed_time=%.6f qps=%.0f mem=%lld\n",
+           elapsed_time, num_iterations * num_threads / elapsed_time,
            mem_usage);
     PrintL();
   }
