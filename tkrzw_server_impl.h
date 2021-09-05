@@ -859,7 +859,7 @@ class AsyncDBMProcessor : public AsyncDBMProcessorInterface {
 class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, BEGIN, READ, WRITE, FINISH};
-  
+
   AsyncDBMProcessorStream(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
       : service_(service), queue_(queue),
@@ -867,7 +867,7 @@ class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
         rpc_status_(grpc::Status::OK) {
     Proceed();
   }
-  
+
   void Proceed() override {
     if (proc_state_ == CREATE) {
       proc_state_ = BEGIN;
@@ -923,7 +923,7 @@ class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
 class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, BEGIN, READ, WRITE, FINISH};
-  
+
   AsyncDBMProcessorIterate(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
       : service_(service), queue_(queue),
@@ -931,7 +931,7 @@ class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
         iter_(nullptr), dbm_index_(-1), rpc_status_(grpc::Status::OK) {
     Proceed();
   }
-  
+
   void Proceed() override {
     if (proc_state_ == CREATE) {
       proc_state_ = BEGIN;
@@ -995,7 +995,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
       &DBMServiceBase::GetImpl);
   new AsyncDBMProcessor<GetMultiRequest, GetMultiResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestGetMulti,
-      &DBMServiceBase::GetMultiImpl);    
+      &DBMServiceBase::GetMultiImpl);
   new AsyncDBMProcessor<SetRequest, SetResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestSet,
       &DBMServiceBase::SetImpl);
@@ -1054,7 +1054,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
     }
     auto* proc = static_cast<AsyncDBMProcessorInterface*>(tag);
     if (ok) {
-      proc->Proceed();    
+      proc->Proceed();
     } else {
       proc->Cancel();
       if (*is_shutdown) {
