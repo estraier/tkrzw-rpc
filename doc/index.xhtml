@@ -21,7 +21,7 @@ pre { margin-left: 1.5ex; padding: 0.4ex 0.6ex; border: solid 1px #dddddd; borde
 code { font-weight: bold; }
 pre[class*="language-"] { font-size: 10pt; line-height: 120%; padding: 0.5ex 0.8ex; background: #f8f8f8;
   max-height: 70ex; }
-pre.log { font-size: 9pt; line-height: 110%; padding: 0.5ex 0.8ex; background: #f8f8f8; }
+pre.rawtext { font-size: 9pt; line-height: 110%; padding: 0.5ex 0.8ex; background: #f8f8f8; }
 li { margin-left: 0.2ex; }
 dt { margin-left: 2.0ex; }
 dd { margin-left: 5.0ex; }
@@ -165,7 +165,7 @@ $ make testrun
 <pre><code class="language-shell-session"><![CDATA[$ make check
 ]]></code></pre>
 
-<p>If the "Checking completed" is shown, all checks are OK.  You can stop the server process by inputting Ctrl-C on the same terminal.</p>
+<p>If the message "Checking completed" is shown, all checks are OK.  You can stop the server process by inputting Ctrl-C on the same terminal.</p>
 
 <h2 id="tutorial">Tutorial</h2>
 
@@ -200,30 +200,30 @@ two      second
 
 <p>Stop the server by inputting Ctrl-C on the terminal of the server command.  Such logs as the following are printed.</p>
 
-<pre class="log"><![CDATA[2021/08/30 21:44:55 [INFO] ==== Starting the process as a command ====
-2021/08/30 21:44:55 [INFO] Version: rpc_pkg=0.5.0, rpc_lib=1.1.0, core_pkg=1.0.6, core_lib=1.49.0
-2021/08/30 21:44:55 [INFO] Opening a database: #dbm=tiny
-2021/08/30 21:44:55 [INFO] Server: address=0.0.0.0:1978, pid=1175899
-2021/08/30 21:45:20 [DEBUG] 127.0.0.1:59208 [Set] key: "one" value: "first" overwrite: true
-2021/08/30 21:45:24 [DEBUG] 127.0.0.1:59210 [Set] key: "two" value: "second" overwrite: true
-2021/08/30 21:45:29 [DEBUG] 127.0.0.1:59212 [Set] key: "three" value: "third" overwrite: true
-2021/08/30 21:45:38 [DEBUG] 127.0.0.1:59214 [Get] key: "one"
-2021/08/30 21:45:48 [DEBUG] 127.0.0.1:59216 [Get] key: "two"
-2021/08/30 21:46:01 [DEBUG] 127.0.0.1:59218 [Get] key: "three"
-2021/08/30 21:46:11 [DEBUG] 127.0.0.1:59220 [Remove] key: "one"
-2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_FIRST
-2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_GET
-2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_NEXT
-2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_GET
-2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_NEXT
-2021/08/30 21:46:21 [DEBUG] 127.0.0.1:59224 [Iterate] operation: OP_GET
-2021/08/30 21:48:53 [INFO] Shutting down by signal: 2
-2021/08/30 21:48:53 [INFO] The server finished
-2021/08/30 21:48:53 [INFO] Closing a database
-2021/08/30 21:48:53 [INFO] ==== Ending the process in success ====
+<pre class="rawtext"><![CDATA[2021/09/05 12:16:45 [INFO] ======== Starting the process 39438 as a command ========
+2021/09/05 12:16:45 [INFO] Version: rpc_pkg=0.7.2, rpc_lib=1.5.0, core_pkg=1.0.7, core_lib=1.50.0
+2021/09/05 12:16:45 [INFO] Opening a database: #dbm=tiny
+2021/09/05 12:16:45 [INFO] Building the sync server: address=0.0.0.0:1978
+2021/09/05 12:16:57 [DEBUG] [::1]:32788 [Set] key: "one" value: "first" overwrite: true
+2021/09/05 12:17:01 [DEBUG] [::1]:32792 [Set] key: "two" value: "second" overwrite: true
+2021/09/05 12:17:05 [DEBUG] [::1]:32794 [Set] key: "three" value: "third" overwrite: true
+2021/09/05 12:17:12 [DEBUG] [::1]:32796 [Get] key: "one"
+2021/09/05 12:17:15 [DEBUG] [::1]:32798 [Get] key: "two"
+2021/09/05 12:17:17 [DEBUG] [::1]:32800 [Get] key: "three"
+2021/09/05 12:17:56 [DEBUG] [::1]:32804 [Remove] key: "list"
+2021/09/05 12:18:00 [DEBUG] [::1]:32806 [Iterate] operation: OP_FIRST
+2021/09/05 12:18:00 [DEBUG] [::1]:32806 [Iterate] operation: OP_GET
+2021/09/05 12:18:00 [DEBUG] [::1]:32806 [Iterate] operation: OP_NEXT
+2021/09/05 12:18:00 [DEBUG] [::1]:32806 [Iterate] operation: OP_GET
+2021/09/05 12:18:00 [DEBUG] [::1]:32806 [Iterate] operation: OP_NEXT
+2021/09/05 12:18:00 [DEBUG] [::1]:32806 [Iterate] operation: OP_GET
+2021/09/05 12:18:03 [INFO] Shutting down by signal: 2
+2021/09/05 12:18:03 [INFO] The server finished
+2021/09/05 12:18:03 [INFO] Closing a database
+2021/09/05 12:18:03 [INFO] ======== Ending the process 39438 in success ========
 ]]></pre>
 
-<p>As the on-memory database was not associated with any file, records in the database vanished whn the server shut down.  Next, let's run the server with two on-memory databases associated with files.  The first database is TinyDBM, which is on-memory hash database.  The second database is BabyDBM, which is on-memory tree database.</p>
+<p>As the on-memory database was not associated with any file, records in the database vanished when the server shut down.  Next, let's run the server with two on-memory databases associated with files.  The first database is TinyDBM, which is on-memory hash database.  The second database is BabyDBM, which is on-memory tree database.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --log_level debug "casket-1.tkmt" "casket-2.tkmb"
 ]]></code></pre>
@@ -344,6 +344,8 @@ world
 <dt>Options:</dt>
 <dd><code>--version</code> : Prints the version number and exit.</dd>
 <dd><code>--address <var>str</var></code> : The address/hostname and the port of the server (default: 0.0.0.0:1978)</dd>
+<dd><code>--async</code> : Uses the asynchronous API on ths server.</dd>
+<dd><code>--threads <var>num</var></code> : The maximum number of worker threads. (default: 1)</dd>
 <dd><code>--log_file <var>str</var></code> : The file path of the log file. (default: /dev/stdout)</dd>
 <dd><code>--log_level <var>str</var></code> : The minimum log level to be stored: debug, info, warn, error, fatal. (default: info)</dd>
 <dd><code>--log_date <var>str</var></code> : The log date format: simple, simple_micro, w3cdtf, w3cdtf_micro, rfc1123, epoch, epoch_micro. (default: simple)</dd>
@@ -378,13 +380,17 @@ world
 
 <p>By default, the server address is "0.0.0.0:1978", which means that the socket is bound to all network interfaces of IPv4 and IPv6 on the machine and that the port number is 1978.  To use a UNIX domain socket, specify the socket file path like "unix:/run/tkrzw_server.socket".</p>
 
-<p>To finish the server process running on foreground, input Ctrl-C on the terminal.  If you run the server as a system service, run the process as a daemon with the "--daemon" flag.  To finish the daemon process, send a termination signal such as SIGTERM by the "kill" command.  If a daemon process catches SIGHUP, the log file is re-opened.  To send signals to the process, you have to know the process ID.  So, it's a good practice to write the process ID to a file by the "--pid" flag.  Because thr current directory of a daemon process is changed to the root directory, paths of related files should be described as their absolute paths.</p>
+<p>By default, the server uses the synchronous API of gRPC.  If the number of clients is limited (say, 20 or less) and they don't call RPC continuously, the maximum throughput of the server doesn't matter but the least latency does.  In such a case, using the synchronous API leads to the best performance.  Otherwise, you will pursue the maximum throughput of the server.  Then, you should specify the "--async" option to use the asynchronous API.  It enables the server to handle 10 thousands of connections at the same time and show more throughput than 100 thousand QPS.  The "--threads" option specifies the maximum number of worker threads used by the synchronous API, or it specifies the fixed number of queue-thread pairs used in the asynchronous API.  Usually, the number of threads should be the same as the number of cores of the CPU.  If you run clients on the same machine and they use much CPU time, the number of threads of the server should be less.</p>
+
+<p>To finish the server process running on foreground, input Ctrl-C on the terminal.  If you run the server as a system service, run the process as a daemon with the "--daemon" option.  To finish the daemon process, send a termination signal such as SIGTERM by the "kill" command.  If a daemon process catches SIGHUP, the log file is re-opened.  To send signals to the process, you have to know the process ID.  So, it's a good practice to write the process ID to a file by the "--pid" flag.  Because thr current directory of a daemon process is changed to the root directory, paths of related files should be described as their absolute paths.</p>
 
 <p>The following command starts the database service as a daemon process.  Usually, it is run by the start up script of the system.</p>
 
-<pre><code class="language-shell-session"><![CDATA[tkrzw_server --address 0.0.0.0:1978 --daemon \
+<pre><code class="language-shell-session"><![CDATA[tkrzw_server --address 0.0.0.0:1978 \
+  --async --threads 4 \
   --log_file /var/log/tkrzw_server.log \
   --pid_file /run/tkrzw_server.pid \
+  --daemon \
   "/var/db/casket-1.tkh#num_buckets=10M"
 ]]></code></pre>
 
@@ -516,7 +522,7 @@ Korea  Seoul
 
 <h2 id="remotedbm_overview">RemoteDBM: Remote Database API</h2>
 
-<p>The remote database is an interface to access the database service of Tkrzw-RPC.  It encapsulates the existence of the network layer so that you can use the features as if you operate local databases.  RemoteDBM is thread-safe so multiple threads can share the same instance, which saves the number of connections.</p>
+<p>The remote database is an interface to access the database service of Tkrzw-RPC.  It encapsulates the existence of the network layer so that you can use the features as if you operate local databases.  RemoteDBM is thread-safe so multiple threads can share the same instance, which saves the number of connections.  As the server supports both the synchronous API and the asynchronous API, RemoteDBM supports only the synchronous API on the client side.  Combination of the asynchronous API on the server side and the synchronous API on the client side is possible.  And, usually, it is the best setting because it maximizes the throughput of the server and simplifies the client code structure.</p>
 
 <p>Before any operation, you have to call the Connect method to make a connection to the database server.  You set the server address and the port number, like "192.168.0.8:1978" and "example.com:8080".  To use a UNIX domain socket, set the path like "unix:/run/tkrzw_server.socket".  You can disconnect the connection by calling the Disconnect method.</p>
 
@@ -674,6 +680,53 @@ int main(int argc, char** argv) {
   return 0;
 }
 ]]></code></pre>
+
+<h2 id="tips">Tips</h2>
+
+<h3 id="tips_online_service">Typical Usage for Online Service</h3>
+
+<p>HashDBM is designed to combine high performance and durability in the usage of online service.  Let's say, you run an online service and manage user data on a hash database.  The database is served by tkrzw_server and thousands of clients connect to the server and cause queries at 100K QPS at a peak time.  You run the server like this.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --host "0.0.0.0:1978" \
+  --async --threads 8 \
+  --log_file /var/log/tkrzw_server.log \
+  --pid_file /run/tkrzw_server.pid \
+  --daemon \
+  "/var/db/casket-1.tkh#num_buckets=10M,update_mode=appending"
+]]></code></pre>
+
+<p>With the "--async" option, you use the asynchronous API of gRPC, which maximizes the throughput.  With the "--threads 8" option, the number of "completion queues" and the number of threads to consume tasks in each queue are set 8.  The value should be the same as the number of the CPU cores.</p>
+
+<p>With "num_buckets=10M", the intial number of hash buckets is 10 million, which assumes the number of users is currently 10 million or less.  With "update_mode=appending", the update mode is in the appending mode, which realizes a high durability and a reasonable update performance on the large scale database.</p>
+
+<p>As the update mode is the appending mode, the file size of the database grows by every update operations so you should rebuild the database periodically.  To do so, you set the follwing cron script which is invoked every midnight.</p>
+
+<pre class="rawtext"><![CDATA[0 0 * * *    tkrzw_dbm_remote_util rebuild --address "localhost:1978" 2>&1 /dev/null
+]]></pre>
+
+<p>One of the most important features of HashDBM is that the Rebuild method is done without blocking other threads.  So, you can rebuild the database while serving it online.  The number of buckets is implicitly optimized for the current number of records.</p>
+
+<h3 id="tips_measures_for_durability">Measures for Durability</h3>
+
+<p>If the server process or the entire operating system crashes unexpectedly, the database file is marked "unhealthy".  If you start the server with an unhealthy database file, the file is restored automatically.  By default, the library makes the best effort to restore as many updates as possible.  How many updates are actually restored depends on the hehavior of the underlying file system, operating system and storage device.</p>
+
+<p>If you want to guarantee that the past updates at a point are written all through the storage device, you should synchronize the database periodically or at an arbitrary critical point of operations.  If you invoke it every 10 minutes, you set the following cron script.</p>
+
+<pre class="rawtext"><![CDATA[*/10 * * * *    tkrzw_dbm_remote_util sync --address "localhost:1978" --hard 2>&1 /dev/null
+]]></pre>
+
+<p>By setting the "--hard" option, synchronization is done to the storage device.  It means that the current state is restored even on system crashes by the kernel panic, power failures, or etc.  If you omit the option, synchronization is done to the file system, which is faster.  It guarantees the data restoration only against process crashes by segmentation faults, the OOM killer, etc.</p>
+
+<p>If you want ACID traits of transactions, add "restore_mode=sync" to the database parameters so that the state at the time of the last synchronization is restored.  Client programs should call the Synchronize method after each translaction.  As performance and durability is in a relation of trade-off, how you call syncoronization should be determined depending on the usage and content.</p>
+
+<h2 id="faq">Frequently Asked Questions</h2>
+
+<dl>
+<dt>Q: Can I write a client library for a language?</dt>
+<dd>A: Yes, please.  Fork the tkrzw_rpc.proto file to add options for the package name etc.</dd>
+<dt>Q: Do you plan to support Windows?</dt>
+<dd>A: Currently, no.  It's a matter of priority.</dd>
+</dl>
 
 <h2 id="license">License</h2>
 

@@ -479,45 +479,55 @@ class DBMServiceBase {
         break;
       }
       tkrzw::StreamResponse response;
-      switch (request.request_oneof_case()) {
-        case tkrzw::StreamRequest::kEchoRequest: {
-          const grpc::Status status =
-              EchoImpl(context, &request.echo_request(), response.mutable_echo_response());
-          if (!status.ok()) {
-            return status;
-          }
-          break;
-        }
-        case tkrzw::StreamRequest::kGetRequest: {
-          const grpc::Status status =
-              GetImpl(context, &request.get_request(), response.mutable_get_response());
-          if (!status.ok()) {
-            return status;
-          }
-          break;
-        }
-        case tkrzw::StreamRequest::kSetRequest: {
-          const grpc::Status status =
-              SetImpl(context, &request.set_request(), response.mutable_set_response());
-          if (!status.ok()) {
-            return status;
-          }
-          break;
-        }
-        case tkrzw::StreamRequest::kRemoveRequest: {
-          const grpc::Status status =
-              RemoveImpl(context, &request.remove_request(), response.mutable_remove_response());
-          if (!status.ok()) {
-            return status;
-          }
-          break;
-        }
-        default: {
-          return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknow request");
-        }
+      const grpc::Status status = StreamProcessOne(context, request, &response);
+      if (!status.ok()) {
+        return status;
       }
       if (!request.omit_response() && !stream->Write(response)) {
         break;
+      }
+    }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status StreamProcessOne(
+      grpc::ServerContext* context,
+      const tkrzw::StreamRequest& request, tkrzw::StreamResponse* response) {
+    switch (request.request_oneof_case()) {
+      case tkrzw::StreamRequest::kEchoRequest: {
+        const grpc::Status status =
+            EchoImpl(context, &request.echo_request(), response->mutable_echo_response());
+        if (!status.ok()) {
+          return status;
+        }
+        break;
+      }
+      case tkrzw::StreamRequest::kGetRequest: {
+        const grpc::Status status =
+              GetImpl(context, &request.get_request(), response->mutable_get_response());
+        if (!status.ok()) {
+          return status;
+          }
+        break;
+        }
+      case tkrzw::StreamRequest::kSetRequest: {
+        const grpc::Status status =
+            SetImpl(context, &request.set_request(), response->mutable_set_response());
+        if (!status.ok()) {
+          return status;
+        }
+        break;
+      }
+      case tkrzw::StreamRequest::kRemoveRequest: {
+        const grpc::Status status =
+            RemoveImpl(context, &request.remove_request(), response->mutable_remove_response());
+        if (!status.ok()) {
+          return status;
+        }
+        break;
+      }
+      default: {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknow request");
       }
     }
     return grpc::Status::OK;
@@ -846,6 +856,70 @@ class AsyncDBMProcessor : public AsyncDBMProcessorInterface {
   grpc::Status rpc_status_;
 };
 
+class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
+ public:
+  enum ProcState {CREATE, BEGIN, READ, WRITE, FINISH};
+  
+  AsyncDBMProcessorStream(
+      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
+      : service_(service), queue_(queue),
+        context_(), stream_(&context_), proc_state_(CREATE),
+        rpc_status_(grpc::Status::OK) {
+    Proceed();
+  }
+  
+  void Proceed() override {
+    if (proc_state_ == CREATE) {
+      proc_state_ = BEGIN;
+      service_->RequestStream(&context_, &stream_, queue_, queue_, this);
+    } else if (proc_state_ == BEGIN || proc_state_ == READ) {
+      if (proc_state_ == BEGIN) {
+        new AsyncDBMProcessorStream(service_, queue_);
+      }
+      proc_state_ = WRITE;
+      request_.Clear();
+      stream_.Read(&request_, this);
+    } else if (proc_state_ == WRITE) {
+      response_.Clear();
+      rpc_status_ = service_->StreamProcessOne(&context_, request_, &response_);
+      if (rpc_status_.ok()) {
+        if (request_.omit_response()) {
+          proc_state_ = WRITE;
+          request_.Clear();
+          stream_.Read(&request_, this);
+        } else {
+          proc_state_ = READ;
+          stream_.Write(response_, this);
+        }
+      } else {
+        proc_state_ = FINISH;;
+        stream_.Finish(rpc_status_, this);
+      }
+    } else {
+      delete this;
+    }
+  }
+
+  void Cancel() override {
+    if (proc_state_ == READ || proc_state_ == WRITE) {
+      proc_state_ = FINISH;;
+      stream_.Finish(rpc_status_, this);
+    } else {
+      delete this;
+    }
+  }
+
+ private:
+  DBMAsyncServiceImpl* service_;
+  grpc::ServerCompletionQueue* queue_;
+  grpc::ServerContext context_;
+  grpc::ServerAsyncReaderWriter<StreamResponse, StreamRequest> stream_;
+  ProcState proc_state_;
+  tkrzw::StreamRequest request_;
+  tkrzw::StreamResponse response_;
+  grpc::Status rpc_status_;
+};
+
 class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, BEGIN, READ, WRITE, FINISH};
@@ -967,9 +1041,8 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncDBMProcessor<SynchronizeRequest, SynchronizeResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestSynchronize,
       &DBMServiceBase::SynchronizeImpl);
-
+  new AsyncDBMProcessorStream(this, queue);
   new AsyncDBMProcessorIterate(this, queue);
-
   while (true) {
     void* tag = nullptr;
     bool ok = false;

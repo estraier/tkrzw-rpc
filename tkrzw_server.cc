@@ -41,7 +41,8 @@ static void PrintUsageAndDie() {
   P("Options:\n");
   P("  --version : Prints the version number and exits.\n");
   P("  --address str : The address/hostname and the port of the server (default: 0.0.0.0:1978)\n");
-  P("  --threads num : The maximum number of worker threads. (default: 16)\n");
+  P("  --async : Uses the asynchronous API on ths server.\n");
+  P("  --threads num : The maximum number of worker threads. (default: 1)\n");
   P("  --log_file str : The file path of the log file. (default: /dev/stdout)\n");
   P("  --log_level str : The minimum log level to be stored:"
     " debug, info, warn, error, fatal. (default: info)\n");
@@ -117,7 +118,7 @@ void ShutdownServer(int signum) {
 // Processes the command.
 static int32_t Process(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--version", 0}, {"--address", 1}, {"--async", 1}, {"--threads", 1},
+    {"--version", 0}, {"--address", 1}, {"--async", 0}, {"--threads", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
     {"--pid_file", 1}, {"--daemon", 0},
     {"--read_only", 0},
@@ -132,9 +133,9 @@ static int32_t Process(int32_t argc, const char** args) {
     PrintL("Tkrzw-RPC server ", RPC_PACKAGE_VERSION);
     return 0;
   }
-  const std::string addresss = GetStringArgument(cmd_args, "--address", 0, "0.0.0.0:1978");
-  const int32_t num_async_queues = GetIntegerArgument(cmd_args, "--async", 0, 0);
-  const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 16);
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "0.0.0.0:1978");
+  const bool with_async = CheckMap(cmd_args, "--async");
+  const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 1);
   const std::string log_file = GetStringArgument(cmd_args, "--log_file", 0, "/dev/stdout");
   const std::string log_level = GetStringArgument(cmd_args, "--log_level", 0, "info");
   const std::string log_date = GetStringArgument(cmd_args, "--log_date", 0, "simple");
@@ -143,6 +144,12 @@ static int32_t Process(int32_t argc, const char** args) {
   const bool as_daemon = CheckMap(cmd_args, "--daemon");
   const bool read_only = CheckMap(cmd_args, "--read_only");
   auto dbm_exprs = SearchMap(cmd_args, "", {});
+  if (address.find(":") == std::string::npos) {
+    Die("Invalid address");
+  }
+  if (num_threads < 1) {
+    Die("Invalid number of threads");
+  }
   if (dbm_exprs.empty()) {
     dbm_exprs.emplace_back("#dbm=tiny");
   }
@@ -205,18 +212,18 @@ static int32_t Process(int32_t argc, const char** args) {
     dbms.emplace_back(std::move(dbm));
   }
   logger.LogCat(Logger::LEVEL_INFO,
-                "Building the ", (num_async_queues > 0 ? "async" : "sync"),
-                " server: address=", addresss);
+                "Building the ", (with_async > 0 ? "async" : "sync"),
+                " server: address=", address);
   grpc::ServerBuilder builder;
-  builder.AddListeningPort(addresss, grpc::InsecureServerCredentials());
+  builder.AddListeningPort(address, grpc::InsecureServerCredentials());
   builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, num_threads);
   builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::CQ_TIMEOUT_MSEC, 60000);
   std::unique_ptr<grpc::Service> service;
   std::vector<std::unique_ptr<grpc::ServerCompletionQueue>> async_queues;
-  if (num_async_queues > 0) {
+  if (with_async) {
     service = std::make_unique<DBMAsyncServiceImpl>(dbms, &logger);
     builder.RegisterService(service.get());
-    async_queues.resize(num_async_queues);
+    async_queues.resize(num_threads);
     for (auto& async_queue : async_queues) {
       async_queue = builder.AddCompletionQueue();
     }
@@ -226,7 +233,7 @@ static int32_t Process(int32_t argc, const char** args) {
   }
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
   if (server == nullptr) {
-    logger.LogCat(Logger::LEVEL_FATAL, "ServerBuilder::BuildAndStart failed: ", addresss);
+    logger.LogCat(Logger::LEVEL_FATAL, "ServerBuilder::BuildAndStart failed: ", address);
     has_error = true;
   } else {
     g_server.store(server.get());
@@ -234,7 +241,7 @@ static int32_t Process(int32_t argc, const char** args) {
     std::signal(SIGINT, ShutdownServer);
     std::signal(SIGTERM, ShutdownServer);
     std::signal(SIGQUIT, ShutdownServer);
-    if (num_async_queues > 0) {
+    if (with_async > 0) {
       auto* async_service = (DBMAsyncServiceImpl*)service.get();
       auto task =
           [&](grpc::ServerCompletionQueue* queue) {
