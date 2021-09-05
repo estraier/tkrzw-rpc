@@ -103,6 +103,57 @@ class RemoteDBM final {
      */
     Status Remove(std::string_view key, bool ignore_result = false);
 
+    /**
+     * Appends data at the end of a record of a key.
+     * @param key The key of the record.
+     * @param value The value to append.
+     * @param delim The delimiter to put after the existing record.
+     * @param ignore_result If true, the result status is not checked.
+     * @return The result status.
+     * @details If there's no existing record, the value is set without the delimiter.
+     */
+    Status Append(std::string_view key, std::string_view value, std::string_view delim = "",
+                  bool ignore_result = false);
+
+    /**
+     * Compares the value of a record and exchanges if the condition meets.
+     * @param key The key of the record.
+     * @param expected The expected value.  If the data is nullptr, no existing record is expected.
+     * @param desired The desired value.  If the data is nullptr, the record is to be removed.
+     * @return The result status.  If the condition doesn't meet, INFEASIBLE_ERROR is returned.
+     */
+    Status CompareExchange(std::string_view key, std::string_view expected,
+                           std::string_view desired);
+
+    /**
+     * Increments the numeric value of a record.
+     * @param key The key of the record.
+     * @param increment The incremental value.  If it is INT64MIN, the current value is not changed
+     * and a new record is not created.
+     * @param current The pointer to an integer to contain the current value.  If it is nullptr,
+     * it is ignored.
+     * @param initial The initial value.
+     * @param ignore_result If true, the result status is not checked.
+     * @return The result status.
+     * @details The record value is stored as an 8-byte big-endian integer.  Negative is also
+     * supported.
+     */
+    Status Increment(std::string_view key, int64_t increment = 1,
+                     int64_t* current = nullptr, int64_t initial = 0, bool ignore_result = false);
+
+    /**
+     * Increments the numeric value of a record, in a simple way.
+     * @param key The key of the record.
+     * @param increment The incremental value.
+     * @param initial The initial value.
+     * @return The current value or INT64MIN on failure.
+     * @details The record value is treated as a decimal integer.  Negative is also supported.
+     */
+    int64_t IncrementSimple(std::string_view key, int64_t increment = 1, int64_t initial = 0) {
+      int64_t current = 0;
+      return Increment(key, increment, &current, initial) == Status::SUCCESS ? current : INT64MIN;
+    }
+
    private:
     /**
      * Constructor.
@@ -637,6 +688,24 @@ class RemoteDBM final {
    * The backup file name has a suffix like ".backup.20210831213749".
    */
   Status Synchronize(bool hard, const std::map<std::string, std::string>& params = {});
+
+  /**
+   * Searches a database and get keys which match a pattern, according to a mode expression.
+   * @param mode The search mode.  "contain" extracts keys containing the pattern.  "begin"
+   * extracts keys beginning with the pattern.  "end" extracts keys ending with the pattern.
+   * "regex" extracts keys partially matches the pattern of a regular expression.  "edit"
+   * extracts keys whose edit distance to the UTF-8 pattern is the least.  "editbin" extracts
+   * keys whose edit distance to the binary pattern is the least.  Ordered databases support
+   * "upper" and "lower" which extract keys whose positions are upper/lower than the pattern.
+   * "upperinc" and "lowerinc" are their inclusive versions.
+   * @param pattern The pattern for matching.
+   * @param matched A vector to contain the result.
+   * @param capacity The maximum records to obtain.  0 means unlimited.
+   * @return The result status.
+   */
+  Status SearchModal(
+      std::string_view mode, std::string_view pattern,
+      std::vector<std::string>* matched, size_t capacity = 0);
 
   /**
    * Makes a stream for intensive operations.

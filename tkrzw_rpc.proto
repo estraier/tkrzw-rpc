@@ -344,6 +344,26 @@ message SynchronizeResponse {
   StatusProto status = 1;
 }
 
+// Request of the SearchModal method.
+message SearchModalRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The search mode.
+  string mode = 2;
+  // The pattern for matching.
+  bytes pattern = 3;
+  // The maximum records to obtain.
+  int32 capacity = 4;
+}
+
+// Response of the SearchModal method.
+message SearchModalResponse {
+  // The result status.
+  StatusProto status = 1;
+  // A list of matched keys.
+  repeated bytes matched = 2;
+}
+
 // Request of the Stream method.
 message StreamRequest {
   // For each stream operation.
@@ -352,6 +372,9 @@ message StreamRequest {
     GetRequest get_request = 2;
     SetRequest set_request = 3;
     RemoveRequest remove_request = 4;
+    AppendRequest append_request = 5;
+    CompareExchangeRequest compare_exchange_request = 6;
+    IncrementRequest increment_request = 7;
   }
   // If true, the response is omitted.
   bool omit_response = 101;
@@ -364,6 +387,9 @@ message StreamResponse {
     GetResponse get_response = 2;
     SetResponse set_response = 3;
     RemoveResponse remove_response = 4;
+    AppendResponse append_response = 5;
+    CompareExchangeResponse compare_exchange_response = 6;
+    IncrementResponse increment_response = 7;
   }
 }
 
@@ -441,6 +467,7 @@ service DBMService {
   rpc Rebuild(RebuildRequest) returns (RebuildResponse);
   rpc ShouldBeRebuilt(ShouldBeRebuiltRequest) returns (ShouldBeRebuiltResponse);
   rpc Synchronize(SynchronizeRequest) returns (SynchronizeResponse);
+  rpc SearchModal(SearchModalRequest) returns (SearchModalResponse);
   rpc Stream(stream StreamRequest) returns (stream StreamResponse);
   rpc Iterate(stream IterateRequest) returns (stream IterateResponse);
 }

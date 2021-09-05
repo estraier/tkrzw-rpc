@@ -467,6 +467,27 @@ class DBMServiceBase {
     return grpc::Status::OK;
   }
 
+  grpc::Status SearchModalImpl(
+      grpc::ServerContext* context, const SearchModalRequest* request,
+      SearchModalResponse* response) {
+    LogRequest(context, "SearchModal", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::vector<std::string> matched;
+    const Status status =
+        SearchDBMModal(&dbm, request->mode(), request->pattern(), &matched, request->capacity());
+    if (status == Status::SUCCESS) {
+      for (const auto& key : matched) {
+        response->add_matched(key);
+      }
+    }
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
   grpc::Status StreamImpl(grpc::ServerContext* context,
                           grpc::ServerReaderWriterInterface<
                           tkrzw::StreamResponse, tkrzw::StreamRequest>* stream) {
@@ -521,6 +542,32 @@ class DBMServiceBase {
       case tkrzw::StreamRequest::kRemoveRequest: {
         const grpc::Status status =
             RemoveImpl(context, &request.remove_request(), response->mutable_remove_response());
+        if (!status.ok()) {
+          return status;
+        }
+        break;
+      }
+      case tkrzw::StreamRequest::kAppendRequest: {
+        const grpc::Status status =
+            AppendImpl(context, &request.append_request(), response->mutable_append_response());
+        if (!status.ok()) {
+          return status;
+        }
+        break;
+      }
+      case tkrzw::StreamRequest::kCompareExchangeRequest: {
+        const grpc::Status status =
+            CompareExchangeImpl(context, &request.compare_exchange_request(),
+                                response->mutable_compare_exchange_response());
+        if (!status.ok()) {
+          return status;
+        }
+        break;
+      }
+      case tkrzw::StreamRequest::kIncrementRequest: {
+        const grpc::Status status =
+            IncrementImpl(context, &request.increment_request(),
+                          response->mutable_increment_response());
         if (!status.ok()) {
           return status;
         }
@@ -771,6 +818,12 @@ class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
       grpc::ServerContext* context, const SynchronizeRequest* request,
       SynchronizeResponse* response) override {
     return SynchronizeImpl(context, request, response);
+  }
+
+  grpc::Status SearchModal(
+      grpc::ServerContext* context, const SearchModalRequest* request,
+      SearchModalResponse* response) override {
+    return SearchModalImpl(context, request, response);
   }
 
   grpc::Status Stream(

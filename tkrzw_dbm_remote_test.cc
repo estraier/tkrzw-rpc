@@ -346,6 +346,25 @@ TEST_F(RemoteDBMTest, Synchronize) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Synchronize(true, {{"reducer", "last"}}));
 }
 
+TEST_F(RemoteDBMTest, SearchModal) {
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  tkrzw::SearchModalRequest request;
+  request.set_mode("end");
+  request.set_pattern("5");
+  request.set_capacity(3);
+  tkrzw::SearchModalResponse response;
+  response.add_matched("5");
+  response.add_matched("15");
+  response.add_matched("25");
+  EXPECT_CALL(*stub, SearchModal(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  std::vector<std::string> matched;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.SearchModal("end", "5", &matched, 5));
+  EXPECT_THAT(matched, UnorderedElementsAre("5", "15", "25"));
+}
+
 TEST_F(RemoteDBMTest, Stream) {
   auto stream = std::make_unique<grpc::testing::MockClientReaderWriter<
     tkrzw::StreamRequest, tkrzw::StreamResponse>>();
@@ -360,6 +379,23 @@ TEST_F(RemoteDBMTest, Stream) {
   tkrzw::StreamRequest request_remove;
   auto* remove_req = request_remove.mutable_remove_request();
   remove_req->set_key("missing_key");
+  tkrzw::StreamRequest request_append;
+  auto* append_req = request_append.mutable_append_request();
+  append_req->set_key("key");
+  append_req->set_value("value");
+  append_req->set_delim(":");
+  tkrzw::StreamRequest request_compare_exchange;
+  auto* compare_exchange_req = request_compare_exchange.mutable_compare_exchange_request();
+  compare_exchange_req->set_key("key");
+  compare_exchange_req->set_expected_existence(true);
+  compare_exchange_req->set_expected_value("expected");
+  compare_exchange_req->set_desired_existence(true);
+  compare_exchange_req->set_desired_value("desired");
+  tkrzw::StreamRequest request_increment;
+  auto* increment_req = request_increment.mutable_increment_request();
+  increment_req->set_key("key");
+  increment_req->set_increment(5);
+  increment_req->set_initial(100);
   tkrzw::StreamResponse response_set;
   response_set.mutable_set_response();
   tkrzw::StreamResponse response_get;
@@ -368,13 +404,26 @@ TEST_F(RemoteDBMTest, Stream) {
   tkrzw::StreamResponse response_remove;
   auto* remove_res = response_remove.mutable_remove_response();
   remove_res->mutable_status()->set_code(tkrzw::Status::NOT_FOUND_ERROR);
+  tkrzw::StreamResponse response_append;
+  response_append.mutable_append_response();
+  tkrzw::StreamResponse response_compare_exchange;
+  response_compare_exchange.mutable_compare_exchange_response();
+  tkrzw::StreamResponse response_increment;
+  auto* increment_res = response_increment.mutable_increment_response();
+  increment_res->set_current(105);
   EXPECT_CALL(*stream, Write(EqualsProto(request_set), _)).WillOnce(Return(true));
   EXPECT_CALL(*stream, Write(EqualsProto(request_get), _)).WillOnce(Return(true));
   EXPECT_CALL(*stream, Write(EqualsProto(request_remove), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_append), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_compare_exchange), _)).WillOnce(Return(true));
+  EXPECT_CALL(*stream, Write(EqualsProto(request_increment), _)).WillOnce(Return(true));
   EXPECT_CALL(*stream, Read(_))
       .WillOnce(DoAll(SetArgPointee<0>(response_set), Return(true)))
       .WillOnce(DoAll(SetArgPointee<0>(response_get), Return(true)))
-      .WillOnce(DoAll(SetArgPointee<0>(response_remove), Return(true)));
+      .WillOnce(DoAll(SetArgPointee<0>(response_remove), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_append), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_compare_exchange), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_increment), Return(true)));
   EXPECT_CALL(*stream, WritesDone()).WillOnce(Return(true));
   EXPECT_CALL(*stream, Finish()).WillOnce(Return(grpc::Status::OK));
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
@@ -387,6 +436,11 @@ TEST_F(RemoteDBMTest, Stream) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, strm->Get("key", &value));
   EXPECT_EQ("value", value);
   EXPECT_EQ(tkrzw::Status::NOT_FOUND_ERROR, strm->Remove("missing_key"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, strm->Append("key", "value", ":"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, strm->CompareExchange("key", "expected", "desired"));
+  int64_t current = 0;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, strm->Increment("key", 5, &current, 100));
+  EXPECT_EQ(105, current);
 }
 
 TEST_F(RemoteDBMTest, IterateMove) {

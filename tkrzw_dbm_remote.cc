@@ -101,6 +101,8 @@ class RemoteDBMImpl final {
   Status Rebuild(const std::map<std::string, std::string>& params);
   Status ShouldBeRebuilt(bool* tobe);
   Status Synchronize(bool hard, const std::map<std::string, std::string>& params);
+  Status SearchModal(std::string_view mode, std::string_view pattern,
+                     std::vector<std::string>* matched, size_t capacity);
 
  private:
   std::unique_ptr<DBMService::StubInterface> stub_;
@@ -121,6 +123,12 @@ class RemoteDBMStreamImpl final {
   Status Get(std::string_view key, std::string* value);
   Status Set(std::string_view key, std::string_view value, bool overwrite, bool ignore_result);
   Status Remove(std::string_view key, bool ignore_result);
+  Status Append(std::string_view key, std::string_view value, std::string_view delim,
+                bool ignore_result);
+  Status CompareExchange(
+      std::string_view key, std::string_view expected, std::string_view desired);
+  Status Increment(std::string_view key, int64_t increment,
+                   int64_t* current, int64_t initial, bool ignore_result);
 
  private:
   RemoteDBMImpl* dbm_;
@@ -450,11 +458,11 @@ Status RemoteDBMImpl::CompareExchange(std::string_view key, std::string_view exp
   request.set_key(key.data(), key.size());
   if (expected.data() != nullptr) {
     request.set_expected_existence(true);
-    request.set_expected_value(std::string(expected));
+    request.set_expected_value(expected.data(), expected.size());
   }
   if (desired.data() != nullptr) {
     request.set_desired_existence(true);
-    request.set_desired_value(std::string(desired));
+    request.set_desired_value(desired.data(), desired.size());
   }
   CompareExchangeResponse response;
   grpc::Status status = stub_->CompareExchange(&context, request, &response);
@@ -647,6 +655,31 @@ Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::st
   return MakeStatusFromProto(response.status());
 }
 
+Status RemoteDBMImpl::SearchModal(std::string_view mode, std::string_view pattern,
+                                  std::vector<std::string>* matched, size_t capacity) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+  SearchModalRequest request;
+  request.set_mode(std::string(mode));
+  request.set_pattern(pattern.data(), pattern.size());
+  request.set_capacity(capacity);
+  SearchModalResponse response;
+  grpc::Status status = stub_->SearchModal(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  if (response.status().code() == 0) {
+    matched->reserve(response.matched_size());
+    matched->insert(matched->end(), response.matched().begin(), response.matched().end());
+  }
+  return MakeStatusFromProto(response.status());
+}
+
 RemoteDBMStreamImpl::RemoteDBMStreamImpl(RemoteDBMImpl* dbm)
     : dbm_(dbm), context_(), stream_(nullptr) {
   {
@@ -779,6 +812,100 @@ Status RemoteDBMStreamImpl::Remove(std::string_view key, bool ignore_result) {
     return Status(Status::NETWORK_ERROR, "Read failed");
   }
   const RemoveResponse& response = stream_response.remove_response();
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMStreamImpl::Append(
+    std::string_view key, std::string_view value, std::string_view delim, bool ignore_result) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  StreamRequest stream_request;
+  auto* request = stream_request.mutable_append_request();
+  request->set_dbm_index(dbm_->dbm_index_);
+  request->set_key(key.data(), key.size());
+  request->set_value(value.data(), value.size());
+  request->set_delim(delim.data(), delim.size());
+  if (ignore_result) {
+    stream_request.set_omit_response(true);
+  }
+  if (!stream_->Write(stream_request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  if (ignore_result) {
+    return Status(Status::SUCCESS);
+  }
+  StreamResponse stream_response;
+  if (!stream_->Read(&stream_response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  const AppendResponse& response = stream_response.append_response();
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMStreamImpl::CompareExchange(
+    std::string_view key, std::string_view expected, std::string_view desired) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  StreamRequest stream_request;
+  auto* request = stream_request.mutable_compare_exchange_request();
+  request->set_dbm_index(dbm_->dbm_index_);
+  request->set_key(key.data(), key.size());
+  if (expected.data() != nullptr) {
+    request->set_expected_existence(true);
+    request->set_expected_value(expected.data(), expected.size());
+  }
+  if (desired.data() != nullptr) {
+    request->set_desired_existence(true);
+    request->set_desired_value(desired.data(), desired.size());
+  }
+  if (!stream_->Write(stream_request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  StreamResponse stream_response;
+  if (!stream_->Read(&stream_response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  const CompareExchangeResponse& response = stream_response.compare_exchange_response();
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMStreamImpl::Increment(
+    std::string_view key, int64_t increment,
+    int64_t* current, int64_t initial, bool ignore_result) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  StreamRequest stream_request;
+  auto* request = stream_request.mutable_increment_request();
+  request->set_dbm_index(dbm_->dbm_index_);
+  request->set_key(key.data(), key.size());
+  request->set_increment(increment);
+  request->set_initial(initial);
+  if (!stream_->Write(stream_request)) {
+    return Status(Status::NETWORK_ERROR, "Write failed");
+  }
+  if (ignore_result) {
+    return Status(Status::SUCCESS);
+  }
+  StreamResponse stream_response;
+  if (!stream_->Read(&stream_response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  const IncrementResponse& response = stream_response.increment_response();
+  if (current != nullptr) {
+    *current = response.current();
+  }
   return MakeStatusFromProto(response.status());
 }
 
@@ -1131,6 +1258,12 @@ Status RemoteDBM::Synchronize(bool hard, const std::map<std::string, std::string
   return impl_->Synchronize(hard, params);
 }
 
+Status RemoteDBM::SearchModal(
+    std::string_view mode, std::string_view pattern,
+    std::vector<std::string>* matched, size_t capacity) {
+  return impl_->SearchModal(mode, pattern, matched, capacity);
+}
+
 std::unique_ptr<RemoteDBM::Stream> RemoteDBM::MakeStream() {
   std::unique_ptr<RemoteDBM::Stream> iter(new RemoteDBM::Stream(impl_));
   return iter;
@@ -1164,6 +1297,23 @@ Status RemoteDBM::Stream::Set(std::string_view key, std::string_view value,
 
 Status RemoteDBM::Stream::Remove(std::string_view key, bool ignore_result) {
   return impl_->Remove(key, ignore_result);
+}
+
+Status RemoteDBM::Stream::Append(
+    std::string_view key, std::string_view value, std::string_view delim,
+    bool ignore_result) {
+  return impl_->Append(key, value, delim, ignore_result);
+}
+
+Status RemoteDBM::Stream::CompareExchange(
+    std::string_view key, std::string_view expected, std::string_view desired) {
+  return impl_->CompareExchange(key, expected, desired);
+}
+
+Status RemoteDBM::Stream::Increment(
+    std::string_view key, int64_t increment,
+    int64_t* current, int64_t initial, bool ignore_result) {
+  return impl_->Increment(key, increment, current, initial, ignore_result);
 }
 
 RemoteDBM::Iterator::Iterator(RemoteDBMImpl* dbm_impl) {

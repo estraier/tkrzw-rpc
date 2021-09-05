@@ -334,6 +334,24 @@ TEST_F(ServerTest, Basic) {
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
   }
+  {
+    for (int32_t i = 1; i <= 100; i++) {
+      const std::string key = tkrzw::ToString(i);
+      EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(key, ""));
+    }
+    tkrzw::SearchModalRequest request;
+    request.set_mode("end");
+    request.set_pattern("5");
+    request.set_capacity(3);
+    tkrzw::SearchModalResponse response;
+    grpc::Status status = server.SearchModal(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ(3, response.matched_size());
+    for (const auto& key : response.matched()) {
+      EXPECT_TRUE(tkrzw::StrEndsWith(key, "5"));
+    }
+  }
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[1]->Close());
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
 }
@@ -358,12 +376,25 @@ TEST_F(ServerTest, Stream) {
   auto* set_req = request_set.mutable_set_request();
   set_req->set_key("key");
   set_req->set_value("value");
+  tkrzw::StreamRequest request_append;
+  auto* append_req = request_append.mutable_append_request();
+  append_req->set_key("key");
+  append_req->set_value("value");
+  append_req->set_delim(":");
   tkrzw::StreamRequest request_get;
   auto* get_req = request_get.mutable_get_request();
   get_req->set_key("key");
   tkrzw::StreamRequest request_remove;
   auto* remove_req = request_remove.mutable_remove_request();
   remove_req->set_key("missing_key");
+  tkrzw::StreamRequest request_compare_exchange;
+  auto* compare_exchange_req = request_compare_exchange.mutable_compare_exchange_request();
+  compare_exchange_req->set_key("key");
+  tkrzw::StreamRequest request_increment;
+  auto* increment_req = request_increment.mutable_increment_request();
+  increment_req->set_key("num");
+  increment_req->set_increment(5);
+  increment_req->set_initial(100);
   tkrzw::StreamResponse response_echo;
   auto* echo_res = response_echo.mutable_echo_response();
   echo_res->set_echo("hello");
@@ -371,20 +402,31 @@ TEST_F(ServerTest, Stream) {
   response_set.mutable_set_response();
   tkrzw::StreamResponse response_get;
   auto* get_res = response_get.mutable_get_response();
-  get_res->set_value("value");
+  get_res->set_value("value:value");
   tkrzw::StreamResponse response_remove;
   auto* remove_res = response_remove.mutable_remove_response();
   remove_res->mutable_status()->set_code(tkrzw::Status::NOT_FOUND_ERROR);
+  tkrzw::StreamResponse response_compare_exchange;
+  auto* compare_exchange_res = response_compare_exchange.mutable_compare_exchange_response();
+  compare_exchange_res->mutable_status()->set_code(tkrzw::Status::INFEASIBLE_ERROR);
+  tkrzw::StreamResponse response_increment;
+  auto* increment_res = response_increment.mutable_increment_response();
+  increment_res->set_current(105);
   EXPECT_CALL(stream, Read(_))
       .WillOnce(DoAll(SetArgPointee<0>(request_echo), Return(true)))
       .WillOnce(DoAll(SetArgPointee<0>(request_set), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_append), Return(true)))
       .WillOnce(DoAll(SetArgPointee<0>(request_get), Return(true)))
       .WillOnce(DoAll(SetArgPointee<0>(request_remove), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_compare_exchange), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_increment), Return(true)))
       .WillOnce(Return(false));
   EXPECT_CALL(stream, Write(EqualsProto(response_echo), _)).WillOnce(Return(true));
-  EXPECT_CALL(stream, Write(EqualsProto(response_set), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_set), _)).WillRepeatedly(Return(true));
   EXPECT_CALL(stream, Write(EqualsProto(response_get), _)).WillOnce(Return(true));
   EXPECT_CALL(stream, Write(EqualsProto(response_remove), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_compare_exchange), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_increment), _)).WillOnce(Return(true));
   grpc::Status status = server.StreamImpl(&context, &stream);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());

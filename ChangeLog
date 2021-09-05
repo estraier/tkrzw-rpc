@@ -1,5 +1,13 @@
 2021-09-05  Mikio Hirabayashi  <hirarin@gmail.com>
 
+	- Release: 0.7.3
+	- Library version: 1.5.0
+
+	- Add the Search method to RemoteDBM.
+	- Add methods to the stream API.
+
+2021-09-05  Mikio Hirabayashi  <hirarin@gmail.com>
+
 	- Release: 0.7.2
 	- Library version: 1.4.0
 
