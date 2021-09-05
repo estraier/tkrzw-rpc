@@ -1049,9 +1049,6 @@ inline void DBMAsyncServiceImpl::OperateQueue(
     if (!queue->Next(&tag, &ok)) {
       break;
     }
-    if (tag == nullptr) {
-      continue;
-    }
     auto* proc = static_cast<AsyncDBMProcessorInterface*>(tag);
     if (ok) {
       proc->Proceed();
@@ -1070,9 +1067,6 @@ void DBMAsyncServiceImpl::ShutdownQueue(grpc::ServerCompletionQueue* queue) {
   void* tag = nullptr;
   bool ok = false;
   while (queue->Next(&tag, &ok)) {
-    if (tag == nullptr) {
-      continue;
-    }
     auto* proc = static_cast<AsyncDBMProcessorInterface*>(tag);
     delete proc;
   }
