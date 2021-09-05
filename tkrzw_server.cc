@@ -216,8 +216,6 @@ static int32_t Process(int32_t argc, const char** args) {
                 " server: address=", address);
   grpc::ServerBuilder builder;
   builder.AddListeningPort(address, grpc::InsecureServerCredentials());
-  builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, num_threads);
-  builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::CQ_TIMEOUT_MSEC, 60000);
   std::unique_ptr<grpc::Service> service;
   std::vector<std::unique_ptr<grpc::ServerCompletionQueue>> async_queues;
   if (with_async) {
@@ -228,6 +226,8 @@ static int32_t Process(int32_t argc, const char** args) {
       async_queue = builder.AddCompletionQueue();
     }
   } else {
+    builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, num_threads);
+    builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::CQ_TIMEOUT_MSEC, 60000);
     service = std::make_unique<DBMServiceImpl>(dbms, &logger);
     builder.RegisterService(service.get());
   }
