@@ -749,7 +749,9 @@ int main(int argc, char** argv) {
 
 <p>External behaviors via RPC is the same whether the database is sharded or not.  Despite that sharding is done with a hash function, the iterator maintains the original order of the database if it is ordered one (TreeDBM, SkipDBM, BabyDBM).</p>
 
-<p>You can shared on-memory databases too.  If an on-memory database is associated with a file, the blocking time during the Synchronize method might be an issue of online services.  By sharding the database, the issue is mitigated.  For example, an on-memory tree database containing 100 million records takes 24 seconds for the Synchronize method.  You can shard it into 100 shards.  Then, one shard takes only 0.24 seconds, which is not a problem in many cases.</p>
+<p>You can shared on-memory databases too.  If an on-memory database is associated with a file, the blocking time during the Synchronize method might be an issue on online services.  Sharding the database mitigates the issue.  For example, an on-memory tree database containing 100 million records takes 24 seconds for the Synchronize method.  You can divide it into 100 shards.  Then, one shard takes only 0.24 seconds, which is not a problem in many cases.</p>
+
+<p>The number of shards can be as large as you like.  The more the shards are, the better the concurrency performance is.  The downside of too many shard is that the iterator and the SearchModal method become slower.</p>
 
 <h2 id="faq">Frequently Asked Questions</h2>
 
