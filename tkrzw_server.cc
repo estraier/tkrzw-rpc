@@ -153,6 +153,9 @@ static int32_t Process(int32_t argc, const char** args) {
   if (dbm_exprs.empty()) {
     dbm_exprs.emplace_back("#dbm=tiny");
   }
+  if (dbm_exprs.size() > 200) {
+    Die("Too many databases");
+  }
   if (as_daemon) {
     const Status status = DaemonizeProcess();
     if (status != Status::SUCCESS) {

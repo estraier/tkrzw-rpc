@@ -1099,6 +1099,9 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncDBMProcessor<SynchronizeRequest, SynchronizeResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestSynchronize,
       &DBMServiceBase::SynchronizeImpl);
+  new AsyncDBMProcessor<SearchModalRequest, SearchModalResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestSearchModal,
+      &DBMServiceBase::SearchModalImpl);
   new AsyncDBMProcessorStream(this, queue);
   new AsyncDBMProcessorIterate(this, queue);
   while (true) {

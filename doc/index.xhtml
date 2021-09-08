@@ -391,7 +391,7 @@ world
   --log_file /var/log/tkrzw_server.log \
   --pid_file /run/tkrzw_server.pid \
   --daemon \
-  "/var/db/casket-1.tkh#num_buckets=10M"
+  "/var/db/casket.tkh#num_buckets=10M"
 ]]></code></pre>
 
 <p>The following command stops the database service gracefully.  Usually, it is run by the the shutdown script of the system.</p>
@@ -690,12 +690,12 @@ int main(int argc, char** argv) {
 
 <p>HashDBM is designed to combine high performance and durability in the usage of online service.  Let's say, you run an online service and manage user data on a hash database.  The database is served by tkrzw_server and thousands of clients connect to the server and cause queries at 100K QPS at a peak time.  You run the server like this.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --host "0.0.0.0:1978" \
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "0.0.0.0:1978" \
   --async --threads 8 \
   --log_file /var/log/tkrzw_server.log \
   --pid_file /run/tkrzw_server.pid \
   --daemon \
-  "/var/db/casket-1.tkh#num_buckets=10M,update_mode=appending"
+  "/var/db/casket.tkh#num_buckets=10M,update_mode=appending"
 ]]></code></pre>
 
 <p>With the "--async" option, you use the asynchronous API of gRPC, which maximizes the throughput.  With the "--threads 8" option, the number of "completion queues" and the number of threads to consume tasks in each queue are set 8.  The value should be the same as the number of the CPU cores.</p>
@@ -709,7 +709,7 @@ int main(int argc, char** argv) {
 
 <p>One of the most important features of HashDBM is that the Rebuild method is done without blocking other threads.  So, you can rebuild the database while serving it online.  The number of buckets is implicitly optimized for the current number of records.</p>
 
-<h3 id="tips_measures_for_durability">Measures for Durability</h3>
+<h3 id="tips_measures_durability">Measures for Durability</h3>
 
 <p>If the server process or the entire operating system crashes unexpectedly, the database file is marked "unhealthy".  If you start the server with an unhealthy database file, the file is restored automatically.  By default, the library makes the best effort to restore as many updates as possible.  How many updates are actually restored depends on the hehavior of the underlying file system, operating system and storage device.</p>
 
@@ -720,12 +720,36 @@ int main(int argc, char** argv) {
 
 <p>By setting the "--hard" option, synchronization is done to the storage device.  It means that the current state is restored even on system crashes by the kernel panic, power failures, or etc.  If you omit the option, synchronization is done to the file system, which is faster.  It guarantees the data restoration only against process crashes by segmentation faults, the OOM killer, etc.</p>
 
-<p>To make a backup file of a database while the server is running, you can use the "sync" subcommand and set the "make_backup" parameter whose value is empty.  A suffix like ".backup.20210901233046" is added to the database file name to generage the backup file name.  If the value of "make_backup" is not empty, the value is used as the suffix.  For security, the available characters are "[-_.0-9a-zA-Z]".</p>
+<p>If you want ACID traits of transactions, add "restore_mode=sync" to the database parameters so that the state at the time of the last synchronization is restored.  Client programs should call the Synchronize method after each transaction or at an arbitrary critical point of the business logic.  As performance and durability is in a relation of trade-off, how you call syncoronization should be determined depending on the usage and content.  See the <a href="https://dbmx.net/tkrzw/#tips_durability_settings">durability settings of Tkrzw</a> for details.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util sync "make_backup="
+<p>To make a backup file of a database while the server is running, you can use the "sync" subcommand and set the "make_backup" parameter whose value is empty.  A suffix like ".backup.20210901233046" is added to the database file name to generage the backup file name.  If the value of "make_backup" is not empty, the value is used as the suffix.  For security, the available characters are "[-_.0-9a-zA-Z]".  The following cron setting makes a backup at 2:15 every night.</p>
+
+<pre class="rawtext"><![CDATA[15 2 * * *    tkrzw_dbm_remote_util sync --address "localhost:1978" --hard "make_backup=" 2>&1 /dev/null
+]]></pre>
+
+<h3 id="tips_sharding">Sharding the Database</h3>
+
+<p>Sharding is a technique to divide a database file into multiple files.  There are two major benefits.  One is that concurrency of multi-thread processing improves.  The other is that database-wide operations are divided so that blocking duration becomes shorter.  Moreover, the size of each temporary files becomes smaller.</p>
+
+<p>Let's say, you shard a 1GB database into ten 102MB databases.  Synchronizing 1GB database would take 1 second during which all other operations are blocked.  In contrast, synchronizing one shard of 102MB file takes 0.1 seconds during which operations only on the shard are blocked.  Although the total time of synchronizing operation is the same, total blocking time of other threads is much less.  The same thing can be said to making backup files.  Moreover, the space efficiency of rebuilding the database also improves although rebuiling is not blocking.  Rebuilding a 1GB database requires a 1GB temporary file.  Meanwhile, rebuilding ten 102MB database requires one 102MB temporary file at the same time because the temporary file is removed after the operation for each shard.</p>
+
+<p>The downside of sharding is that you compromise on ACID traits of transaction.  The CompareExchangeMulti operation is still atomic across threads and clients, it is not necessarily atomic across crashes.  That's because the system can crash in the middle of synchronizing each shard.  If you don't use CompareExchnageMulti or you can accpet the possibility of inconsistency on crashes, sharding is worth trying.</p>
+
+<p>Let's set up a server of a file hash database in ten shards.  You just add the parameter "num_shards=10".  Note that the values of parameters for each shards should be divided by 10.  For example, 10 million hash buckets in total should be set with "num_buckets=1M".</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "0.0.0.0:1978" \
+  --async --threads 8 \
+  --log_file /var/log/tkrzw_server.log \
+  --pid_file /run/tkrzw_server.pid \
+  --daemon \
+  "/var/db/casket.tkh#num_shards=10,num_buckets=1M,update_mode=appending"
 ]]></code></pre>
 
-<p>If you want ACID traits of transactions, add "restore_mode=sync" to the database parameters so that the state at the time of the last synchronization is restored.  Client programs should call the Synchronize method after each transaction.  As performance and durability is in a relation of trade-off, how you call syncoronization should be determined depending on the usage and content.  See the <a href="https://dbmx.net/tkrzw/#tips_durability_settings">durability settings of Tkrzw</a> for details.</p>
+<p>As we have 10 shards, "casket.tkh-00000-of-00010", "casket.tkh-00001-of-00010", ..., "casket.tkh-00009-of-00010" are created.  If you make a backup, files like "casket.tkh.backup.20210908195557-00000-of-00010" et cetera are made.</p>
+
+<p>External behaviors via RPC is the same whether the database is sharded or not.  Despite that sharding is done with a hash function, the iterator maintains the original order of the database if it is ordered one (TreeDBM, SkipDBM, BabyDBM).</p>
+
+<p>You can shared on-memory databases too.  If an on-memory database is associated with a file, the blocking time during the Synchronize method might be an issue of online services.  By sharding the database, the issue is mitigated.  For example, an on-memory tree database containing 100 million records takes 24 seconds for the Synchronize method.  You can shard it into 100 shards.  Then, one shard takes only 0.24 seconds, which is not a problem in many cases.</p>
 
 <h2 id="faq">Frequently Asked Questions</h2>
 
