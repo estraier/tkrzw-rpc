@@ -5,6 +5,7 @@
 
 	- Add the SearchModal method to RemoteDBM.
 	- Add methods to the stream API.
+	- Rebuild and Synchronize are done in background.
 
 2021-09-05  Mikio Hirabayashi  <hirarin@gmail.com>
 

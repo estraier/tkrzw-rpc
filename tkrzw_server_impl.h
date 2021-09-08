@@ -914,6 +914,77 @@ class AsyncDBMProcessor : public AsyncDBMProcessorInterface {
   grpc::Status rpc_status_;
 };
 
+template<typename REQUEST, typename RESPONSE>
+class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
+ public:
+  enum ProcState {CREATE, PROCESS, FINISH};
+  typedef void (DBMService::AsyncService::*RequestCall)(
+      grpc::ServerContext*, REQUEST*, grpc::ServerAsyncResponseWriter<RESPONSE>*,
+      grpc::CompletionQueue*, grpc::ServerCompletionQueue*, void*);
+  typedef grpc::Status (DBMServiceBase::*Call)(
+      grpc::ServerContext*, const REQUEST*, RESPONSE*);
+
+  AsyncBackgroundDBMProcessor(
+      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue,
+      RequestCall request_call, Call call)
+      : service_(service), queue_(queue), request_call_(request_call), call_(call),
+        context_(), responder_(&context_), proc_state_(CREATE), rpc_status_(grpc::Status::OK),
+        bg_thread_() {
+    Proceed();
+  }
+
+  ~AsyncBackgroundDBMProcessor() {
+    if (bg_thread_.joinable()) {
+      std::cout << "JOIN" << std::endl;
+      bg_thread_.join();
+    }
+  }
+
+  void Proceed() override {
+    if (proc_state_ == CREATE) {
+      proc_state_ = PROCESS;
+      (service_->*request_call_)(&context_, &request_, &responder_, queue_, queue_, this);
+    } else if (proc_state_ == PROCESS) {
+      new AsyncBackgroundDBMProcessor<REQUEST, RESPONSE>(service_, queue_, request_call_, call_);
+
+      std::cout << "SPAWN" << std::endl;
+      auto task =
+          [&]() {
+            std::cout << "START" << std::endl;
+            rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
+            std::cout << "END" << std::endl;
+            proc_state_ = FINISH;
+            responder_.Finish(response_, rpc_status_, this);
+          };
+      bg_thread_ = std::thread(task);
+    } else {
+      delete this;
+    }
+  }
+
+  void Cancel() override {
+    if (proc_state_ == PROCESS) {
+      proc_state_ = FINISH;;
+      responder_.Finish(response_, rpc_status_, this);
+    } else {
+      delete this;
+    }
+  }
+
+ private:
+  DBMAsyncServiceImpl* service_;
+  grpc::ServerCompletionQueue* queue_;
+  RequestCall request_call_;
+  Call call_;
+  grpc::ServerContext context_;
+  REQUEST request_;
+  RESPONSE response_;
+  grpc::ServerAsyncResponseWriter<RESPONSE> responder_;
+  ProcState proc_state_;
+  grpc::Status rpc_status_;
+  std::thread bg_thread_;
+};
+
 class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, BEGIN, READ, WRITE, FINISH};
@@ -1090,13 +1161,13 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncDBMProcessor<ClearRequest, ClearResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestClear,
       &DBMServiceBase::ClearImpl);
-  new AsyncDBMProcessor<RebuildRequest, RebuildResponse>(
+  new AsyncBackgroundDBMProcessor<RebuildRequest, RebuildResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestRebuild,
       &DBMServiceBase::RebuildImpl);
   new AsyncDBMProcessor<ShouldBeRebuiltRequest, ShouldBeRebuiltResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestShouldBeRebuilt,
       &DBMServiceBase::ShouldBeRebuiltImpl);
-  new AsyncDBMProcessor<SynchronizeRequest, SynchronizeResponse>(
+  new AsyncBackgroundDBMProcessor<SynchronizeRequest, SynchronizeResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestSynchronize,
       &DBMServiceBase::SynchronizeImpl);
   new AsyncDBMProcessor<SearchModalRequest, SearchModalResponse>(
