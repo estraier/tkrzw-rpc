@@ -366,8 +366,8 @@ world
 <dd>Opens the file "casket.tkh" as a HashDBM.  The bucket number is set to 10 million.  Uses the appending update mode and the synchronous restore mode.</dd>
 <dt>casket.tkh#num_buckets=100M,align_pow=8,cache_buckets=1,file=pos-para,block_size=512,access_options=direct:padding:pagecache</dt>
 <dd>Opens the file "casket.tkh" as a HashDBM.  The bucket number is set to 100 million.  The other parameters are tuned for direct I/O.</dd>
-<dt>casket.tkt#num_buckets=1M,max_cached_pages=100K</dt>
-<dd>Opens the file "casket.tkt" as a TreeDBM.  The bucket number is set to 1 million.  The maximum number of cached pages is 100 thousand.</dd>
+<dt>casket.tkt#num_buckets=1M,max_cached_pages=100K,record_comp_mode=lz4</dt>
+<dd>Opens the file "casket.tkt" as a TreeDBM.  The bucket number is set to 1 million.  The maximum number of cached pages is 100 thousand.  Pages are compressed with LZ4.</dd>
 <dt>casket.tks#sort_mem_size=2Gi,max_cached_records=100K</dt>
 <dd>Opens the file "casket.tkt" as a TreeDBM.  The memory size for sorting is 2GiB.  The maximum number of cached records is 100 thousand.</dd>
 <dt>casket.tkmt#num_buckets=10M</dt>
@@ -434,6 +434,8 @@ fi
 <dd>Rebuilds a database file for optimization.</dd>
 <dt><code>tkrzw_dbm_remote_util sync [<var>options</var>] [<var>params</var>]</code></dt>
 <dd>Synchronizes a database file.</dd>
+<dt><code>tkrzw_dbm_remote_util search [<var>options</var>] <var>pattern</var></code></dt>
+<dd>Synchronizes a database file.</dd>
 </dl>
 
 <dl>
@@ -450,10 +452,16 @@ fi
 <dt>Options for the list subcommand:</dt>
 <dd><code>--move <var>type</var></code> : Type of movement: first, jump, jumplower, jumplowerinc, jumpupper, jumpupperinc. (default: first)</dd>
 <dd><code>--jump_key <var>str</var></code> : Specifies the jump key. (default: empty string)</dd>
-<dd><code>--items <var>num</var></code> : The number of items to print.</dd>
+<dd><code>--items <var>num</var></code> : The number of items to print. (default: 10)</dd>
 <dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
+<dd><code>--keys</code> : Prints keys only.</dd>
 <dt>Options for the sync subcommand:</dt>
 <dd><code>--hard</code> : Does physical synchronization with the hardware.</dd>
+<dt>Options for the search subcommand:</dt>
+<dd><code>--mode <var>str</var></code> : The search mode: contain, begin, end, regex, edit, editbin, upper, upperinc, lower, lowerinc (default: contain)</dd>
+<dd><code>--items <var>num</var></code> : The number of items to retrieve. (default: 10)</dd>
+<dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
+<dd><code>--keys</code> : Prints keys only.</dd>
 </dl>
 
 <p>The following is a sample usage to make a remove database to associate country names to their capital cities' names.  If the extension of the file is "tkh", the type of the database is regarded as HashDBM.</p>
@@ -470,11 +478,6 @@ $ tkrzw_dbm_remote_util sync --hard
 $ tkrzw_dbm_remote_util list
 China  Beijing
 Korea  Seoul
-]]></code></pre>
-
-<p>To make a backup file of a database while the server is running, you can use the "sync" subcommand and set the "make_backup" parameter true.  A prefix like ".backup.20210901233046" is added to the database file name to generage the backup file name.</p>
-
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util sync "make_backup=true"
 ]]></code></pre>
 
 <h3 id="commands_tkrzw_dbm_remote_perf">tkrzw_dbm_remote_perf: Performance Checker</h3>
@@ -717,7 +720,12 @@ int main(int argc, char** argv) {
 
 <p>By setting the "--hard" option, synchronization is done to the storage device.  It means that the current state is restored even on system crashes by the kernel panic, power failures, or etc.  If you omit the option, synchronization is done to the file system, which is faster.  It guarantees the data restoration only against process crashes by segmentation faults, the OOM killer, etc.</p>
 
-<p>If you want ACID traits of transactions, add "restore_mode=sync" to the database parameters so that the state at the time of the last synchronization is restored.  Client programs should call the Synchronize method after each translaction.  As performance and durability is in a relation of trade-off, how you call syncoronization should be determined depending on the usage and content.</p>
+<p>To make a backup file of a database while the server is running, you can use the "sync" subcommand and set the "make_backup" parameter whose value is empty.  A suffix like ".backup.20210901233046" is added to the database file name to generage the backup file name.  If the value of "make_backup" is not empty, the value is used as the suffix.  For security, the available characters are "[-_.0-9a-zA-Z]".</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util sync "make_backup="
+]]></code></pre>
+
+<p>If you want ACID traits of transactions, add "restore_mode=sync" to the database parameters so that the state at the time of the last synchronization is restored.  Client programs should call the Synchronize method after each transaction.  As performance and durability is in a relation of trade-off, how you call syncoronization should be determined depending on the usage and content.  See the <a href="https://dbmx.net/tkrzw/#tips_durability_settings">durability settings of Tkrzw</a> for details.</p>
 
 <h2 id="faq">Frequently Asked Questions</h2>
 

@@ -437,11 +437,13 @@ class DBMServiceBase {
     auto& dbm = *dbms_[request->dbm_index()];
     std::map<std::string, std::string> params;
     bool make_backup = false;
+    std::string backup_suffix;
     for (const auto& param : request->params()) {
       if (param.first() == "reducer") {
         params.emplace(param.first(), param.second());
       } else if (param.first() == "make_backup") {
-        make_backup = StrToBool(param.second());
+        make_backup = true;
+        backup_suffix = param.second();
       }
     }
     Status status(Status::SUCCESS);
@@ -450,12 +452,15 @@ class DBMServiceBase {
       if (orig_path.empty()) {
         status = Status(Status::INFEASIBLE_ERROR, "no file is associated");
       } else {
-        struct std::tm cal;
-        GetLocalCalendar(GetWallTime(), &cal);
-        const std::string dest_path = orig_path + SPrintF(
-            ".backup.%04d%02d%02d%2d%2d%2d",
-            cal.tm_year + 1900, cal.tm_mon + 1, cal.tm_mday,
-            cal.tm_hour, cal.tm_min, cal.tm_sec);
+        backup_suffix = StrReplaceRegex(backup_suffix, "[^-_.0-9a-zA-Z]", "");
+        if (backup_suffix.empty()) {
+          struct std::tm cal;
+          GetLocalCalendar(GetWallTime(), &cal);
+          backup_suffix = SPrintF("%04d%02d%02d%2d%2d%2d",
+                                  cal.tm_year + 1900, cal.tm_mon + 1, cal.tm_mday,
+                                  cal.tm_hour, cal.tm_min, cal.tm_sec);
+        }
+        const std::string dest_path = orig_path + ".backup." + backup_suffix;
         logger_->LogCat(Logger::LEVEL_INFO, "Making a backup file: ", dest_path);
         status = dbm.CopyFileData(dest_path, request->hard());
       }

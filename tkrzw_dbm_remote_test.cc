@@ -361,7 +361,7 @@ TEST_F(RemoteDBMTest, SearchModal) {
   tkrzw::RemoteDBM dbm;
   dbm.InjectStub(stub.release());
   std::vector<std::string> matched;
-  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.SearchModal("end", "5", &matched, 5));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.SearchModal("end", "5", &matched, 3));
   EXPECT_THAT(matched, UnorderedElementsAre("5", "15", "25"));
 }
 

@@ -51,6 +51,8 @@ static void PrintUsageAndDie() {
   P("    : Rebuilds a database file for optimization.\n");
   P("  %s sync [options] [params]\n", progname);
   P("    : Synchronizes a database file.\n");
+  P("  %s search [options] pattern\n", progname);
+  P("    : Synchronizes a database file.\n");
   P("\n");
   P("Common options:\n");
   P("  --version : Prints the version number and exits.\n");
@@ -68,11 +70,20 @@ static void PrintUsageAndDie() {
   P("  --move type : Type of movement:"
     " first, jump, jumplower, jumplowerinc, jumpupper, jumpupperinc. (default: first)\n");
   P("  --jump_key str : Specifies the jump key. (default: empty string)\n");
-  P("  --items num : The number of items to print.\n");
+  P("  --items num : The number of items to print. (default: 10)\n");
   P("  --escape : C-style escape is applied to the TSV data.\n");
+  P("  --keys : Prints keys only.\n");
   P("\n");
   P("Options for the sync subcommand:\n");
   P("  --hard : Does physical synchronization with the hardware.\n");
+  P("\n");
+  P("Options for the search subcommand:\n");
+  P("  --mode str : The search mode:"
+    " contain, begin, end, regex, edit, editbin, upper, upperinc, lower, lowerinc"
+    " (default: contain)\n");
+  P("  --items num : The number of items to retrieve. (default: 10)\n");
+  P("  --escape : C-style escape is applied to the TSV data.\n");
+  P("  --keys : Prints keys only.\n");
   P("\n");
   std::exit(1);
 }
@@ -355,7 +366,7 @@ static int32_t ProcessRemove(int32_t argc, const char** args) {
 static int32_t ProcessList(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
-    {"--move", 1}, {"--jump_key", 1}, {"--items", 1}, {"--escape", 0},
+    {"--move", 1}, {"--jump_key", 1}, {"--items", 1}, {"--escape", 0}, {"--keys", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -368,8 +379,9 @@ static int32_t ProcessList(int32_t argc, const char** args) {
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const std::string jump_key = GetStringArgument(cmd_args, "--jump_key", 0, "");
   const std::string move_type = GetStringArgument(cmd_args, "--move", 0, "first");
-  const int64_t num_items = GetIntegerArgument(cmd_args, "--items", 0, INT64MAX);
+  const int64_t num_items = GetIntegerArgument(cmd_args, "--items", 0, 10);
   const bool with_escape = CheckMap(cmd_args, "--escape");
+  const bool keys_only = CheckMap(cmd_args, "--keys");
   RemoteDBM dbm;
   Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
@@ -421,7 +433,7 @@ static int32_t ProcessList(int32_t argc, const char** args) {
   }
   for (int64_t count = 0; ok && count < num_items; count++) {
     std::string key, value;
-    Status status = iter->Get(&key, &value);
+    Status status = iter->Get(&key, keys_only ? nullptr : &value);
     if (status != Status::SUCCESS) {
       if (status != Status::NOT_FOUND_ERROR) {
         EPrintL("Get failed: ", status);
@@ -429,9 +441,14 @@ static int32_t ProcessList(int32_t argc, const char** args) {
       }
       break;
     }
-    const std::string& esc_key = with_escape ? StrEscapeC(key) : StrTrimForTSV(key);
-    const std::string& esc_value = with_escape ? StrEscapeC(value) : StrTrimForTSV(value, true);
-    PrintL(esc_key, "\t", esc_value);
+    if (keys_only) {
+      const std::string& esc_key = with_escape ? StrEscapeC(key) : StrTrimForTSV(key);
+      PrintL(esc_key);
+    } else {
+      const std::string& esc_key = with_escape ? StrEscapeC(key) : StrTrimForTSV(key);
+      const std::string& esc_value = with_escape ? StrEscapeC(value) : StrTrimForTSV(value, true);
+      PrintL(esc_key, "\t", esc_value);
+    }
     if (forward) {
       status = iter->Next();
       if (status != Status::SUCCESS) {
@@ -555,6 +572,80 @@ static int32_t ProcessSync(int32_t argc, const char** args) {
   return ok ? 0 : 1;
 }
 
+// Processes the search subcommand.
+static int32_t ProcessSearch(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"", 1}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"--mode", 1}, {"--items", 1}, {"--escape", 0}, {"--keys", 0},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string pattern = GetStringArgument(cmd_args, "", 0, "");
+  const std::string params_expr = GetStringArgument(cmd_args, "", 0, "");
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const std::string mode = GetStringArgument(cmd_args, "--mode", 0, "contain");
+  const int64_t num_items = GetIntegerArgument(cmd_args, "--items", 0, 10);
+  const bool with_escape = CheckMap(cmd_args, "--escape");
+  const bool keys_only = CheckMap(cmd_args, "--keys");
+  RemoteDBM dbm;
+  Status status = dbm.Connect(address, timeout);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  dbm.SetDBMIndex(dbm_index);
+  bool ok = false;
+  std::vector<std::string> matched;
+  status = dbm.SearchModal(mode, pattern, &matched, num_items);
+  if (status == Status::SUCCESS) {
+    if (keys_only) {
+      for (const auto& key : matched) {
+        const std::string& esc_key = with_escape ? StrEscapeC(key) : StrTrimForTSV(key);
+        PrintL(esc_key);
+      }
+    } else {
+      auto printer =
+          [&](const std::vector<std::string_view>& keys) {
+            std::map<std::string, std::string> records;
+            status = dbm.GetMulti(keys, &records);
+            if (status == Status::SUCCESS || status == Status::NOT_FOUND_ERROR) {
+              for (const auto& key : keys) {
+                const auto& value = records[std::string(key)];
+                const std::string& esc_key = with_escape ? StrEscapeC(key) : StrTrimForTSV(key);
+                const std::string& esc_value =
+                    with_escape ? StrEscapeC(value) : StrTrimForTSV(value, true);
+                PrintL(esc_key, "\t", esc_value);
+              }
+            } else {
+              EPrintL("GetMulti failed: ", status);
+            }
+          };
+      std::vector<std::string_view> keys;
+      for (const auto& key : matched) {
+        keys.emplace_back(std::string_view(key));
+        if (keys.size() >= 100) {
+          printer(keys);
+          keys.clear();
+        }
+      }
+      if (!keys.empty()) {
+        printer(keys);
+      }
+    }
+    ok = true;
+  } else {
+    EPrintL("Search failed: ", status);
+  }
+  dbm.Disconnect();
+  return ok ? 0 : 1;
+}
+
 }  // namespace tkrzw
 
 // Main routine
@@ -585,6 +676,8 @@ int main(int argc, char** argv) {
       rv = tkrzw::ProcessRebuild(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "sync") == 0) {
       rv = tkrzw::ProcessSync(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "search") == 0) {
+      rv = tkrzw::ProcessSearch(argc - 1, args + 1);
     } else {
       tkrzw::PrintUsageAndDie();
     }

@@ -149,10 +149,11 @@ check-remotedbm-util :
 	$(RUNENV) ./tkrzw_dbm_remote_util get --multi 1 2 3
 	$(RUNENV) ./tkrzw_dbm_remote_util remove --multi 1 2 3
 	$(RUNENV) ./tkrzw_dbm_remote_util list
-	$(RUNENV) ./tkrzw_dbm_remote_util list --move jump --jump_key two
+	$(RUNENV) ./tkrzw_dbm_remote_util list --move jump --jump_key "two"
 	$(RUNENV) ./tkrzw_dbm_remote_util remove "one"
 	$(RUNENV) ./tkrzw_dbm_remote_util rebuild
 	$(RUNENV) ./tkrzw_dbm_remote_util sync
+	$(RUNENV) ./tkrzw_dbm_remote_util search --mode "begin" "t"
 	$(RUNENV) ./tkrzw_dbm_remote_util get "two"
 	$(RUNENV) ./tkrzw_dbm_remote_util clear
 
