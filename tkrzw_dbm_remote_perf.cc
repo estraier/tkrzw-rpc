@@ -240,8 +240,9 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     std::uniform_int_distribution<int32_t> key_num_dist(0, num_iterations * num_threads - 1);
     std::uniform_int_distribution<int32_t> value_size_dist(0, value_size);
     char key_buf[32];
-    char* value_buf = new char[value_size + 251];
-    for (int32_t i = 0; i < value_size + 251; i++) {
+    volatile constexpr uint32_t value_extra = 2039U;
+    char* value_buf = new char[value_size + value_extra];
+    for (int32_t i = 0; i < static_cast<int32_t>(value_size + value_extra); i++) {
       value_buf[i] = 'a' + (id + i) % (i % 2 ? 26 : 8);
     }
     bool midline = false;
@@ -255,7 +256,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         const std::string_view value(
-          value_buf + static_cast<uint32_t>(i * (i + 1)) % 251,
+          value_buf + static_cast<uint32_t>(i * (i + 1)) % value_extra,
           is_random_value ? value_size_dist(misc_mt) : value_size);
         const Status status = stream->Set(key, value, true, ignore_result);
         if (status != Status::SUCCESS) {
@@ -270,7 +271,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
             const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
             const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
             const std::string_view value(
-                value_buf + static_cast<uint32_t>(j * (j + 1)) % 251,
+                value_buf + static_cast<uint32_t>(j * (j + 1)) % value_extra,
                 is_random_value ? value_size_dist(misc_mt) : value_size);
             records.emplace(std::string(key_buf, key_size), std::string(value));
           }
@@ -286,7 +287,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         const std::string_view value(
-          value_buf + static_cast<uint32_t>(i * (i + 1)) % 251,
+          value_buf + static_cast<uint32_t>(i * (i + 1)) % value_extra,
           is_random_value ? value_size_dist(misc_mt) : value_size);
         const Status status = task_dbm->Set(key, value);
         if (status != Status::SUCCESS) {
