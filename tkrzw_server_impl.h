@@ -935,7 +935,6 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
 
   ~AsyncBackgroundDBMProcessor() {
     if (bg_thread_.joinable()) {
-      std::cout << "JOIN" << std::endl;
       bg_thread_.join();
     }
   }
@@ -946,13 +945,9 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
       (service_->*request_call_)(&context_, &request_, &responder_, queue_, queue_, this);
     } else if (proc_state_ == PROCESS) {
       new AsyncBackgroundDBMProcessor<REQUEST, RESPONSE>(service_, queue_, request_call_, call_);
-
-      std::cout << "SPAWN" << std::endl;
       auto task =
           [&]() {
-            std::cout << "START" << std::endl;
             rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
-            std::cout << "END" << std::endl;
             proc_state_ = FINISH;
             responder_.Finish(response_, rpc_status_, this);
           };
