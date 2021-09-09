@@ -33,8 +33,8 @@ th { font-size: 10pt; font-weight: normal; background: #eeeeee; }
 a { color: #004488; }
 div.logo { text-align: center; }
 div.logo img { max-width: 30ex; }
-div.dbstructure { text-align: center; }
-div.dbstructure img { max-width: 70ex; }
+div.illustration { text-align: center; }
+div.illustration img { max-width: 70ex; }
 div.chart { text-align: left; }
 div.chart img { max-width: 80ex; }
 h2 a.headanc, h3 a.headanc {
@@ -92,7 +92,9 @@ window.onload = function(){
 
 <h2 id="overview">Overview</h2>
 
-<p>Tkrzw-RPC is a package of a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to mange key-value storages in various algorithms.  With Tkrzw, the application can handle database files efficiently in process without any network overhead.  However, multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves the issue by using a server program which manages database files and allowing other processes to access the contents via RPC.</p>
+<p>Tkrzw-RPC is a package of a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to manage key-value storages in various algorithms.  With Tkrzw, applications can handle database files efficiently in the process without any network overhead.  However, multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves this issue by using a server program which manages database files and allowing other processes to access the contents via RPC.</p>
+
+<div id="networdstructure" class="illustration"><img src="network.svg"/></div>
 
 <p>One server process can handle multiple databases, each of which can be different data structure and tuning parameters.  Each database is an instance of the <a href="https://dbmx.net/tkrzw/#polydbm_overview">PolyDBM</a> class, which is an adapter class to handle the following classes with the same interface.</p>
 
