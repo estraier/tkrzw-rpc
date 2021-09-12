@@ -455,7 +455,7 @@ class DBMServiceBase {
         backup_suffix = StrReplaceRegex(backup_suffix, "[^-_.0-9a-zA-Z]", "");
         if (backup_suffix.empty()) {
           struct std::tm cal;
-          GetLocalCalendar(GetWallTime(), &cal);
+          GetUniversalCalendar(GetWallTime(), &cal);
           backup_suffix = SPrintF("%04d%02d%02d%2d%2d%2d",
                                   cal.tm_year + 1900, cal.tm_mon + 1, cal.tm_mday,
                                   cal.tm_hour, cal.tm_min, cal.tm_sec);
