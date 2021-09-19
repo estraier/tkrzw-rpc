@@ -724,7 +724,7 @@ int main(int argc, char** argv) {
 
 <p>If you want ACID traits of transactions, add "restore_mode=sync" to the database parameters so that the state at the time of the last synchronization is restored.  Client programs should call the Synchronize method after each transaction or at an arbitrary critical point of the business logic.  As performance and durability is in a relation of trade-off, how you call syncoronization should be determined depending on the usage and content.  See the <a href="https://dbmx.net/tkrzw/#tips_durability_settings">durability settings of Tkrzw</a> for details.</p>
 
-<p>To make a backup file of a database while the server is running, you can use the "sync" subcommand and set the "make_backup" parameter whose value is empty.  A suffix like ".backup.20210901233046" is added to the database file name to generage the backup file name.  If the value of "make_backup" is not empty, the value is used as the suffix.  For security, the available characters are "[-_.0-9a-zA-Z]".  The following cron setting makes a backup at 2:15 every night.</p>
+<p>To make a backup file of a database while the server is running, you can use the "sync" subcommand and set the "make_backup" parameter whose value is empty.  A date suffix in GMT like ".backup.20210901233046" is added to the database file name to generage the backup file name.  If the value of "make_backup" is not empty, the value is used as the suffix.  For security, the available characters are "[-_.0-9a-zA-Z]".  The following cron setting makes a backup at 2:15 every night.</p>
 
 <pre class="rawtext"><![CDATA[15 2 * * *    tkrzw_dbm_remote_util sync --address "localhost:1978" --hard "make_backup=" 2>&1 /dev/null
 ]]></pre>

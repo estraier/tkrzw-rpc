@@ -685,8 +685,8 @@ class RemoteDBM final {
    * @details The "reducer" parameter specifies the reducer for SkipDBM.  "ReduceToFirst",
    * "ReduceToSecond", "ReduceToLast", etc are supported.  If the parameter "make_backup" exists,
    * a backup file is created in the same directory as the database file.  The backup file name
-   * has a suffix like ".backup.20210831213749".  If the value of "make_backup" not empty, it is
-   * the value is used as the suffix.
+   * has a date suffix in GMT, like ".backup.20210831213749".  If the value of "make_backup" not
+   * empty, it is the value is used as the suffix.
    */
   Status Synchronize(bool hard, const std::map<std::string, std::string>& params = {});
 
