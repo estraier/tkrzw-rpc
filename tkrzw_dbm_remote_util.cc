@@ -12,6 +12,7 @@
  *************************************************************************************************/
 
 #include <cassert>
+#include <csignal>
 #include <cstdarg>
 #include <cstdint>
 
@@ -53,6 +54,8 @@ static void PrintUsageAndDie() {
   P("    : Synchronizes a database file.\n");
   P("  %s search [options] pattern\n", progname);
   P("    : Synchronizes a database file.\n");
+  P("  %s replicate [options] [db_configs...]\n", progname);
+  P("    : Replicates updates to local databases.\n");
   P("\n");
   P("Common options:\n");
   P("  --version : Prints the version number and exits.\n");
@@ -85,7 +88,22 @@ static void PrintUsageAndDie() {
   P("  --escape : C-style escape is applied to the TSV data.\n");
   P("  --keys : Prints keys only.\n");
   P("\n");
+  P("Options for the replication subcommand:\n");
+  P("  --min_timestamp num : The minimum timestamp of update logs to retrieve.\n");
+  P("  --timestamp_file str : The file to store the last retrieved timestamp to reuse it.\n");
+  P("  --timestamp_skew num : The timestamp skew applied to the reused timestamp.\n");
+  P("  --server_id num : The server ID of the client.\n");
+  P("  --wait num : The time in seconds to wait for the next log.\n");
+  P("  --items num : The number of items to print. (default: 10)\n");
+  P("  --escape : C-style escape is applied to the TSV data.\n");
+  P("\n");
   std::exit(1);
+}
+
+// Shutdowns the process.
+bool g_process_alive = true;
+void ShutdownProcess(int signum) {
+  g_process_alive = false;
 }
 
 // Processes the echo subcommand.
@@ -465,6 +483,7 @@ static int32_t ProcessList(int32_t argc, const char** args) {
       }
     }
   }
+  iter.reset(nullptr);
   dbm.Disconnect();
   return ok ? 0 : 1;
 }
@@ -646,6 +665,168 @@ static int32_t ProcessSearch(int32_t argc, const char** args) {
   return ok ? 0 : 1;
 }
 
+// Processes the replicate subcommand.
+static int32_t ProcessReplicate(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"--min_timestamp", 1}, {"--timestamp_file", 1}, {"--timestamp_skew", 1},
+    {"--server_id", 1}, {"--wait", 1},
+    {"--items", 1}, {"--escape", 0},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string pattern = GetStringArgument(cmd_args, "", 0, "");
+  const std::string params_expr = GetStringArgument(cmd_args, "", 0, "");
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, -1);
+  int64_t min_timestamp = GetIntegerArgument(cmd_args, "--min_timestamp", 0, -1);
+  const std::string timestamp_file = GetStringArgument(cmd_args, "--timestamp_file", 0, "");
+  const int64_t timestamp_skew = GetIntegerArgument(cmd_args, "--timestamp_skew", 0, 0);
+  const int32_t server_id = GetIntegerArgument(cmd_args, "--server_id", 0, 0);
+  const double wait_time = GetDoubleArgument(cmd_args, "--wait_time", 0, 1.0);
+  const int64_t num_items = GetIntegerArgument(cmd_args, "--items", 0, INT64MAX);
+  const bool with_escape = CheckMap(cmd_args, "--escape");
+  const auto& dbm_exprs = cmd_args[""];
+  std::vector<std::unique_ptr<DBM>> local_dbms;
+  local_dbms.reserve(dbm_exprs.size());
+  for (const auto& dbm_expr : dbm_exprs) {
+    const std::vector<std::string> fields = StrSplit(dbm_expr, "#");
+    const std::string path = fields.front();
+    std::map<std::string, std::string> params;
+    if (fields.size() > 1) {
+      params = StrSplitIntoMap(fields[1], ",", "=");
+    }
+    const int32_t num_shards = StrToInt(SearchMap(params, "num_shards", "-1"));
+    std::unique_ptr<ParamDBM> dbm;
+    if (num_shards >= 0) {
+      dbm = std::make_unique<ShardDBM>();
+    } else {
+      dbm = std::make_unique<PolyDBM>();
+    }
+    const Status status = dbm->OpenAdvanced(path, true, File::OPEN_DEFAULT, params);
+    if (status != Status::SUCCESS) {
+      EPrintL("OpenAdvanced failed: ", status);
+      return 1;
+    }
+    local_dbms.emplace_back(std::move(dbm));
+  }
+  if (!timestamp_file.empty()) {
+    const std::string tsexpr = ReadFileSimple(timestamp_file, "", 32);
+    if (!tsexpr.empty()) {
+      min_timestamp = std::max<int64_t>(0, StrToInt(tsexpr) + timestamp_skew);
+    }
+  }
+  RemoteDBM dbm;
+  Status status = dbm.Connect(address, timeout);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  bool ok = false;
+  std::signal(SIGHUP, ShutdownProcess);
+  std::signal(SIGINT, ShutdownProcess);
+  std::signal(SIGTERM, ShutdownProcess);
+  std::signal(SIGQUIT, ShutdownProcess);
+  auto repl = dbm.MakeReplicator();
+  status = repl->Start(min_timestamp, server_id, wait_time);
+  if (status != Status::SUCCESS) {
+    EPrintL("Start failed: ", status);
+    return 1;
+  }
+  RemoteDBM::ReplicateLog op;
+  int64_t count = 0;
+  int64_t max_timestamp = -1;
+  while (g_process_alive && count < num_items) {
+    int64_t timestamp = 0;
+    status = repl->Read(&timestamp, &op);
+    if (status == Status::SUCCESS) {
+      max_timestamp = std::max(timestamp, max_timestamp);
+      if (dbm_index >= 0 && op.dbm_index != dbm_index) {
+        continue;
+      }
+      if (local_dbms.empty()) {
+        const std::string& esc_key = with_escape ? StrEscapeC(op.key) : StrTrimForTSV(op.key);
+        const std::string& esc_value =
+            with_escape ? StrEscapeC(op.value) : StrTrimForTSV(op.value, true);
+        switch (op.op_type) {
+          case DBMUpdateLoggerMQ::OP_SET:
+            PrintL(timestamp, "\t", op.server_id, "\t", op.dbm_index,
+                   "\tSET\t", op.key, "\t", op.value);
+            break;
+          case DBMUpdateLoggerMQ::OP_REMOVE:
+            PrintL(timestamp, "\t", op.server_id, "\t", op.dbm_index, "\tREMOVE\t", op.key);
+            break;
+          case DBMUpdateLoggerMQ::OP_CLEAR:
+            PrintL(timestamp, "\t", op.server_id, "\t", op.dbm_index, "\tCLEAR");
+            break;
+          default:
+            break;
+        }
+      } else if (op.dbm_index < 0 || op.dbm_index >= static_cast<int32_t>(local_dbms.size())) {
+        EPrintL("DBM index is out of range: ", op.dbm_index);
+        ok = false;
+      } else {
+        DBM* local_dbm = local_dbms[op.dbm_index].get();
+        switch (op.op_type) {
+          case DBMUpdateLoggerMQ::OP_SET:
+            status = local_dbm->Set(op.key, op.value);
+            if (status != Status::SUCCESS) {
+              EPrintL("Set failed: ", status);
+              ok = false;
+            }
+            break;
+          case DBMUpdateLoggerMQ::OP_REMOVE:
+            status = local_dbm->Remove(op.key);
+            if (status != Status::SUCCESS) {
+              EPrintL("Remove failed: ", status);
+              ok = false;
+            }
+            break;
+          case DBMUpdateLoggerMQ::OP_CLEAR:
+            status = local_dbm->Clear();
+            if (status != Status::SUCCESS) {
+              EPrintL("Remove failed: ", status);
+              ok = false;
+            }
+            break;
+          default:
+            break;
+        }
+      }
+      if (!timestamp_file.empty() && count % 1000 == 0) {
+        status = WriteFileAtomic(timestamp_file, ToString(max_timestamp) + "\n");
+        if (status != Status::SUCCESS) {
+          EPrintL("WriteFile failed: ", status);
+          ok = false;
+          break;
+        }
+      }
+      count++;
+    } else {
+      if (status != Status::INFEASIBLE_ERROR) {
+        EPrintL("Read failed: ", status);
+        ok = false;
+        break;
+      }
+    }
+  }
+  repl.reset(nullptr);
+  if (!timestamp_file.empty() && max_timestamp >= 0) {
+    status = WriteFileAtomic(timestamp_file, ToString(max_timestamp) + "\n");
+    if (status != Status::SUCCESS) {
+      EPrintL("WriteFile failed: ", status);
+      ok = false;
+    }
+  }
+  dbm.Disconnect();
+  return ok ? 0 : 1;
+}
+
 }  // namespace tkrzw
 
 // Main routine
@@ -678,6 +859,8 @@ int main(int argc, char** argv) {
       rv = tkrzw::ProcessSync(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "search") == 0) {
       rv = tkrzw::ProcessSearch(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "replicate") == 0) {
+      rv = tkrzw::ProcessReplicate(argc - 1, args + 1);
     } else {
       tkrzw::PrintUsageAndDie();
     }

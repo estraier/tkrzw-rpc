@@ -17,16 +17,20 @@
 #include <map>
 #include <string>
 #include <string_view>
-#include <tkrzw_lib_common.h>
-#include <tkrzw_str_util.h>
 #include <utility>
 #include <vector>
+
+#include "tkrzw_dbm.h"
+#include "tkrzw_dbm_ulog.h"
+#include "tkrzw_lib_common.h"
+#include "tkrzw_str_util.h"
 
 namespace tkrzw {
 
 class RemoteDBMImpl;
 class RemoteDBMStreamImpl;
 class RemoteDBMIteratorImpl;
+class RemoteDBMReplicatorImpl;
 
 /**
  * RPC interface to access the database service via gRPC protocol.
@@ -53,6 +57,12 @@ class RemoteDBM final {
      */
     explicit Stream(const Stream& rhs) = delete;
     Stream& operator =(const Stream& rhs) = delete;
+
+    /**
+     * Cancels the current operation.
+     * @details This is called by another thread than the thread doing the operation.
+     */
+    void Cancel();
 
     /**
      * Sends a message and gets back the echo message.
@@ -187,6 +197,12 @@ class RemoteDBM final {
     Iterator& operator =(const Iterator& rhs) = delete;
 
     /**
+     * Cancels the current operation.
+     * @details This is called by another thread than the thread doing the operation.
+     */
+    void Cancel();
+
+    /**
      * Initializes the iterator to indicate the first record.
      * @return The result status.
      * @details Even if there's no record, the operation doesn't fail.
@@ -300,6 +316,83 @@ class RemoteDBM final {
 
     /** Pointer to the actual implementation. */
     RemoteDBMIteratorImpl* impl_;
+  };
+
+  /**
+   * Wrapper of an update log for replication.
+   */
+  struct ReplicateLog : public DBMUpdateLoggerMQ::UpdateLog {
+    /**
+     * Default constructor.
+     */
+    ReplicateLog();
+
+    /**
+     * Destructor.
+     */
+    ~ReplicateLog();
+
+   private:
+    friend class RemoteDBMReplicatorImpl;
+    /** The placeholder for the key and the value. */
+    char* buffer_;
+  };
+
+  /**
+   * Reader for update logs for asynchronous replicatoin.
+   * @details An instance of this class dominates a thread on the server so you should
+   * destroy when it is no longer in use.
+   */
+  class Replicator {
+    friend class tkrzw::RemoteDBM;
+   public:
+    /**
+     * Destructor.
+     */
+    ~Replicator();
+
+    /**
+     * Copy and assignment are disabled.
+     */
+    explicit Replicator(const Replicator& rhs) = delete;
+    Replicator& operator =(const Replicator& rhs) = delete;
+
+    /**
+     * Cancels the current operation.
+     * @details This is called by another thread than the thread doing the operation.
+     */
+    void Cancel();
+
+    /**
+     * Starts replication.
+     * @param min_timestamp The minimum timestamp in milliseconds of messages to read.
+     * @param server_id The server ID of the process.  Logs with the same server ID are skipped
+     * to avoid infinite loop.
+     * @param wait_time The time in seconds to wait for the next log.  Zero means no wait.
+     * Negative means unlimited.
+     * @return The result status.
+     */
+    Status Start(int64_t min_timestamp, int32_t server_id = 0, double wait_time = -1);
+
+    /**
+     * Reads the next update log.
+     * @param timestamp The pointer to a variable to store the timestamp in milliseconds of the
+     * message.
+     * @param op The pointer to the update log object to store the result.  The life duration of
+     * the key and the value fields is the same as the given message.
+     * @return The result status.  If the wait time passes, INFEASIBLE_ERROR is returned.
+     * If the writer closes the file while waiting, CANCELED_ERROR is returned.
+     */
+    Status Read(int64_t* timestamp, ReplicateLog* op);
+
+    /**
+     * Constructor.
+     * @param dbm_impl The database implementation object.
+     */
+    explicit Replicator(RemoteDBMImpl* dbm_impl);
+
+    /** Pointer to the actual implementation. */
+    RemoteDBMReplicatorImpl* impl_;
   };
 
   /**
@@ -719,6 +812,12 @@ class RemoteDBM final {
    * @return The iterator for each record.
    */
   std::unique_ptr<Iterator> MakeIterator();
+
+  /**
+   * Makes a replicator for asynchronous replication.
+   * @return The replicator for asynchronous replication.
+   */
+  std::unique_ptr<Replicator> MakeReplicator();
 
  private:
   /** Pointer to the actual implementation. */

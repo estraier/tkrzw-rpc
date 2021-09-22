@@ -438,6 +438,8 @@ fi
 <dd>Synchronizes a database file.</dd>
 <dt><code>tkrzw_dbm_remote_util search [<var>options</var>] <var>pattern</var></code></dt>
 <dd>Synchronizes a database file.</dd>
+<dt><code>tkrzw_dbm_remote_util replicate [<var>options</var>] [<var>db_configs</var>...]</code></dt>
+<dd>Replicates updates to local databases.</dd>
 </dl>
 
 <dl>
@@ -464,6 +466,14 @@ fi
 <dd><code>--items <var>num</var></code> : The number of items to retrieve. (default: 10)</dd>
 <dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
 <dd><code>--keys</code> : Prints keys only.</dd>
+<dt>Options for the replication subcommand:</dt>
+<dd><code>--min_timestamp <var>num</var></code> : The minimum timestamp of update logs to retrieve.</dd>
+<dd><code>--timestamp_file <var>str</var></code> : The file to store the last retrieved timestamp to reuse it.</dd>
+<dd><code>--timestamp_skew <var>num</var></code> : The timestamp skew applied to the reused timestamp.</dd>
+<dd><code>--server_id <var>num</var></code> : The server ID of the client.</dd>
+<dd><code>--wait <var>num</var></code> : The time in seconds to wait for the next log.</dd>
+<dd><code>--items <var>num</var></code> : The number of items to print. (default: 10)</dd>
+<dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
 </dl>
 
 <p>The following is a sample usage to make a remove database to associate country names to their capital cities' names.  If the extension of the file is "tkh", the type of the database is regarded as HashDBM.</p>

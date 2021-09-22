@@ -67,8 +67,10 @@ Status MakeStatusFromProto(const tkrzw::StatusProto& proto) {
 class RemoteDBMImpl final {
   friend class RemoteDBMStreamImpl;
   friend class RemoteDBMIteratorImpl;
+  friend class RemoteDBMReplicatorImpl;
   typedef std::list<RemoteDBMStreamImpl*> StreamList;
   typedef std::list<RemoteDBMIteratorImpl*> IteratorList;
+  typedef std::list<RemoteDBMReplicatorImpl*> ReplicatorList;
  public:
   RemoteDBMImpl();
   ~RemoteDBMImpl();
@@ -110,6 +112,7 @@ class RemoteDBMImpl final {
   int32_t dbm_index_;
   StreamList streams_;
   IteratorList iterators_;
+  ReplicatorList replicators_;
   SpinSharedMutex mutex_;
 };
 
@@ -118,7 +121,7 @@ class RemoteDBMStreamImpl final {
  public:
   explicit RemoteDBMStreamImpl(RemoteDBMImpl* dbm);
   ~RemoteDBMStreamImpl();
-  void InjectStream(void* stream);
+  void Cancel();
   Status Echo(std::string_view message, std::string* echo);
   Status Get(std::string_view key, std::string* value);
   Status Set(std::string_view key, std::string_view value, bool overwrite, bool ignore_result);
@@ -142,7 +145,7 @@ class RemoteDBMIteratorImpl final {
  public:
   explicit RemoteDBMIteratorImpl(RemoteDBMImpl* dbm);
   ~RemoteDBMIteratorImpl();
-  void InjectStream(void* stream);
+  void Cancel();
   Status First();
   Status Last();
   Status Jump(std::string_view key);
@@ -161,8 +164,24 @@ class RemoteDBMIteratorImpl final {
                     tkrzw::IterateRequest, tkrzw::IterateResponse>> stream_;
 };
 
+class RemoteDBMReplicatorImpl final {
+  friend class RemoteDBMImpl;
+ public:
+  explicit RemoteDBMReplicatorImpl(RemoteDBMImpl* dbm);
+  ~RemoteDBMReplicatorImpl();
+  void Cancel();
+  Status Start(int64_t min_timestamp, int32_t server_id, double wait_time);
+  Status Read(int64_t* timestamp, RemoteDBM::ReplicateLog* op);
+
+ private:
+  RemoteDBMImpl* dbm_;
+  grpc::ClientContext context_;
+  std::unique_ptr<grpc::ClientReaderInterface<tkrzw::ReplicateResponse>> stream_;
+};
+
 RemoteDBMImpl::RemoteDBMImpl()
-    : stub_(nullptr), timeout_(0), dbm_index_(0), streams_(), iterators_(), mutex_() {}
+    : stub_(nullptr), timeout_(0), dbm_index_(0),
+      streams_(), iterators_(), replicators_(), mutex_() {}
 
 RemoteDBMImpl::~RemoteDBMImpl() {
   for (auto* stream : streams_) {
@@ -170,6 +189,9 @@ RemoteDBMImpl::~RemoteDBMImpl() {
   }
   for (auto* iterator : iterators_) {
     iterator->dbm_ = nullptr;
+  }
+  for (auto* replicator : replicators_) {
+    replicator->dbm_ = nullptr;
   }
 }
 
@@ -704,6 +726,10 @@ RemoteDBMStreamImpl::~RemoteDBMStreamImpl() {
   }
 }
 
+void RemoteDBMStreamImpl::Cancel() {
+  context_.TryCancel();
+}
+
 Status RemoteDBMStreamImpl::Echo(std::string_view message, std::string* echo) {
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
   if (dbm_->stub_ == nullptr) {
@@ -933,6 +959,10 @@ RemoteDBMIteratorImpl::~RemoteDBMIteratorImpl() {
   }
 }
 
+void RemoteDBMIteratorImpl::Cancel() {
+  context_.TryCancel();
+}
+
 Status RemoteDBMIteratorImpl::First() {
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
   if (dbm_->stub_ == nullptr) {
@@ -1151,6 +1181,87 @@ Status RemoteDBMIteratorImpl::Remove() {
   return MakeStatusFromProto(response.status());
 }
 
+RemoteDBMReplicatorImpl::RemoteDBMReplicatorImpl(RemoteDBMImpl* dbm)
+    : dbm_(dbm), context_(), stream_(nullptr) {
+  {
+    std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
+    dbm_->replicators_.emplace_back(this);
+  }
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+}
+
+RemoteDBMReplicatorImpl::~RemoteDBMReplicatorImpl() {
+  if (dbm_ != nullptr) {
+    std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
+    dbm_->replicators_.remove(this);
+  }
+}
+
+void RemoteDBMReplicatorImpl::Cancel() {
+  context_.TryCancel();
+}
+
+Status RemoteDBMReplicatorImpl::Start(
+    int64_t min_timestamp, int32_t server_id, double wait_time) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (stream_ != nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "started replicator");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  ReplicateRequest request;
+  request.set_min_timestamp(min_timestamp);
+  request.set_server_id(server_id);
+  request.set_wait_time(wait_time);
+  stream_ = dbm_->stub_->Replicate(&context_, request);
+  return Status(Status::SUCCESS);
+}
+
+Status RemoteDBMReplicatorImpl::Read(int64_t* timestamp, RemoteDBM::ReplicateLog* op) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (stream_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not started replicator");
+  }
+  ReplicateResponse response;
+  if (!stream_->Read(&response)) {
+    return Status(Status::NETWORK_ERROR, "Read failed");
+  }
+  *timestamp = response.timestamp();
+  delete[] op->buffer_;
+  switch (response.op_type()) {
+    case ReplicateResponse::OP_SET:
+      op->op_type = DBMUpdateLoggerMQ::OP_SET;
+      break;
+    case ReplicateResponse::OP_REMOVE:
+      op->op_type = DBMUpdateLoggerMQ::OP_REMOVE;
+      break;
+    case ReplicateResponse::OP_CLEAR:
+      op->op_type = DBMUpdateLoggerMQ::OP_CLEAR;
+      break;
+    default:
+      op->op_type = DBMUpdateLoggerMQ::OP_VOID;
+      break;
+  }
+  op->server_id = response.server_id();
+  op->dbm_index = response.dbm_index();
+  op->buffer_ = new char[response.key().size() + response.key().size() + 1];
+  char* wp = op->buffer_;
+  std::memcpy(wp, response.key().data(), response.key().size());
+  op->key = std::string_view(wp, response.key().size());
+  wp += response.key().size();
+  std::memcpy(wp, response.value().data(), response.value().size());
+  op->value = std::string_view(wp, response.value().size());
+  return MakeStatusFromProto(response.status());
+}
+
 RemoteDBM::RemoteDBM() : impl_(nullptr) {
   impl_ = new RemoteDBMImpl();
 }
@@ -1274,12 +1385,21 @@ std::unique_ptr<RemoteDBM::Iterator> RemoteDBM::MakeIterator() {
   return iter;
 }
 
+std::unique_ptr<RemoteDBM::Replicator> RemoteDBM::MakeReplicator() {
+  std::unique_ptr<RemoteDBM::Replicator> iter(new RemoteDBM::Replicator(impl_));
+  return iter;
+}
+
 RemoteDBM::Stream::Stream(RemoteDBMImpl* dbm_impl) {
   impl_ = new RemoteDBMStreamImpl(dbm_impl);
 }
 
 RemoteDBM::Stream::~Stream() {
   delete impl_;
+}
+
+void RemoteDBM::Stream::Cancel() {
+  impl_->Cancel();
 }
 
 Status RemoteDBM::Stream::Echo(std::string_view message, std::string* echo) {
@@ -1324,6 +1444,10 @@ RemoteDBM::Iterator::~Iterator() {
   delete impl_;
 }
 
+void RemoteDBM::Iterator::Cancel() {
+  impl_->Cancel();
+}
+
 Status RemoteDBM::Iterator::First() {
   return impl_->First();
 }
@@ -1362,6 +1486,33 @@ Status RemoteDBM::Iterator::Set(std::string_view value) {
 
 Status RemoteDBM::Iterator::Remove() {
   return impl_->Remove();
+}
+
+RemoteDBM::ReplicateLog::ReplicateLog() : buffer_(nullptr) {}
+
+RemoteDBM::ReplicateLog::~ReplicateLog() {
+  delete[] buffer_;
+}
+
+RemoteDBM::Replicator::Replicator(RemoteDBMImpl* dbm_impl) {
+  impl_ = new RemoteDBMReplicatorImpl(dbm_impl);
+}
+
+RemoteDBM::Replicator::~Replicator() {
+  delete impl_;
+}
+
+void RemoteDBM::Replicator::Cancel() {
+  impl_->Cancel();
+}
+
+Status RemoteDBM::Replicator::Start(int64_t min_timestamp, int32_t server_id, double timeout) {
+  return impl_->Start(min_timestamp, server_id, timeout);
+}
+
+Status RemoteDBM::Replicator::Read(int64_t* timestamp, ReplicateLog* op) {
+  assert(timestamp != nulptr && op != nullptr);
+  return impl_->Read(timestamp, op);
 }
 
 }  // namespace tkrzw

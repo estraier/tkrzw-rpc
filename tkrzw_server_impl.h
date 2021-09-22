@@ -41,8 +41,9 @@ namespace tkrzw {
 
 class DBMServiceBase {
  public:
-  DBMServiceBase(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
-      : dbms_(dbms), logger_(logger) {}
+  DBMServiceBase(
+      const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger, MessageQueue* mq)
+      : dbms_(dbms), logger_(logger), mq_(mq) {}
 
   void LogRequest(grpc::ServerContext* context, const char* name,
                   const google::protobuf::Message* proto) {
@@ -701,15 +702,89 @@ class DBMServiceBase {
     return grpc::Status::OK;
   }
 
+  grpc::Status ReplicateImpl(
+      grpc::ServerContext* context, const tkrzw::ReplicateRequest* request,
+      grpc::ServerWriter<tkrzw::ReplicateResponse>* writer) {
+    std::unique_ptr<MessageQueue::Reader> reader;
+    while (true) {
+      if (context->IsCancelled()) {
+        return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
+      }
+      tkrzw::ReplicateResponse response;
+      const grpc::Status status = ReplicateProcessOne(
+          &reader, context, *request, &response);
+      if (!status.ok()) {
+        return status;
+      }
+      if (!writer->Write(response)) {
+        break;
+      }
+    }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status ReplicateProcessOne(
+      std::unique_ptr<MessageQueue::Reader>* reader, grpc::ServerContext* context,
+      const tkrzw::ReplicateRequest& request, tkrzw::ReplicateResponse* response) {
+    if (*reader == nullptr) {
+      LogRequest(context, "Replicate", &request);
+      if (mq_ == nullptr) {
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "disabled update logging");
+      }
+      *reader = mq_->MakeReader(request.min_timestamp());
+    }
+    int64_t timestamp = 0;
+    std::string message;
+    while (true) {
+      if (context->IsCancelled()) {
+        return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
+      }
+      Status status = (*reader)->Read(&timestamp, &message, request.wait_time());
+      if (status == Status::SUCCESS) {
+        response->set_timestamp(timestamp);
+        DBMUpdateLoggerMQ::UpdateLog op;
+        status = DBMUpdateLoggerMQ::ParseUpdateLog(message, &op);
+        if (status == Status::SUCCESS) {
+          if (op.server_id == request.server_id()) {
+            continue;
+          }
+          switch (op.op_type) {
+            case DBMUpdateLoggerMQ::OP_SET:
+              response->set_op_type(ReplicateResponse::OP_SET);
+              break;
+            case DBMUpdateLoggerMQ::OP_REMOVE:
+              response->set_op_type(ReplicateResponse::OP_REMOVE);
+              break;
+            case DBMUpdateLoggerMQ::OP_CLEAR:
+              response->set_op_type(ReplicateResponse::OP_CLEAR);
+              break;
+            default:
+              break;
+          }
+          response->set_server_id(op.server_id);
+          response->set_dbm_index(op.dbm_index);
+          response->set_key(op.key.data(), op.key.size());
+          response->set_value(op.value.data(), op.value.size());
+        }
+      }
+      response->mutable_status()->set_code(status.GetCode());
+      response->mutable_status()->set_message(status.GetMessage());
+      break;
+    }
+    return grpc::Status::OK;
+  }
+
  protected:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;
+  MessageQueue* mq_;
 };
 
 class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
  public:
-  DBMServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
-      : DBMServiceBase(dbms, logger) {}
+  DBMServiceImpl(
+      const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger, MessageQueue* mq)
+      : DBMServiceBase(dbms, logger, mq) {}
 
   grpc::Status Echo(
       grpc::ServerContext* context, const EchoRequest* request,
@@ -842,12 +917,19 @@ class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
       grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) override {
     return IterateImpl(context, stream);
   }
+
+  grpc::Status Replicate(
+      grpc::ServerContext* context, const tkrzw::ReplicateRequest* request,
+      grpc::ServerWriter<tkrzw::ReplicateResponse>* writer) override {
+    return ReplicateImpl(context, request, writer);
+  }
 };
 
 class DBMAsyncServiceImpl : public DBMServiceBase, public DBMService::AsyncService {
  public:
-  DBMAsyncServiceImpl(const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger)
-      : DBMServiceBase(dbms, logger) {}
+  DBMAsyncServiceImpl(
+      const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger, MessageQueue* mq)
+      : DBMServiceBase(dbms, logger, mq) {}
 
   void OperateQueue(grpc::ServerCompletionQueue* queue, const bool* is_shutdown);
   void ShutdownQueue(grpc::ServerCompletionQueue* queue);
@@ -1105,6 +1187,62 @@ class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
   grpc::Status rpc_status_;
 };
 
+class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
+ public:
+  enum ProcState {CREATE, BEGIN, WRITE, FINISH};
+
+  AsyncDBMProcessorReplicate(
+      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
+      : service_(service), queue_(queue),
+        context_(), stream_(&context_), proc_state_(CREATE),
+        reader_(nullptr), rpc_status_(grpc::Status::OK) {
+    Proceed();
+  }
+
+  void Proceed() override {
+    if (proc_state_ == CREATE) {
+      context_.grpc::ServerContext::AsyncNotifyWhenDone(nullptr);
+      proc_state_ = BEGIN;
+      service_->RequestReplicate(&context_, &request_, &stream_, queue_, queue_, this);
+    } else if (proc_state_ == BEGIN || proc_state_ == WRITE) {
+      if (proc_state_ == BEGIN) {
+        new AsyncDBMProcessorReplicate(service_, queue_);
+      }
+      response_.Clear();
+      rpc_status_ = service_->ReplicateProcessOne(&reader_, &context_, request_, &response_);
+      if (rpc_status_.ok()) {
+        proc_state_ = WRITE;
+        stream_.Write(response_, this);
+      } else {
+        proc_state_ = FINISH;;
+        stream_.Finish(rpc_status_, this);
+      }
+    } else {
+      delete this;
+    }
+  }
+
+  void Cancel() override {
+    if (proc_state_ == WRITE) {
+      proc_state_ = FINISH;;
+      stream_.Finish(rpc_status_, this);
+    } else {
+      delete this;
+    }
+  }
+
+ private:
+  DBMAsyncServiceImpl* service_;
+  grpc::ServerCompletionQueue* queue_;
+  grpc::ServerContext context_;
+  grpc::ServerAsyncWriter<ReplicateResponse> stream_;
+  ProcState proc_state_;
+  std::unique_ptr<MessageQueue::Reader> reader_;
+  tkrzw::ReplicateRequest request_;
+  tkrzw::ReplicateResponse response_;
+  grpc::Status rpc_status_;
+};
+
 inline void DBMAsyncServiceImpl::OperateQueue(
     grpc::ServerCompletionQueue* queue, const bool* is_shutdown) {
   logger_->Log(Logger::LEVEL_INFO, "Starting a completion queue");
@@ -1170,6 +1308,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
       &DBMServiceBase::SearchModalImpl);
   new AsyncDBMProcessorStream(this, queue);
   new AsyncDBMProcessorIterate(this, queue);
+  new AsyncDBMProcessorReplicate(this, queue);
   while (true) {
     void* tag = nullptr;
     bool ok = false;
@@ -1178,9 +1317,13 @@ inline void DBMAsyncServiceImpl::OperateQueue(
     }
     auto* proc = static_cast<AsyncDBMProcessorInterface*>(tag);
     if (ok) {
-      proc->Proceed();
+      if (proc != nullptr) {
+        proc->Proceed();
+      }
     } else {
-      proc->Cancel();
+      if (proc != nullptr) {
+        proc->Cancel();
+      }
       if (*is_shutdown) {
         break;
       }

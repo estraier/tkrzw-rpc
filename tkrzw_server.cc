@@ -49,6 +49,10 @@ static void PrintUsageAndDie() {
   P("  --log_date str : The log date format: simple, simple_micro, w3cdtf, w3cdtf_micro,"
     " rfc1123, epoch, epoch_micro. (default: simple)\n");
   P("  --log_td num : The log time difference in seconds. (default: 99999=local)\n");
+  P("  --server_id num: The server ID. (default: 1)\n");
+  P("  --ulog_prefix str : The prefix of the update log files.\n");
+  P("  --ulog_max_file_size num : The maximum file size of each update log file."
+    " (default: 1Gi)\n");
   P("  --pid_file str : The file path of the store the process ID.\n");
   P("  --daemon : Runs the process as a daemon process.\n");
   P("  --read_only : Opens the databases in the read-only mode.\n");
@@ -66,6 +70,7 @@ std::string_view g_log_level;
 std::string_view g_log_date;
 int32_t g_log_td = 0;
 std::ofstream* g_log_stream = nullptr;
+MessageQueue* g_mq = nullptr;
 std::atomic<grpc::Server*> g_server(nullptr);
 bool g_is_shutdown = false;
 
@@ -84,7 +89,7 @@ Status ConfigLogger() {
     g_log_stream->open(std::string(g_log_file), std::ios::app);
     if (!g_log_stream->good()) {
       return Status(Status::SYSTEM_ERROR, "log open failed");
-    }
+    }  std::unique_ptr<MessageQueue> mq;
     g_logger->SetStream(g_log_stream);
     g_logger->SetMinLevel(Logger::ParseLevelStr(g_log_level));
     g_logger->SetDateFormat(BaseLogger::ParseDateFormatStr(g_log_date), g_log_td);
@@ -111,6 +116,9 @@ void ShutdownServer(int signum) {
     g_logger->LogCat(Logger::LEVEL_INFO, "Shutting down by signal: ", signum);
     const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
     g_is_shutdown = true;
+    if (g_mq != nullptr) {
+      g_mq->CancelReaders();
+    }
     server->Shutdown(deadline);
   }
 }
@@ -120,6 +128,7 @@ static int32_t Process(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"--version", 0}, {"--address", 1}, {"--async", 0}, {"--threads", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
+    {"--server_id", 1}, {"--ulog_prefix", 1}, {"--ulog_max_file_size", 1},
     {"--pid_file", 1}, {"--daemon", 0},
     {"--read_only", 0},
   };
@@ -140,6 +149,10 @@ static int32_t Process(int32_t argc, const char** args) {
   const std::string log_level = GetStringArgument(cmd_args, "--log_level", 0, "info");
   const std::string log_date = GetStringArgument(cmd_args, "--log_date", 0, "simple");
   const int32_t log_td = GetIntegerArgument(cmd_args, "--log_td", 0, 99999);
+  const int32_t server_id = GetIntegerArgument(cmd_args, "--server_id", 0, 1);
+  const std::string ulog_prefix = GetStringArgument(cmd_args, "--ulog_prefix", 0, "");
+  const int64_t ulog_max_file_size =
+      GetIntegerArgument(cmd_args, "--ulog_max_file_size", 0, 1LL << 30);
   const std::string pid_file = GetStringArgument(cmd_args, "--pid_file", 0, "");
   const bool as_daemon = CheckMap(cmd_args, "--daemon");
   const bool read_only = CheckMap(cmd_args, "--read_only");
@@ -149,6 +162,9 @@ static int32_t Process(int32_t argc, const char** args) {
   }
   if (num_threads < 1) {
     Die("Invalid number of threads");
+  }
+  if (server_id < 1) {
+    Die("Invalid server ID");
   }
   if (dbm_exprs.empty()) {
     dbm_exprs.emplace_back("#dbm=tiny");
@@ -189,8 +205,21 @@ static int32_t Process(int32_t argc, const char** args) {
       has_error = true;
     }
   }
+  std::unique_ptr<MessageQueue> mq;
+  if (!ulog_prefix.empty()) {
+    mq = std::make_unique<MessageQueue>();
+    logger.LogCat(Logger::LEVEL_INFO, "Opening the message queue: ", ulog_prefix);
+    const Status status = mq->Open(ulog_prefix, ulog_max_file_size);
+    if (status != Status::SUCCESS) {
+      logger.LogCat(Logger::LEVEL_ERROR, "Open failed: ", ulog_prefix);
+      has_error = true;
+    }
+    g_mq = mq.get();
+  }
   std::vector<std::unique_ptr<ParamDBM>> dbms;
   dbms.reserve(dbm_exprs.size());
+  std::vector<std::unique_ptr<DBMUpdateLoggerMQ>> ulogs;
+  ulogs.reserve(dbm_exprs.size());
   for (const auto& dbm_expr : dbm_exprs) {
     logger.LogCat(Logger::LEVEL_INFO, "Opening a database: ", dbm_expr);
     const std::vector<std::string> fields = StrSplit(dbm_expr, "#");
@@ -212,17 +241,22 @@ static int32_t Process(int32_t argc, const char** args) {
       logger.LogCat(Logger::LEVEL_ERROR, "Open failed: ", path, ": ", status);
       has_error = true;
     }
+    if (mq != nullptr) {
+      auto ulog = std::make_unique<DBMUpdateLoggerMQ>(mq.get(), server_id, dbms.size());
+      dbm->SetUpdateLogger(ulog.get());
+      ulogs.emplace_back(std::move(ulog));
+    }
     dbms.emplace_back(std::move(dbm));
   }
   logger.LogCat(Logger::LEVEL_INFO,
                 "Building the ", (with_async > 0 ? "async" : "sync"),
-                " server: address=", address);
+                " server: address=", address, ", id=", server_id);
   grpc::ServerBuilder builder;
   builder.AddListeningPort(address, grpc::InsecureServerCredentials());
   std::unique_ptr<grpc::Service> service;
   std::vector<std::unique_ptr<grpc::ServerCompletionQueue>> async_queues;
   if (with_async) {
-    service = std::make_unique<DBMAsyncServiceImpl>(dbms, &logger);
+    service = std::make_unique<DBMAsyncServiceImpl>(dbms, &logger, mq.get());
     builder.RegisterService(service.get());
     async_queues.resize(num_threads);
     for (auto& async_queue : async_queues) {
@@ -231,7 +265,7 @@ static int32_t Process(int32_t argc, const char** args) {
   } else {
     builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, num_threads);
     builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::CQ_TIMEOUT_MSEC, 60000);
-    service = std::make_unique<DBMServiceImpl>(dbms, &logger);
+    service = std::make_unique<DBMServiceImpl>(dbms, &logger, mq.get());
     builder.RegisterService(service.get());
   }
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
@@ -268,6 +302,14 @@ static int32_t Process(int32_t argc, const char** args) {
   for (auto& dbm : dbms) {
     logger.Log(Logger::LEVEL_INFO, "Closing a database");
     const Status status = dbm->Close();
+    if (status != Status::SUCCESS) {
+      logger.LogCat(Logger::LEVEL_ERROR, "Close failed: ", status);
+      has_error = true;
+    }
+  }
+  if (mq != nullptr) {
+    logger.Log(Logger::LEVEL_INFO, "Closing the message queue");
+    const Status status = mq->Close();
     if (status != Status::SUCCESS) {
       logger.LogCat(Logger::LEVEL_ERROR, "Close failed: ", status);
       has_error = true;

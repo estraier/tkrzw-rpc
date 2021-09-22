@@ -446,6 +446,45 @@ message IterateResponse {
   bytes value = 3;
 }
 
+// Request of the Replicate method.
+message ReplicateRequest {
+  // The minimum timestamp of update logs to retrieve.
+  int64 min_timestamp = 1;
+  // The server ID of the client.
+  int32 server_id = 2;
+  // The time in seconds to wait for the next log.
+  double wait_time = 3;
+}
+
+// Response of the Replicate method.
+message ReplicateResponse {
+  // Enumeration for operations.
+  enum OpType {
+    // No operation.
+    OP_NOOP = 0;
+    // To modify or add a record.
+    OP_SET = 1;
+    // To remove a record.
+    OP_REMOVE = 2;
+    // To remove all records.
+    OP_CLEAR = 3;
+  }
+  // The result status.
+  StatusProto status = 1;
+  // The timestamp of the update.
+  int64 timestamp = 2;
+  // The server ID of the client.  
+  int32 server_id = 3;
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 4;
+  // The operation type.
+  OpType op_type = 5;
+  // The record key.
+  bytes key = 6;
+  // The record value.
+  bytes value = 7;
+}
+
 // Definition of the database service.
 service DBMService {
   rpc Echo(EchoRequest) returns (EchoResponse);
@@ -470,4 +509,5 @@ service DBMService {
   rpc SearchModal(SearchModalRequest) returns (SearchModalResponse);
   rpc Stream(stream StreamRequest) returns (stream StreamResponse);
   rpc Iterate(stream IterateRequest) returns (stream IterateResponse);
+  rpc Replicate(ReplicateRequest) returns (stream ReplicateResponse);
 }
