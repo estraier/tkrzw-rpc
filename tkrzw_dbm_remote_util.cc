@@ -89,11 +89,11 @@ static void PrintUsageAndDie() {
   P("  --keys : Prints keys only.\n");
   P("\n");
   P("Options for the replication subcommand:\n");
-  P("  --min_timestamp num : The minimum timestamp of update logs to retrieve.\n");
-  P("  --timestamp_file str : The file to store the last retrieved timestamp to reuse it.\n");
-  P("  --timestamp_skew num : The timestamp skew applied to the reused timestamp.\n");
-  P("  --server_id num : The server ID of the client.\n");
-  P("  --wait num : The time in seconds to wait for the next log.\n");
+  P("  --ts_file str : The replication timestamp file.\n");
+  P("  --ts_db_skew num : Uses the database timestamp skewed by a value.\n");
+  P("  --ts_set num : Uses the set value as the timestamp.\n");
+  P("  --server_id num : The server ID of the client. (default: 0)\n");
+  P("  --wait num : The time in seconds to wait for the next log. (default: 1)\n");
   P("  --items num : The number of items to print. (default: 10)\n");
   P("  --escape : C-style escape is applied to the TSV data.\n");
   P("\n");
@@ -669,7 +669,7 @@ static int32_t ProcessSearch(int32_t argc, const char** args) {
 static int32_t ProcessReplicate(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"--address", 1}, {"--timeout", 1}, {"--index", 1},
-    {"--min_timestamp", 1}, {"--timestamp_file", 1}, {"--timestamp_skew", 1},
+    {"--ts_file", 1}, {"--ts_db_skew", 1},{"--ts_set", 1},
     {"--server_id", 1}, {"--wait", 1},
     {"--items", 1}, {"--escape", 0},
   };
@@ -684,9 +684,9 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, -1);
-  int64_t min_timestamp = GetIntegerArgument(cmd_args, "--min_timestamp", 0, -1);
-  const std::string timestamp_file = GetStringArgument(cmd_args, "--timestamp_file", 0, "");
-  const int64_t timestamp_skew = GetIntegerArgument(cmd_args, "--timestamp_skew", 0, 0);
+  const std::string ts_file = GetStringArgument(cmd_args, "--ts_file", 0, "");
+  const int64_t ts_db_skew = GetIntegerArgument(cmd_args, "--ts_db_skew", 0, INT64MIN);
+  const int64_t ts_set_value = GetIntegerArgument(cmd_args, "--ts_set", 0, INT64MIN);
   const int32_t server_id = GetIntegerArgument(cmd_args, "--server_id", 0, 0);
   const double wait_time = GetDoubleArgument(cmd_args, "--wait_time", 0, 1.0);
   const int64_t num_items = GetIntegerArgument(cmd_args, "--items", 0, INT64MAX);
@@ -695,6 +695,7 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   std::vector<std::unique_ptr<DBM>> local_dbms;
   local_dbms.reserve(dbm_exprs.size());
   for (const auto& dbm_expr : dbm_exprs) {
+    PrintL("Opening DBM: ", dbm_expr);
     const std::vector<std::string> fields = StrSplit(dbm_expr, "#");
     const std::string path = fields.front();
     std::map<std::string, std::string> params;
@@ -715,11 +716,29 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
     }
     local_dbms.emplace_back(std::move(dbm));
   }
-  if (!timestamp_file.empty()) {
-    const std::string tsexpr = ReadFileSimple(timestamp_file, "", 32);
+  int64_t min_timestamp = -1;
+  if (!ts_file.empty()) {
+    const std::string tsexpr = ReadFileSimple(ts_file, "", 32);
     if (!tsexpr.empty()) {
-      min_timestamp = std::max<int64_t>(0, StrToInt(tsexpr) + timestamp_skew);
+      min_timestamp = StrToInt(tsexpr);
     }
+  }
+  if (min_timestamp < 0 && ts_db_skew != INT64MIN) {
+    min_timestamp = GetWallTime();
+    for (const auto& local_dbm : local_dbms) {
+      const int64_t skewed_timestamp = local_dbm->GetTimestampSimple() * 1000 + ts_db_skew;
+      min_timestamp = std::min<int64_t>(min_timestamp, skewed_timestamp);
+    }
+  }
+  if (ts_set_value != INT64MIN) {
+    min_timestamp = ts_set_value;
+  }
+  min_timestamp = std::max<int64_t>(0, min_timestamp);
+  if (!local_dbms.empty()) {
+    PrintL("Using the minimum timestamp: ", min_timestamp);
+  }
+  if (!local_dbms.empty()) {
+    PrintL("Connecting to the server: ", address);
   }
   RemoteDBM dbm;
   Status status = dbm.Connect(address, timeout);
@@ -737,6 +756,9 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   if (status != Status::SUCCESS) {
     EPrintL("Start failed: ", status);
     return 1;
+  }
+  if (!local_dbms.empty()) {
+    PrintL("Doing replication: ", address);
   }
   RemoteDBM::ReplicateLog op;
   int64_t count = 0;
@@ -798,8 +820,8 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
             break;
         }
       }
-      if (!timestamp_file.empty() && count % 1000 == 0) {
-        status = WriteFileAtomic(timestamp_file, ToString(max_timestamp) + "\n");
+      if (!ts_file.empty() && count % 1000 == 0) {
+        status = WriteFileAtomic(ts_file, ToString(max_timestamp) + "\n");
         if (status != Status::SUCCESS) {
           EPrintL("WriteFile failed: ", status);
           ok = false;
@@ -816,8 +838,11 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
     }
   }
   repl.reset(nullptr);
-  if (!timestamp_file.empty() && max_timestamp >= 0) {
-    status = WriteFileAtomic(timestamp_file, ToString(max_timestamp) + "\n");
+  if (!local_dbms.empty()) {
+    PrintL("Done: timestamp=", max_timestamp);
+  }
+  if (!ts_file.empty() && max_timestamp >= 0) {
+    status = WriteFileAtomic(ts_file, ToString(max_timestamp) + "\n");
     if (status != Status::SUCCESS) {
       EPrintL("WriteFile failed: ", status);
       ok = false;

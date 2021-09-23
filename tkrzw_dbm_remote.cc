@@ -138,6 +138,7 @@ class RemoteDBMStreamImpl final {
   grpc::ClientContext context_;
   std::unique_ptr<grpc::ClientReaderWriterInterface<
                     tkrzw::StreamRequest, tkrzw::StreamResponse>> stream_;
+  std::atomic_bool healthy_;
 };
 
 class RemoteDBMIteratorImpl final {
@@ -162,6 +163,7 @@ class RemoteDBMIteratorImpl final {
   grpc::ClientContext context_;
   std::unique_ptr<grpc::ClientReaderWriterInterface<
                     tkrzw::IterateRequest, tkrzw::IterateResponse>> stream_;
+  std::atomic_bool healthy_;
 };
 
 class RemoteDBMReplicatorImpl final {
@@ -177,6 +179,7 @@ class RemoteDBMReplicatorImpl final {
   RemoteDBMImpl* dbm_;
   grpc::ClientContext context_;
   std::unique_ptr<grpc::ClientReaderInterface<tkrzw::ReplicateResponse>> stream_;
+  std::atomic_bool healthy_;
 };
 
 RemoteDBMImpl::RemoteDBMImpl()
@@ -703,7 +706,7 @@ Status RemoteDBMImpl::SearchModal(std::string_view mode, std::string_view patter
 }
 
 RemoteDBMStreamImpl::RemoteDBMStreamImpl(RemoteDBMImpl* dbm)
-    : dbm_(dbm), context_(), stream_(nullptr) {
+    : dbm_(dbm), context_(), stream_(nullptr), healthy_(true) {
   {
     std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
     dbm_->streams_.emplace_back(this);
@@ -716,7 +719,7 @@ RemoteDBMStreamImpl::RemoteDBMStreamImpl(RemoteDBMImpl* dbm)
 
 RemoteDBMStreamImpl::~RemoteDBMStreamImpl() {
   if (dbm_ != nullptr) {
-    {
+    if (healthy_.load()) {
       std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
       stream_->WritesDone();
       stream_->Finish();
@@ -727,6 +730,7 @@ RemoteDBMStreamImpl::~RemoteDBMStreamImpl() {
 }
 
 void RemoteDBMStreamImpl::Cancel() {
+  healthy_.store(false);
   context_.TryCancel();
 }
 
@@ -735,17 +739,24 @@ Status RemoteDBMStreamImpl::Echo(std::string_view message, std::string* echo) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   StreamRequest stream_request;
   auto* request = stream_request.mutable_echo_request();
   request->set_message(std::string(message));
   if (!stream_->Write(stream_request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   const EchoResponse& response = stream_response.echo_response();
   *echo = response.echo();
@@ -757,6 +768,9 @@ Status RemoteDBMStreamImpl::Get(std::string_view key, std::string* value) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   StreamRequest stream_request;
@@ -767,11 +781,15 @@ Status RemoteDBMStreamImpl::Get(std::string_view key, std::string* value) {
     request->set_omit_value(true);
   }
   if (!stream_->Write(stream_request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   const GetResponse& response = stream_response.get_response();
   if (response.status().code() == 0) {
@@ -788,6 +806,9 @@ Status RemoteDBMStreamImpl::Set(std::string_view key, std::string_view value,
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   StreamRequest stream_request;
@@ -800,14 +821,18 @@ Status RemoteDBMStreamImpl::Set(std::string_view key, std::string_view value,
     stream_request.set_omit_response(true);
   }
   if (!stream_->Write(stream_request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   if (ignore_result) {
     return Status(Status::SUCCESS);
   }
   StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   const SetResponse& response = stream_response.set_response();
   return MakeStatusFromProto(response.status());
@@ -817,6 +842,9 @@ Status RemoteDBMStreamImpl::Remove(std::string_view key, bool ignore_result) {
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
@@ -828,14 +856,18 @@ Status RemoteDBMStreamImpl::Remove(std::string_view key, bool ignore_result) {
     stream_request.set_omit_response(true);
   }
   if (!stream_->Write(stream_request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   if (ignore_result) {
     return Status(Status::SUCCESS);
   }
   StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   const RemoveResponse& response = stream_response.remove_response();
   return MakeStatusFromProto(response.status());
@@ -846,6 +878,9 @@ Status RemoteDBMStreamImpl::Append(
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
@@ -859,14 +894,18 @@ Status RemoteDBMStreamImpl::Append(
     stream_request.set_omit_response(true);
   }
   if (!stream_->Write(stream_request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   if (ignore_result) {
     return Status(Status::SUCCESS);
   }
   StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   const AppendResponse& response = stream_response.append_response();
   return MakeStatusFromProto(response.status());
@@ -877,6 +916,9 @@ Status RemoteDBMStreamImpl::CompareExchange(
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
@@ -893,11 +935,15 @@ Status RemoteDBMStreamImpl::CompareExchange(
     request->set_desired_value(desired.data(), desired.size());
   }
   if (!stream_->Write(stream_request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   const CompareExchangeResponse& response = stream_response.compare_exchange_response();
   return MakeStatusFromProto(response.status());
@@ -910,6 +956,9 @@ Status RemoteDBMStreamImpl::Increment(
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   StreamRequest stream_request;
@@ -919,14 +968,18 @@ Status RemoteDBMStreamImpl::Increment(
   request->set_increment(increment);
   request->set_initial(initial);
   if (!stream_->Write(stream_request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   if (ignore_result) {
     return Status(Status::SUCCESS);
   }
   StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   const IncrementResponse& response = stream_response.increment_response();
   if (current != nullptr) {
@@ -936,7 +989,7 @@ Status RemoteDBMStreamImpl::Increment(
 }
 
 RemoteDBMIteratorImpl::RemoteDBMIteratorImpl(RemoteDBMImpl* dbm)
-    : dbm_(dbm), context_(), stream_(nullptr) {
+    : dbm_(dbm), context_(), stream_(nullptr), healthy_(true) {
   {
     std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
     dbm_->iterators_.emplace_back(this);
@@ -949,7 +1002,7 @@ RemoteDBMIteratorImpl::RemoteDBMIteratorImpl(RemoteDBMImpl* dbm)
 
 RemoteDBMIteratorImpl::~RemoteDBMIteratorImpl() {
   if (dbm_ != nullptr) {
-    {
+    if (healthy_.load()) {
       std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
       stream_->WritesDone();
       stream_->Finish();
@@ -960,6 +1013,7 @@ RemoteDBMIteratorImpl::~RemoteDBMIteratorImpl() {
 }
 
 void RemoteDBMIteratorImpl::Cancel() {
+  healthy_.store(false);
   context_.TryCancel();
 }
 
@@ -968,17 +1022,24 @@ Status RemoteDBMIteratorImpl::First() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_FIRST);
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -988,17 +1049,24 @@ Status RemoteDBMIteratorImpl::Last() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_LAST);
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -1008,6 +1076,9 @@ Status RemoteDBMIteratorImpl::Jump(std::string_view key) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
@@ -1015,11 +1086,15 @@ Status RemoteDBMIteratorImpl::Jump(std::string_view key) {
   request.set_operation(IterateRequest::OP_JUMP);
   request.set_key(std::string(key));
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -1027,6 +1102,9 @@ Status RemoteDBMIteratorImpl::Jump(std::string_view key) {
 Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
@@ -1036,11 +1114,15 @@ Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
   request.set_key(std::string(key));
   request.set_jump_inclusive(inclusive);
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -1048,6 +1130,9 @@ Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
 Status RemoteDBMIteratorImpl::JumpUpper(std::string_view key, bool inclusive) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
@@ -1057,11 +1142,15 @@ Status RemoteDBMIteratorImpl::JumpUpper(std::string_view key, bool inclusive) {
   request.set_key(std::string(key));
   request.set_jump_inclusive(inclusive);
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -1071,17 +1160,24 @@ Status RemoteDBMIteratorImpl::Next() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_NEXT);
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -1091,17 +1187,24 @@ Status RemoteDBMIteratorImpl::Previous() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_PREVIOUS);
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -1110,6 +1213,9 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
@@ -1123,11 +1229,15 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
     request.set_omit_value(true);
   }
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   if (response.status().code() == 0) {
     if (key != nullptr) {
@@ -1145,6 +1255,9 @@ Status RemoteDBMIteratorImpl::Set(std::string_view value) {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
@@ -1152,11 +1265,15 @@ Status RemoteDBMIteratorImpl::Set(std::string_view value) {
   request.set_operation(IterateRequest::OP_SET);
   request.set_value(std::string(value));
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -1166,24 +1283,31 @@ Status RemoteDBMIteratorImpl::Remove() {
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
   IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
   request.set_operation(IterateRequest::OP_REMOVE);
   if (!stream_->Write(request)) {
-    return Status(Status::NETWORK_ERROR, "Write failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
   IterateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   return MakeStatusFromProto(response.status());
 }
 
 RemoteDBMReplicatorImpl::RemoteDBMReplicatorImpl(RemoteDBMImpl* dbm)
-    : dbm_(dbm), context_(), stream_(nullptr) {
-  {
+    : dbm_(dbm), context_(), stream_(nullptr), healthy_(true)  {
+  if (healthy_.load()) {
     std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
     dbm_->replicators_.emplace_back(this);
   }
@@ -1200,6 +1324,7 @@ RemoteDBMReplicatorImpl::~RemoteDBMReplicatorImpl() {
 }
 
 void RemoteDBMReplicatorImpl::Cancel() {
+  healthy_.store(false);
   context_.TryCancel();
 }
 
@@ -1211,6 +1336,9 @@ Status RemoteDBMReplicatorImpl::Start(
   }
   if (stream_ != nullptr) {
     return Status(Status::PRECONDITION_ERROR, "started replicator");
+  }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
@@ -1230,9 +1358,14 @@ Status RemoteDBMReplicatorImpl::Read(int64_t* timestamp, RemoteDBM::ReplicateLog
   if (stream_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not started replicator");
   }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
   ReplicateResponse response;
   if (!stream_->Read(&response)) {
-    return Status(Status::NETWORK_ERROR, "Read failed");
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   *timestamp = response.timestamp();
   delete[] op->buffer_;
@@ -1252,7 +1385,7 @@ Status RemoteDBMReplicatorImpl::Read(int64_t* timestamp, RemoteDBM::ReplicateLog
   }
   op->server_id = response.server_id();
   op->dbm_index = response.dbm_index();
-  op->buffer_ = new char[response.key().size() + response.key().size() + 1];
+  op->buffer_ = new char[response.key().size() + response.value().size() + 1];
   char* wp = op->buffer_;
   std::memcpy(wp, response.key().data(), response.key().size());
   op->key = std::string_view(wp, response.key().size());

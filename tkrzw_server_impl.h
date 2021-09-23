@@ -39,11 +39,63 @@
 
 namespace tkrzw {
 
+struct ReplicationParameters {
+  std::string master;
+  int64_t min_timestamp;
+  double wait_time;
+  std::string ts_file;
+  ReplicationParameters(
+      const std::string& master = "", int64_t min_timestamp = 0,
+      double wait_time = 0, const std::string& ts_file = "")
+      : master(master), min_timestamp(min_timestamp),
+        wait_time(wait_time), ts_file(ts_file) {}
+};
+
 class DBMServiceBase {
  public:
   DBMServiceBase(
-      const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger, MessageQueue* mq)
-      : dbms_(dbms), logger_(logger), mq_(mq) {}
+      const std::vector<std::unique_ptr<ParamDBM>>& dbms,
+      Logger* logger, int32_t server_id, MessageQueue* mq,
+      const ReplicationParameters& repl_params = {})
+      : dbms_(dbms), logger_(logger), server_id_(server_id), mq_(mq), repl_params_(repl_params),
+        alive_(true), thread_repl_manager_(), refresh_repl_manager_(false), mutex_() {
+    StartManager();
+  }
+
+  ~DBMServiceBase() {
+    StopManager();
+  }
+
+  void ManageReplication() {
+    logger_->Log(Logger::LEVEL_DEBUG, "Starting the replication manager");
+    ReplicationParameters params;
+    while (alive_.load()) {
+      SleepThread(1.0);
+      {
+        std::lock_guard<SpinMutex> lock(mutex_);
+        if (repl_params_.master.empty()) {
+          continue;
+        }
+        params = repl_params_;
+      }
+      logger_->LogCat(Logger::LEVEL_INFO, "Replicating ", params.master,
+                      " with the min_timestamp ", params.min_timestamp);
+
+
+
+
+    }
+    logger_->Log(Logger::LEVEL_DEBUG, "The replicatin manager finished");
+  }
+
+  void StartManager() {
+    thread_repl_manager_ = std::thread([&]{ ManageReplication(); });
+  }
+
+  void StopManager() {
+    alive_.store(false);
+    thread_repl_manager_.join();
+  }
 
   void LogRequest(grpc::ServerContext* context, const char* name,
                   const google::protobuf::Message* proto) {
@@ -731,6 +783,9 @@ class DBMServiceBase {
       if (mq_ == nullptr) {
         return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "disabled update logging");
       }
+      if (request.server_id() == server_id_) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "self server ID");
+      }
       *reader = mq_->MakeReader(request.min_timestamp());
     }
     int64_t timestamp = 0;
@@ -777,14 +832,22 @@ class DBMServiceBase {
  protected:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;
+  int32_t server_id_;
   MessageQueue* mq_;
+  ReplicationParameters repl_params_;
+  std::atomic_bool alive_;
+  std::thread thread_repl_manager_;
+  std::atomic_bool refresh_repl_manager_;
+  SpinMutex mutex_;
 };
 
 class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
  public:
   DBMServiceImpl(
-      const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger, MessageQueue* mq)
-      : DBMServiceBase(dbms, logger, mq) {}
+      const std::vector<std::unique_ptr<ParamDBM>>& dbms,
+      Logger* logger, int32_t server_id, MessageQueue* mq,
+      const ReplicationParameters& repl_params = {})
+      : DBMServiceBase(dbms, logger, server_id, mq, repl_params) {}
 
   grpc::Status Echo(
       grpc::ServerContext* context, const EchoRequest* request,
@@ -928,8 +991,10 @@ class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
 class DBMAsyncServiceImpl : public DBMServiceBase, public DBMService::AsyncService {
  public:
   DBMAsyncServiceImpl(
-      const std::vector<std::unique_ptr<ParamDBM>>& dbms, Logger* logger, MessageQueue* mq)
-      : DBMServiceBase(dbms, logger, mq) {}
+      const std::vector<std::unique_ptr<ParamDBM>>& dbms,
+      Logger* logger, int32_t server_id, MessageQueue* mq,
+      const ReplicationParameters& repl_params = {})
+      : DBMServiceBase(dbms, logger, server_id, mq, repl_params) {}
 
   void OperateQueue(grpc::ServerCompletionQueue* queue, const bool* is_shutdown);
   void ShutdownQueue(grpc::ServerCompletionQueue* queue);

@@ -53,6 +53,9 @@ static void PrintUsageAndDie() {
   P("  --ulog_prefix str : The prefix of the update log files.\n");
   P("  --ulog_max_file_size num : The maximum file size of each update log file."
     " (default: 1Gi)\n");
+  P("  --repl_ts_file str : The replication timestamp file.\n");
+  P("  --repl_ts_skew num : Uses the database timestamp skewed by a value.\n");
+  P("  --repl_wait num : The time in seconds to wait for the next log. (default: 1)\n");
   P("  --pid_file str : The file path of the store the process ID.\n");
   P("  --daemon : Runs the process as a daemon process.\n");
   P("  --read_only : Opens the databases in the read-only mode.\n");
@@ -129,6 +132,8 @@ static int32_t Process(int32_t argc, const char** args) {
     {"--version", 0}, {"--address", 1}, {"--async", 0}, {"--threads", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
     {"--server_id", 1}, {"--ulog_prefix", 1}, {"--ulog_max_file_size", 1},
+    {"--repl_master", 1}, {"--repl_ts_file", 1}, {"--repl_ts_db_skew", 1},
+    {"--repl_ts_set", 1}, {"--repl_wait", 1},
     {"--pid_file", 1}, {"--daemon", 0},
     {"--read_only", 0},
   };
@@ -153,6 +158,11 @@ static int32_t Process(int32_t argc, const char** args) {
   const std::string ulog_prefix = GetStringArgument(cmd_args, "--ulog_prefix", 0, "");
   const int64_t ulog_max_file_size =
       GetIntegerArgument(cmd_args, "--ulog_max_file_size", 0, 1LL << 30);
+  const std::string repl_master = GetStringArgument(cmd_args, "--repl_master", 0, "");
+  const std::string repl_ts_file = GetStringArgument(cmd_args, "--repl_ts_file", 0, "");
+  const int64_t repl_ts_db_skew = GetIntegerArgument(cmd_args, "--repl_ts_db_skew", 0, INT64MIN);
+  const int64_t repl_ts_set_value = GetIntegerArgument(cmd_args, "--repl_ts_set", 0, INT64MIN);
+  const double repl_wait_time = GetDoubleArgument(cmd_args, "--repl_wait_time", 0, 1.0);
   const std::string pid_file = GetStringArgument(cmd_args, "--pid_file", 0, "");
   const bool as_daemon = CheckMap(cmd_args, "--daemon");
   const bool read_only = CheckMap(cmd_args, "--read_only");
@@ -248,6 +258,26 @@ static int32_t Process(int32_t argc, const char** args) {
     }
     dbms.emplace_back(std::move(dbm));
   }
+  int64_t repl_min_timestamp = -1;
+  if (!repl_ts_file.empty()) {
+    const std::string tsexpr = ReadFileSimple(repl_ts_file, "", 32);
+    if (!tsexpr.empty()) {
+      repl_min_timestamp = StrToInt(tsexpr);
+    }
+  }
+  if (repl_min_timestamp < 0 && repl_ts_db_skew != INT64MIN) {
+    repl_min_timestamp = GetWallTime();
+    for (const auto& dbm : dbms) {
+      const int64_t skewed_timestamp = dbm->GetTimestampSimple() * 1000 + repl_ts_db_skew;
+      repl_min_timestamp = std::min<int64_t>(repl_min_timestamp, skewed_timestamp);
+    }
+  }
+  if (repl_ts_set_value != INT64MIN) {
+    repl_min_timestamp = repl_ts_set_value;
+  }
+  repl_min_timestamp = std::max<int64_t>(0, repl_min_timestamp);
+  ReplicationParameters repl_params(
+      repl_master, repl_min_timestamp, repl_wait_time, repl_ts_file);
   logger.LogCat(Logger::LEVEL_INFO,
                 "Building the ", (with_async > 0 ? "async" : "sync"),
                 " server: address=", address, ", id=", server_id);
@@ -256,7 +286,8 @@ static int32_t Process(int32_t argc, const char** args) {
   std::unique_ptr<grpc::Service> service;
   std::vector<std::unique_ptr<grpc::ServerCompletionQueue>> async_queues;
   if (with_async) {
-    service = std::make_unique<DBMAsyncServiceImpl>(dbms, &logger, mq.get());
+    service = std::make_unique<DBMAsyncServiceImpl>(
+        dbms, &logger, server_id, mq.get(), repl_params);
     builder.RegisterService(service.get());
     async_queues.resize(num_threads);
     for (auto& async_queue : async_queues) {
@@ -265,7 +296,8 @@ static int32_t Process(int32_t argc, const char** args) {
   } else {
     builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::MAX_POLLERS, num_threads);
     builder.SetSyncServerOption(grpc::ServerBuilder::SyncServerOption::CQ_TIMEOUT_MSEC, 60000);
-    service = std::make_unique<DBMServiceImpl>(dbms, &logger, mq.get());
+    service = std::make_unique<DBMServiceImpl>(
+        dbms, &logger, server_id, mq.get(), repl_params);
     builder.RegisterService(service.get());
   }
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
@@ -278,7 +310,7 @@ static int32_t Process(int32_t argc, const char** args) {
     std::signal(SIGINT, ShutdownServer);
     std::signal(SIGTERM, ShutdownServer);
     std::signal(SIGQUIT, ShutdownServer);
-    if (with_async > 0) {
+    if (with_async) {
       auto* async_service = (DBMAsyncServiceImpl*)service.get();
       auto task =
           [&](grpc::ServerCompletionQueue* queue) {
@@ -299,6 +331,7 @@ static int32_t Process(int32_t argc, const char** args) {
     }
     logger.Log(Logger::LEVEL_INFO, "The server finished");
   }
+  service.reset(nullptr);
   for (auto& dbm : dbms) {
     logger.Log(Logger::LEVEL_INFO, "Closing a database");
     const Status status = dbm->Close();
