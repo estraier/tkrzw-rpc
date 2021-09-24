@@ -377,7 +377,7 @@ class RemoteDBM final {
     /**
      * Reads the next update log.
      * @param timestamp The pointer to a variable to store the timestamp in milliseconds of the
-     * message.
+     * message.  This is set if the result is SUCCESS or INFEASIBLE_ERROR.
      * @param op The pointer to the update log object to store the result.  The life duration of
      * the key and the value fields is the same as the given message.
      * @return The result status.  If the wait time passes, INFEASIBLE_ERROR is returned.
@@ -800,6 +800,15 @@ class RemoteDBM final {
   Status SearchModal(
       std::string_view mode, std::string_view pattern,
       std::vector<std::string>* matched, size_t capacity = 0);
+
+  /**
+   * Changes the master server of the replication.
+   * @param master The address of the master server.  If it is empty, replication stops.
+   * @param timestamp_skew The timestamp skew in milliseconds.  Negative makes the timestamp back
+   * to the past.  As the wall time can differs among servers and update logs are idempotent,
+   * setting a negative value like -10000 is recommended.
+   */
+  Status ChangeMaster(std::string_view master, double timestamp_skew = 0);
 
   /**
    * Makes a stream for intensive operations.

@@ -105,6 +105,7 @@ class RemoteDBMImpl final {
   Status Synchronize(bool hard, const std::map<std::string, std::string>& params);
   Status SearchModal(std::string_view mode, std::string_view pattern,
                      std::vector<std::string>* matched, size_t capacity);
+  Status ChangeMaster(std::string_view master, double timestamp_skew);
 
  private:
   std::unique_ptr<DBMService::StubInterface> stub_;
@@ -701,6 +702,25 @@ Status RemoteDBMImpl::SearchModal(std::string_view mode, std::string_view patter
   if (response.status().code() == 0) {
     matched->reserve(response.matched_size());
     matched->insert(matched->end(), response.matched().begin(), response.matched().end());
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMImpl::ChangeMaster(std::string_view master, double timestamp_skew) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+  ChangeMasterRequest request;
+  request.set_master(std::string(master));
+  request.set_timestamp_skew(timestamp_skew);
+  ChangeMasterResponse response;
+  grpc::Status status = stub_->ChangeMaster(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
   }
   return MakeStatusFromProto(response.status());
 }
@@ -1506,6 +1526,10 @@ Status RemoteDBM::SearchModal(
     std::string_view mode, std::string_view pattern,
     std::vector<std::string>* matched, size_t capacity) {
   return impl_->SearchModal(mode, pattern, matched, capacity);
+}
+
+Status RemoteDBM::ChangeMaster(std::string_view master, double timestamp_skew) {
+  return impl_->ChangeMaster(master, timestamp_skew);
 }
 
 std::unique_ptr<RemoteDBM::Stream> RemoteDBM::MakeStream() {

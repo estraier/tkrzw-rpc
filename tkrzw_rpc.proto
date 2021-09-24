@@ -485,6 +485,20 @@ message ReplicateResponse {
   bytes value = 7;
 }
 
+// Request of the ChangeMaster method.
+message ChangeMasterRequest {
+  // The address of the master of replication.
+  string master = 1;
+  // The skew of the timestamp.
+  int64 timestamp_skew = 2;
+}
+
+// Response of the ChangeMaster method.
+message ChangeMasterResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
 // Definition of the database service.
 service DBMService {
   rpc Echo(EchoRequest) returns (EchoResponse);
@@ -510,4 +524,5 @@ service DBMService {
   rpc Stream(stream StreamRequest) returns (stream StreamResponse);
   rpc Iterate(stream IterateRequest) returns (stream IterateResponse);
   rpc Replicate(ReplicateRequest) returns (stream ReplicateResponse);
+  rpc ChangeMaster(ChangeMasterRequest) returns (ChangeMasterResponse);
 }

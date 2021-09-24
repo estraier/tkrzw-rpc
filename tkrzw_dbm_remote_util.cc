@@ -54,6 +54,8 @@ static void PrintUsageAndDie() {
   P("    : Synchronizes a database file.\n");
   P("  %s search [options] pattern\n", progname);
   P("    : Synchronizes a database file.\n");
+  P("  %s chnagemaster [options] [master]\n", progname);
+  P("    : Changes the master of replication.\n");
   P("  %s replicate [options] [db_configs...]\n", progname);
   P("    : Replicates updates to local databases.\n");
   P("\n");
@@ -665,6 +667,39 @@ static int32_t ProcessSearch(int32_t argc, const char** args) {
   return ok ? 0 : 1;
 }
 
+// Processes the changemaster subcommand.
+static int32_t ProcessChangeMaster(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"--address", 1}, {"--timeout", 1}, {"--ts_skew", 1},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string pattern = GetStringArgument(cmd_args, "", 0, "");
+  const std::string params_expr = GetStringArgument(cmd_args, "", 0, "");
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const int64_t ts_skew = GetIntegerArgument(cmd_args, "--ts_skew", 0, 0);
+  std::string master = GetStringArgument(cmd_args, "", 0, "");
+  RemoteDBM dbm;
+  Status status = dbm.Connect(address, timeout);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  bool ok = true;
+  status = dbm.ChangeMaster(master, ts_skew);
+  if (status != Status::SUCCESS) {
+    EPrintL("ChangeMaster failed: ", status);
+    ok = false;
+  }
+  dbm.Disconnect();
+  return ok ? 0 : 1;
+}
+
 // Processes the replicate subcommand.
 static int32_t ProcessReplicate(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
@@ -778,10 +813,10 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
         switch (op.op_type) {
           case DBMUpdateLoggerMQ::OP_SET:
             PrintL(timestamp, "\t", op.server_id, "\t", op.dbm_index,
-                   "\tSET\t", op.key, "\t", op.value);
+                   "\tSET\t", esc_key, "\t", esc_value);
             break;
           case DBMUpdateLoggerMQ::OP_REMOVE:
-            PrintL(timestamp, "\t", op.server_id, "\t", op.dbm_index, "\tREMOVE\t", op.key);
+            PrintL(timestamp, "\t", op.server_id, "\t", op.dbm_index, "\tREMOVE\t", esc_key);
             break;
           case DBMUpdateLoggerMQ::OP_CLEAR:
             PrintL(timestamp, "\t", op.server_id, "\t", op.dbm_index, "\tCLEAR");
@@ -829,12 +864,12 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
         }
       }
       count++;
+    } else if (status == Status::INFEASIBLE_ERROR) {
+      max_timestamp = std::max(timestamp, max_timestamp);
     } else {
-      if (status != Status::INFEASIBLE_ERROR) {
-        EPrintL("Read failed: ", status);
-        ok = false;
-        break;
-      }
+      EPrintL("Read failed: ", status);
+      ok = false;
+      break;
     }
   }
   repl.reset(nullptr);
@@ -884,6 +919,8 @@ int main(int argc, char** argv) {
       rv = tkrzw::ProcessSync(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "search") == 0) {
       rv = tkrzw::ProcessSearch(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "changemaster") == 0) {
+      rv = tkrzw::ProcessChangeMaster(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "replicate") == 0) {
       rv = tkrzw::ProcessReplicate(argc - 1, args + 1);
     } else {

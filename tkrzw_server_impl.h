@@ -33,11 +33,14 @@
 #include <grpcpp/server_context.h>
 
 #include "tkrzw_cmd_util.h"
+#include "tkrzw_dbm_remote.h"
 #include "tkrzw_rpc_common.h"
 #include "tkrzw_rpc.grpc.pb.h"
 #include "tkrzw_rpc.pb.h"
 
 namespace tkrzw {
+
+static constexpr int64_t TIMESTAMP_FILE_SYNC_FREQ = 1000;
 
 struct ReplicationParameters {
   std::string master;
@@ -57,35 +60,14 @@ class DBMServiceBase {
       const std::vector<std::unique_ptr<ParamDBM>>& dbms,
       Logger* logger, int32_t server_id, MessageQueue* mq,
       const ReplicationParameters& repl_params = {})
-      : dbms_(dbms), logger_(logger), server_id_(server_id), mq_(mq), repl_params_(repl_params),
-        alive_(true), thread_repl_manager_(), refresh_repl_manager_(false), mutex_() {
+      : dbms_(dbms), logger_(logger), server_id_(server_id), mq_(mq),
+        repl_params_(repl_params), repl_ts_skew_(0),
+        alive_(true), thread_repl_manager_(), refresh_repl_manager_(true), mutex_() {
     StartManager();
   }
 
   ~DBMServiceBase() {
     StopManager();
-  }
-
-  void ManageReplication() {
-    logger_->Log(Logger::LEVEL_DEBUG, "Starting the replication manager");
-    ReplicationParameters params;
-    while (alive_.load()) {
-      SleepThread(1.0);
-      {
-        std::lock_guard<SpinMutex> lock(mutex_);
-        if (repl_params_.master.empty()) {
-          continue;
-        }
-        params = repl_params_;
-      }
-      logger_->LogCat(Logger::LEVEL_INFO, "Replicating ", params.master,
-                      " with the min_timestamp ", params.min_timestamp);
-
-
-
-
-    }
-    logger_->Log(Logger::LEVEL_DEBUG, "The replicatin manager finished");
   }
 
   void StartManager() {
@@ -95,6 +77,141 @@ class DBMServiceBase {
   void StopManager() {
     alive_.store(false);
     thread_repl_manager_.join();
+  }
+
+  void ManageReplication() {
+    logger_->Log(Logger::LEVEL_DEBUG, "Starting the replication manager");
+    int64_t max_timestamp = 0;
+    ReplicationParameters params;
+    bool success = true;
+    while (alive_.load()) {
+      SleepThread(1.0);
+      {
+        std::lock_guard<SpinMutex> lock(mutex_);
+        if (repl_params_.master.empty()) {
+          continue;
+        }
+        params = repl_params_;
+        params.min_timestamp = std::max(max_timestamp, params.min_timestamp);
+        if (refresh_repl_manager_) {
+          refresh_repl_manager_.store(false);
+          params.min_timestamp = std::max<int64_t>(0, params.min_timestamp + repl_ts_skew_);
+          repl_ts_skew_ = 0;
+          logger_->LogCat(Logger::LEVEL_INFO, "Replicating ", params.master,
+                          " with the min_timestamp ", params.min_timestamp);
+          success = true;
+        }
+      }
+      success = DoReplicationSession(&params, success);
+      max_timestamp = std::max(max_timestamp, params.min_timestamp);
+    }
+    logger_->Log(Logger::LEVEL_DEBUG, "The replicatin manager finished");
+  }
+
+  void SaveTimestamp(const ReplicationParameters& params) {
+    if (params.ts_file.empty()) {
+      return;
+    }
+    const Status status = WriteFileAtomic(params.ts_file, ToString(params.min_timestamp) + "\n");
+    if (status != Status::SUCCESS) {
+      logger_->LogCat(Logger::LEVEL_ERROR, "unable to save the timestamp: ", status);
+    }
+  }
+
+  bool DoReplicationSession(ReplicationParameters* params, bool success) {
+    RemoteDBM master;
+    Status status = master.Connect(params->master);
+    if (status != Status::SUCCESS) {
+      if (success) {
+        logger_->Log(Logger::LEVEL_WARN, "unable to reach the master");
+      }
+      return false;
+    }
+    if (!success) {
+      logger_->LogCat(Logger::LEVEL_INFO, "Reconnected to ", params->master,
+                      " with the min_timestamp ", params->min_timestamp);
+    }
+    auto repl = master.MakeReplicator();
+    status = repl->Start(params->min_timestamp, server_id_, params->wait_time);
+    if (status != Status::SUCCESS) {
+      logger_->LogCat(Logger::LEVEL_WARN, "replication error: ", status);
+      return false;
+    }
+    RemoteDBM::ReplicateLog op;
+    int64_t count = 0;
+    while (alive_.load() && !refresh_repl_manager_.load()) {
+      int64_t timestamp = 0;
+      status = repl->Read(&timestamp, &op);
+      if (status == Status::SUCCESS) {
+        if (count == 0) {
+          logger_->LogCat(Logger::LEVEL_INFO, "replication timestamp: ", timestamp);
+        }
+        if (op.dbm_index < 0 || op.dbm_index >= static_cast<int32_t>(dbms_.size())) {
+          logger_->LogCat(Logger::LEVEL_ERROR, "out-of-range DBM index");
+          return true;
+        }
+        if (op.server_id == server_id_) {
+          logger_->LogCat(Logger::LEVEL_ERROR, "duplicated server ID");
+          return true;
+        }
+        DBM* dbm = dbms_[op.dbm_index].get();
+        params->min_timestamp = std::max(timestamp, params->min_timestamp);
+        switch (op.op_type) {
+          case DBMUpdateLoggerMQ::OP_SET: {
+            logger_->LogCat(Logger::LEVEL_DEBUG, "replication: ts=", timestamp,
+                            ", server_id=", op.server_id, ", dbm_index=", op.dbm_index,
+                            ", op=SET");
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(op.server_id);
+            status = dbm->Set(op.key, op.value);
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(-1);
+            if (status != Status::SUCCESS) {
+              logger_->LogCat(Logger::LEVEL_ERROR, "Set failed: ", status);
+              return true;
+            }
+            break;
+          }
+          case DBMUpdateLoggerMQ::OP_REMOVE: {
+            logger_->LogCat(Logger::LEVEL_DEBUG, "replication: ts=", timestamp,
+                            ", server_id=", op.server_id, ", dbm_index=", op.dbm_index,
+                            ", op=REMOVE");
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(op.server_id);
+            status = dbm->Remove(op.key);
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(-1);
+            if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+              logger_->LogCat(Logger::LEVEL_ERROR, "Remove failed: ", status);
+              return true;
+            }
+            break;
+          }
+          case DBMUpdateLoggerMQ::OP_CLEAR: {
+            logger_->LogCat(Logger::LEVEL_DEBUG, "replication: ts=", timestamp,
+                            ", server_id=", op.server_id, ", dbm_index=", op.dbm_index,
+                            ", op=CLEAR");
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(op.server_id);
+            status = dbm->Clear();
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(-1);
+            if (status != Status::SUCCESS) {
+              logger_->LogCat(Logger::LEVEL_ERROR, "Clear failed: ", status);
+              return true;
+            }
+            break;
+          }
+          default:
+            break;
+        }
+        if (count % TIMESTAMP_FILE_SYNC_FREQ == 0) {
+          SaveTimestamp(*params);
+        }
+        count++;
+      } else if (status == Status::INFEASIBLE_ERROR) {
+        params->min_timestamp = std::max(timestamp, params->min_timestamp);
+      } else {
+        logger_->LogCat(Logger::LEVEL_WARN, "replication error: ", status);
+        break;
+      }
+    }
+    SaveTimestamp(*params);
+    return true;
   }
 
   void LogRequest(grpc::ServerContext* context, const char* name,
@@ -790,11 +907,12 @@ class DBMServiceBase {
     }
     int64_t timestamp = 0;
     std::string message;
+    double wait_time = request.wait_time();
     while (true) {
       if (context->IsCancelled()) {
         return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
       }
-      Status status = (*reader)->Read(&timestamp, &message, request.wait_time());
+      Status status = (*reader)->Read(&timestamp, &message, wait_time);
       if (status == Status::SUCCESS) {
         response->set_timestamp(timestamp);
         DBMUpdateLoggerMQ::UpdateLog op;
@@ -821,11 +939,29 @@ class DBMServiceBase {
           response->set_key(op.key.data(), op.key.size());
           response->set_value(op.value.data(), op.value.size());
         }
+      } else if (status == Status::INFEASIBLE_ERROR) {
+        if (wait_time > 0) {
+          mq_->UpdateTimestamp(-1);
+          wait_time = 0;
+          continue;
+        }
+        response->set_timestamp(timestamp);
       }
       response->mutable_status()->set_code(status.GetCode());
       response->mutable_status()->set_message(status.GetMessage());
       break;
     }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status ChangeMasterImpl(
+      grpc::ServerContext* context, const ChangeMasterRequest* request,
+      ChangeMasterResponse* response) {
+    LogRequest(context, "ChangeMaster", request);
+    std::lock_guard<SpinMutex> lock(mutex_);
+    repl_params_.master = request->master();
+    repl_ts_skew_ = request->timestamp_skew();
+    refresh_repl_manager_.store(true);
     return grpc::Status::OK;
   }
 
@@ -835,6 +971,7 @@ class DBMServiceBase {
   int32_t server_id_;
   MessageQueue* mq_;
   ReplicationParameters repl_params_;
+  int64_t repl_ts_skew_;
   std::atomic_bool alive_;
   std::thread thread_repl_manager_;
   std::atomic_bool refresh_repl_manager_;
@@ -985,6 +1122,12 @@ class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
       grpc::ServerContext* context, const tkrzw::ReplicateRequest* request,
       grpc::ServerWriter<tkrzw::ReplicateResponse>* writer) override {
     return ReplicateImpl(context, request, writer);
+  }
+
+  grpc::Status ChangeMaster(
+      grpc::ServerContext* context, const ChangeMasterRequest* request,
+      ChangeMasterResponse* response) override {
+    return ChangeMasterImpl(context, request, response);
   }
 };
 
@@ -1374,6 +1517,9 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncDBMProcessorStream(this, queue);
   new AsyncDBMProcessorIterate(this, queue);
   new AsyncDBMProcessorReplicate(this, queue);
+  new AsyncDBMProcessor<ChangeMasterRequest, ChangeMasterResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestChangeMaster,
+      &DBMServiceBase::ChangeMasterImpl);
   while (true) {
     void* tag = nullptr;
     bool ok = false;
