@@ -173,6 +173,7 @@ class RemoteDBMReplicatorImpl final {
   explicit RemoteDBMReplicatorImpl(RemoteDBMImpl* dbm);
   ~RemoteDBMReplicatorImpl();
   void Cancel();
+  int32_t GetMasterServerID();
   Status Start(int64_t min_timestamp, int32_t server_id, double wait_time);
   Status Read(int64_t* timestamp, RemoteDBM::ReplicateLog* op);
 
@@ -181,6 +182,7 @@ class RemoteDBMReplicatorImpl final {
   grpc::ClientContext context_;
   std::unique_ptr<grpc::ClientReaderInterface<tkrzw::ReplicateResponse>> stream_;
   std::atomic_bool healthy_;
+  int32_t server_id_;
 };
 
 RemoteDBMImpl::RemoteDBMImpl()
@@ -1326,7 +1328,7 @@ Status RemoteDBMIteratorImpl::Remove() {
 }
 
 RemoteDBMReplicatorImpl::RemoteDBMReplicatorImpl(RemoteDBMImpl* dbm)
-    : dbm_(dbm), context_(), stream_(nullptr), healthy_(true)  {
+    : dbm_(dbm), context_(), stream_(nullptr), healthy_(true), server_id_(-1) {
   if (healthy_.load()) {
     std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
     dbm_->replicators_.emplace_back(this);
@@ -1348,6 +1350,10 @@ void RemoteDBMReplicatorImpl::Cancel() {
   context_.TryCancel();
 }
 
+int32_t RemoteDBMReplicatorImpl::GetMasterServerID() {
+  return server_id_;
+}
+
 Status RemoteDBMReplicatorImpl::Start(
     int64_t min_timestamp, int32_t server_id, double wait_time) {
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
@@ -1367,6 +1373,16 @@ Status RemoteDBMReplicatorImpl::Start(
   request.set_server_id(server_id);
   request.set_wait_time(wait_time);
   stream_ = dbm_->stub_->Replicate(&context_, request);
+  ReplicateResponse response;
+  if (!stream_->Read(&response)) {
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
+  }
+  if (response.op_type() != ReplicateResponse::OP_NOOP) {
+    return Status(Status::BROKEN_DATA_ERROR, "invalid operation type");
+  }
+  server_id_ = response.server_id();
   return Status(Status::SUCCESS);
 }
 
@@ -1661,6 +1677,10 @@ RemoteDBM::Replicator::~Replicator() {
 
 void RemoteDBM::Replicator::Cancel() {
   impl_->Cancel();
+}
+
+int32_t RemoteDBM::Replicator::GetMasterServerID() {
+  return impl_->GetMasterServerID();
 }
 
 Status RemoteDBM::Replicator::Start(int64_t min_timestamp, int32_t server_id, double timeout) {

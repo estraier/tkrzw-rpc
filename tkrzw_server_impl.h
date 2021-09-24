@@ -137,6 +137,7 @@ class DBMServiceBase {
       logger_->LogCat(Logger::LEVEL_WARN, "replication error: ", status);
       return false;
     }
+    const int32_t master_id = repl->GetMasterServerID();
     RemoteDBM::ReplicateLog op;
     int64_t count = 0;
     while (alive_.load() && !refresh_repl_manager_.load()) {
@@ -144,7 +145,8 @@ class DBMServiceBase {
       status = repl->Read(&timestamp, &op);
       if (status == Status::SUCCESS) {
         if (count == 0) {
-          logger_->LogCat(Logger::LEVEL_INFO, "replication timestamp: ", timestamp);
+          logger_->LogCat(Logger::LEVEL_INFO, "replication start: master_id=", master_id,
+                          ", timestamp=", timestamp);
         }
         if (op.dbm_index < 0 || op.dbm_index >= static_cast<int32_t>(dbms_.size())) {
           logger_->LogCat(Logger::LEVEL_ERROR, "out-of-range DBM index");
@@ -161,7 +163,7 @@ class DBMServiceBase {
             logger_->LogCat(Logger::LEVEL_DEBUG, "replication: ts=", timestamp,
                             ", server_id=", op.server_id, ", dbm_index=", op.dbm_index,
                             ", op=SET");
-            DBMUpdateLoggerMQ::OverwriteThreadServerID(op.server_id);
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(master_id);
             status = dbm->Set(op.key, op.value);
             DBMUpdateLoggerMQ::OverwriteThreadServerID(-1);
             if (status != Status::SUCCESS) {
@@ -174,7 +176,7 @@ class DBMServiceBase {
             logger_->LogCat(Logger::LEVEL_DEBUG, "replication: ts=", timestamp,
                             ", server_id=", op.server_id, ", dbm_index=", op.dbm_index,
                             ", op=REMOVE");
-            DBMUpdateLoggerMQ::OverwriteThreadServerID(op.server_id);
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(master_id);
             status = dbm->Remove(op.key);
             DBMUpdateLoggerMQ::OverwriteThreadServerID(-1);
             if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
@@ -187,7 +189,7 @@ class DBMServiceBase {
             logger_->LogCat(Logger::LEVEL_DEBUG, "replication: ts=", timestamp,
                             ", server_id=", op.server_id, ", dbm_index=", op.dbm_index,
                             ", op=CLEAR");
-            DBMUpdateLoggerMQ::OverwriteThreadServerID(op.server_id);
+            DBMUpdateLoggerMQ::OverwriteThreadServerID(master_id);
             status = dbm->Clear();
             DBMUpdateLoggerMQ::OverwriteThreadServerID(-1);
             if (status != Status::SUCCESS) {
@@ -904,6 +906,9 @@ class DBMServiceBase {
         return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "self server ID");
       }
       *reader = mq_->MakeReader(request.min_timestamp());
+      response->set_op_type(ReplicateResponse::OP_NOOP);
+      response->set_server_id(server_id_);
+      return grpc::Status::OK;
     }
     int64_t timestamp = 0;
     std::string message;

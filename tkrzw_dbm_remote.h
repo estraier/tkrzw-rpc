@@ -364,6 +364,13 @@ class RemoteDBM final {
     void Cancel();
 
     /**
+     * Get the server ID of the master server.
+     * @return The server ID of the master server or -1 on failure.
+     * @details Ths can be called only after the Start method returns success.
+     */
+    int32_t GetMasterServerID();
+
+    /**
      * Starts replication.
      * @param min_timestamp The minimum timestamp in milliseconds of messages to read.
      * @param server_id The server ID of the process.  Logs with the same server ID are skipped

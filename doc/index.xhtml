@@ -363,6 +363,7 @@ world
 <dd><code>--repl_wait <var>num</var></code> : The time in seconds to wait for the next log. (default: 1)</dd>
 <dd><code>--pid_file <var>str</var></code> : The file path of the store the process ID.</dd>
 <dd><code>--daemon</code> : Runs the process as a daemon process.</dd>
+<dd><code>--shutdown_wait <var>num</var></code> : Time in seconds to wait for the service shutdown gracefully.</dd>
 <dd><code>--read_only</code> : Opens the databases in the read-only mode.</dd>
 </dl>
 
@@ -447,6 +448,8 @@ fi
 <dd>Synchronizes a database file.</dd>
 <dt><code>tkrzw_dbm_remote_util search [<var>options</var>] <var>pattern</var></code></dt>
 <dd>Synchronizes a database file.</dd>
+<dt><code>tkrzw_dbm_remote_util changemaster [<var>options</var>] [<var>master</var>]</code></dt>
+<dd>Changes the master of replication.</dd>
 <dt><code>tkrzw_dbm_remote_util replicate [<var>options</var>] [<var>db_configs</var>...]</code></dt>
 <dd>Replicates updates to local databases.</dd>
 </dl>
@@ -887,7 +890,8 @@ one    first
 
 <p>Let's start the replication by setting the master address to the slave server dynamically.  In this case, "localhost:1980" is the new slave and "localhost:1979" is the new master.  "--ts_skew -10000" means that replication starts from a point 10 seconds before the timestamp of the timestamp file.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address localhost:1980 --ts_skew -10000 localhost:1979
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address localhost:1980 \
+  --ts_skew -10000 localhost:1979
 ]]></code></pre>
 
 <p>Confirm that the content has been synchronized automatically.</p>
@@ -916,24 +920,24 @@ six    sixth
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1978" \
   --async --threads 8 --log_level debug \
   --server_id 1 --ulog_prefix casket-1-ulog \
-  --repl_master "localhost:1979" --repl_ts_file casket-1.ts --repl_ts_skew -10000
+  --repl_master "localhost:1979" --repl_ts_file casket-1.ts --repl_ts_skew -10000 \
   "casket-1.tkh"
 ]]></code></pre>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1979" \
   --async --threads 8 --log_level debug \
   --server_id 2 --ulog_prefix casket-2-ulog \
-  --repl_master "localhost:1978" --repl_ts_file casket-2.ts --repl_ts_skew -10000
+  --repl_master "localhost:1978" --repl_ts_file casket-2.ts --repl_ts_skew -10000 \
   "casket-2.tkh"
 ]]></code></pre>
 
 <p>Confirm that updates to one server are propagated to the other timely.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address "localhost:1978" japan tokyo
-$ tkrzw_dbm_remote_util set --address "localhost:1979" japan
+$ tkrzw_dbm_remote_util get --address "localhost:1979" japan
 tokyo
 $ tkrzw_dbm_remote_util set --address "localhost:1979" korea seoul
-$ tkrzw_dbm_remote_util set --address "localhost:1978" korea
+$ tkrzw_dbm_remote_util get --address "localhost:1978" korea
 seoul
 ]]></code></pre>
 
@@ -942,7 +946,7 @@ seoul
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1980" \
   --async --threads 8 --log_level debug \
   --server_id 3 --ulog_prefix casket-3-ulog \
-  --repl_master "localhost:1979" --repl_ts_file casket-3.ts --repl_ts_skew -10000
+  --repl_master "localhost:1979" --repl_ts_file casket-3.ts --repl_ts_skew -10000 \
   "casket-3.tkh"
 ]]></code></pre>
 
@@ -951,6 +955,12 @@ seoul
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address "localhost:1980"
 japan   tokyo
 korea   seoul
+]]></code></pre>
+
+<p>Modify the replication master address of the existing standby server to the new master.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address localhost:1979 \
+  --ts_skew -10000 localhost:1980
 ]]></code></pre>
 
 <p>Of cource, you use multiple machines in the actual production service.  If you can do sharding one logical database into multiple shards each of which is composed of dual masters.  If the number of machines in service is more than ten, you should automate the system configuration and server setups, combined with a monitoring system.</p>

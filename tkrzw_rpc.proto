@@ -457,6 +457,7 @@ message ReplicateRequest {
 }
 
 // Response of the Replicate method.
+// The first response is OP_NOOP and provides the server ID of the server.
 message ReplicateResponse {
   // Enumeration for operations.
   enum OpType {

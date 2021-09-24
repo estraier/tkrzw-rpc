@@ -40,7 +40,8 @@ static void PrintUsageAndDie() {
   P("\n");
   P("Options:\n");
   P("  --version : Prints the version number and exits.\n");
-  P("  --address str : The address/hostname and the port of the server (default: 0.0.0.0:1978)\n");
+  P("  --address str : The address/hostname and the port of the server"
+    " (default: 0.0.0.0:1978)\n");
   P("  --async : Uses the asynchronous API on ths server.\n");
   P("  --threads num : The maximum number of worker threads. (default: 1)\n");
   P("  --log_file str : The file path of the log file. (default: /dev/stdout)\n");
@@ -59,6 +60,8 @@ static void PrintUsageAndDie() {
   P("  --repl_wait num : The time in seconds to wait for the next log. (default: 1)\n");
   P("  --pid_file str : The file path of the store the process ID.\n");
   P("  --daemon : Runs the process as a daemon process.\n");
+  P("  --shutdown_wait num : Time in seconds to wait for the service shutdown gracefully."
+    " (default: 5.0)\n");
   P("  --read_only : Opens the databases in the read-only mode.\n");
   P("\n");
   P("A database config is in \"path#params\" format.\n");
@@ -68,6 +71,7 @@ static void PrintUsageAndDie() {
 }
 
 // Global variables.
+double g_shutdown_wait = 0;
 StreamLogger* g_logger = nullptr;
 std::string_view g_log_file;
 std::string_view g_log_level;
@@ -118,7 +122,8 @@ void ShutdownServer(int signum) {
   grpc::Server* server = g_server.load();
   if (server != nullptr && g_server.compare_exchange_strong(server, nullptr)) {
     g_logger->LogCat(Logger::LEVEL_INFO, "Shutting down by signal: ", signum);
-    const auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(10);
+    const auto deadline = std::chrono::system_clock::now() +
+        std::chrono::milliseconds(static_cast<int64_t>(g_shutdown_wait * 1000));
     g_is_shutdown = true;
     if (g_mq != nullptr) {
       g_mq->CancelReaders();
@@ -135,7 +140,7 @@ static int32_t Process(int32_t argc, const char** args) {
     {"--server_id", 1}, {"--ulog_prefix", 1}, {"--ulog_max_file_size", 1},
     {"--repl_master", 1}, {"--repl_ts_file", 1}, {"--repl_ts_from_dbm", 1},
     {"--repl_ts_skew", 1}, {"--repl_wait", 1},
-    {"--pid_file", 1}, {"--daemon", 0},
+    {"--pid_file", 1}, {"--daemon", 0}, {"--shutdown_wait", 1},
     {"--read_only", 0},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
@@ -166,6 +171,7 @@ static int32_t Process(int32_t argc, const char** args) {
   const double repl_wait_time = GetDoubleArgument(cmd_args, "--repl_wait_time", 0, 1.0);
   const std::string pid_file = GetStringArgument(cmd_args, "--pid_file", 0, "");
   const bool as_daemon = CheckMap(cmd_args, "--daemon");
+  g_shutdown_wait = GetDoubleArgument(cmd_args, "--shutdown_wait", 0, 5.0);
   const bool read_only = CheckMap(cmd_args, "--read_only");
   auto dbm_exprs = SearchMap(cmd_args, "", {});
   if (address.find(":") == std::string::npos) {

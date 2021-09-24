@@ -54,7 +54,7 @@ static void PrintUsageAndDie() {
   P("    : Synchronizes a database file.\n");
   P("  %s search [options] pattern\n", progname);
   P("    : Synchronizes a database file.\n");
-  P("  %s chnagemaster [options] [master]\n", progname);
+  P("  %s changemaster [options] [master]\n", progname);
   P("    : Changes the master of replication.\n");
   P("  %s replicate [options] [db_configs...]\n", progname);
   P("    : Replicates updates to local databases.\n");
@@ -681,12 +681,10 @@ static int32_t ProcessChangeMaster(int32_t argc, const char** args) {
     EPrint("Invalid command: ", cmd_error, "\n\n");
     PrintUsageAndDie();
   }
-  const std::string pattern = GetStringArgument(cmd_args, "", 0, "");
-  const std::string params_expr = GetStringArgument(cmd_args, "", 0, "");
+  const std::string master = GetStringArgument(cmd_args, "", 0, "");
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int64_t ts_skew = GetIntegerArgument(cmd_args, "--ts_skew", 0, 0);
-  std::string master = GetStringArgument(cmd_args, "", 0, "");
   RemoteDBM dbm;
   Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
@@ -793,7 +791,7 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
     return 1;
   }
   if (!local_dbms.empty()) {
-    PrintL("Doing replication: ", address);
+    PrintL("Doing replication: master_server_id=", repl->GetMasterServerID());
   }
   RemoteDBM::ReplicateLog op;
   int64_t count = 0;
@@ -848,7 +846,7 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
           case DBMUpdateLoggerMQ::OP_CLEAR:
             status = local_dbm->Clear();
             if (status != Status::SUCCESS) {
-              EPrintL("Remove failed: ", status);
+              EPrintL("Clear failed: ", status);
               ok = false;
             }
             break;
