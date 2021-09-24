@@ -49,12 +49,13 @@ static void PrintUsageAndDie() {
   P("  --log_date str : The log date format: simple, simple_micro, w3cdtf, w3cdtf_micro,"
     " rfc1123, epoch, epoch_micro. (default: simple)\n");
   P("  --log_td num : The log time difference in seconds. (default: 99999=local)\n");
-  P("  --server_id num: The server ID. (default: 1)\n");
+  P("  --server_id num : The server ID. (default: 1)\n");
   P("  --ulog_prefix str : The prefix of the update log files.\n");
   P("  --ulog_max_file_size num : The maximum file size of each update log file."
     " (default: 1Gi)\n");
   P("  --repl_ts_file str : The replication timestamp file.\n");
-  P("  --repl_ts_skew num : Uses the database timestamp skewed by a value.\n");
+  P("  --repl_ts_from_dbm : Uses the database timestamp if the timestamp file doesn't exist.\n");
+  P("  --repl_ts_skew num : Skews the timestamp by a value.\n");
   P("  --repl_wait num : The time in seconds to wait for the next log. (default: 1)\n");
   P("  --pid_file str : The file path of the store the process ID.\n");
   P("  --daemon : Runs the process as a daemon process.\n");
@@ -132,8 +133,8 @@ static int32_t Process(int32_t argc, const char** args) {
     {"--version", 0}, {"--address", 1}, {"--async", 0}, {"--threads", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
     {"--server_id", 1}, {"--ulog_prefix", 1}, {"--ulog_max_file_size", 1},
-    {"--repl_master", 1}, {"--repl_ts_file", 1}, {"--repl_ts_db_skew", 1},
-    {"--repl_ts_set", 1}, {"--repl_wait", 1},
+    {"--repl_master", 1}, {"--repl_ts_file", 1}, {"--repl_ts_from_dbm", 1},
+    {"--repl_ts_skew", 1}, {"--repl_wait", 1},
     {"--pid_file", 1}, {"--daemon", 0},
     {"--read_only", 0},
   };
@@ -160,8 +161,8 @@ static int32_t Process(int32_t argc, const char** args) {
       GetIntegerArgument(cmd_args, "--ulog_max_file_size", 0, 1LL << 30);
   const std::string repl_master = GetStringArgument(cmd_args, "--repl_master", 0, "");
   const std::string repl_ts_file = GetStringArgument(cmd_args, "--repl_ts_file", 0, "");
-  const int64_t repl_ts_db_skew = GetIntegerArgument(cmd_args, "--repl_ts_db_skew", 0, INT64MIN);
-  const int64_t repl_ts_set_value = GetIntegerArgument(cmd_args, "--repl_ts_set", 0, INT64MIN);
+  const bool repl_ts_from_dbm = CheckMap(cmd_args, "--repl_ts_from_dbm");
+  const int64_t repl_ts_skew = GetIntegerArgument(cmd_args, "--repl_ts_set", 0, 0);
   const double repl_wait_time = GetDoubleArgument(cmd_args, "--repl_wait_time", 0, 1.0);
   const std::string pid_file = GetStringArgument(cmd_args, "--pid_file", 0, "");
   const bool as_daemon = CheckMap(cmd_args, "--daemon");
@@ -265,17 +266,14 @@ static int32_t Process(int32_t argc, const char** args) {
       repl_min_timestamp = StrToInt(tsexpr);
     }
   }
-  if (repl_min_timestamp < 0 && repl_ts_db_skew != INT64MIN) {
-    repl_min_timestamp = GetWallTime();
+  if (repl_min_timestamp < 0 && repl_ts_from_dbm) {
+    repl_min_timestamp = GetWallTime() * 1000;
     for (const auto& dbm : dbms) {
-      const int64_t skewed_timestamp = dbm->GetTimestampSimple() * 1000 + repl_ts_db_skew;
-      repl_min_timestamp = std::min<int64_t>(repl_min_timestamp, skewed_timestamp);
+      const int64_t dbm_timestamp = dbm->GetTimestampSimple() * 1000;
+      repl_min_timestamp = std::min<int64_t>(repl_min_timestamp, dbm_timestamp);
     }
   }
-  if (repl_ts_set_value != INT64MIN) {
-    repl_min_timestamp = repl_ts_set_value;
-  }
-  repl_min_timestamp = std::max<int64_t>(0, repl_min_timestamp);
+  repl_min_timestamp = std::max<int64_t>(0, repl_min_timestamp + repl_ts_skew);
   ReplicationParameters repl_params(
       repl_master, repl_min_timestamp, repl_wait_time, repl_ts_file);
   logger.LogCat(Logger::LEVEL_INFO,

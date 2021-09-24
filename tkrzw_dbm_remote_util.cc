@@ -90,13 +90,16 @@ static void PrintUsageAndDie() {
   P("  --escape : C-style escape is applied to the TSV data.\n");
   P("  --keys : Prints keys only.\n");
   P("\n");
+  P("Options for the changemaster subcommand:\n");
+  P("  --ts_skew num : Skews the timestamp by a value.\n");
+  P("\n");
   P("Options for the replication subcommand:\n");
   P("  --ts_file str : The replication timestamp file.\n");
-  P("  --ts_db_skew num : Uses the database timestamp skewed by a value.\n");
-  P("  --ts_set num : Uses the set value as the timestamp.\n");
+  P("  --ts_from_dbm : Uses the database timestamp if the timestamp file doesn't exist.\n");
+  P("  --ts_skew num : Skews the timestamp by a value.\n");
   P("  --server_id num : The server ID of the client. (default: 0)\n");
   P("  --wait num : The time in seconds to wait for the next log. (default: 1)\n");
-  P("  --items num : The number of items to print. (default: 10)\n");
+  P("  --items num : The number of items to print. (default: unlimited)\n");
   P("  --escape : C-style escape is applied to the TSV data.\n");
   P("\n");
   std::exit(1);
@@ -704,7 +707,7 @@ static int32_t ProcessChangeMaster(int32_t argc, const char** args) {
 static int32_t ProcessReplicate(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"--address", 1}, {"--timeout", 1}, {"--index", 1},
-    {"--ts_file", 1}, {"--ts_db_skew", 1},{"--ts_set", 1},
+    {"--ts_file", 1}, {"--ts_from_dbm", 1},{"--ts_skew", 1},
     {"--server_id", 1}, {"--wait", 1},
     {"--items", 1}, {"--escape", 0},
   };
@@ -720,10 +723,10 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, -1);
   const std::string ts_file = GetStringArgument(cmd_args, "--ts_file", 0, "");
-  const int64_t ts_db_skew = GetIntegerArgument(cmd_args, "--ts_db_skew", 0, INT64MIN);
-  const int64_t ts_set_value = GetIntegerArgument(cmd_args, "--ts_set", 0, INT64MIN);
+  const bool ts_from_dbm = CheckMap(cmd_args, "--ts_from_dbm");
+  const int64_t ts_skew = GetIntegerArgument(cmd_args, "--ts_set", 0, 0);
   const int32_t server_id = GetIntegerArgument(cmd_args, "--server_id", 0, 0);
-  const double wait_time = GetDoubleArgument(cmd_args, "--wait_time", 0, 1.0);
+  const double wait_time = GetDoubleArgument(cmd_args, "--wait", 0, 1.0);
   const int64_t num_items = GetIntegerArgument(cmd_args, "--items", 0, INT64MAX);
   const bool with_escape = CheckMap(cmd_args, "--escape");
   const auto& dbm_exprs = cmd_args[""];
@@ -758,17 +761,14 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
       min_timestamp = StrToInt(tsexpr);
     }
   }
-  if (min_timestamp < 0 && ts_db_skew != INT64MIN) {
-    min_timestamp = GetWallTime();
+  if (min_timestamp < 0 && ts_from_dbm) {
+    min_timestamp = GetWallTime() * 1000;
     for (const auto& local_dbm : local_dbms) {
-      const int64_t skewed_timestamp = local_dbm->GetTimestampSimple() * 1000 + ts_db_skew;
-      min_timestamp = std::min<int64_t>(min_timestamp, skewed_timestamp);
+      const int64_t dbm_timestamp = local_dbm->GetTimestampSimple() * 1000;
+      min_timestamp = std::min<int64_t>(min_timestamp, dbm_timestamp);
     }
   }
-  if (ts_set_value != INT64MIN) {
-    min_timestamp = ts_set_value;
-  }
-  min_timestamp = std::max<int64_t>(0, min_timestamp);
+  min_timestamp = std::max<int64_t>(0, min_timestamp + ts_skew);
   if (!local_dbms.empty()) {
     PrintL("Using the minimum timestamp: ", min_timestamp);
   }
@@ -798,7 +798,8 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   RemoteDBM::ReplicateLog op;
   int64_t count = 0;
   int64_t max_timestamp = -1;
-  while (g_process_alive && count < num_items) {
+  const int64_t mod_num_items = num_items > 0 ? num_items : INT64MAX;
+  while (g_process_alive && count < mod_num_items) {
     int64_t timestamp = 0;
     status = repl->Read(&timestamp, &op);
     if (status == Status::SUCCESS) {
@@ -866,6 +867,9 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
       count++;
     } else if (status == Status::INFEASIBLE_ERROR) {
       max_timestamp = std::max(timestamp, max_timestamp);
+      if (num_items <= 0) {
+        break;
+      }
     } else {
       EPrintL("Read failed: ", status);
       ok = false;

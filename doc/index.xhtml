@@ -109,6 +109,8 @@ window.onload = function(){
 
 <p>The library of Tkrzw-RPC is a C++ library to access the database service via gRPC protocol.  Thus, you can easily write application programs in C++.  You use the class <a href="#remotedbm_overview">RemoteDBM</a> whose API is very similar to the PolyDBM class so that you can use it as if you operates local databases.  Moreover, gRPC automates to generate client interfaces in various languages, based on the service definition in the protocol buffers <a href="https://github.com/estraier/tkrzw-rpc/blob/master/tkrzw_rpc.proto">tkrzw_rpc.proto</a>.  Tkrzw-RPC also provides command line utilities to access the database service.</p>
 
+<p>The server supports asynchronous replication for high availability of the service.  Every update on the databases of a server called "master" can be monitored by another server called "slave" and updates are applied to the databases on the slave immediately.  Thus, databases on both servers are synchronized.  If the master dies, clients connects to the slave to continue the service without any downtime.  The slave is treated as the new master by adding another slave.  Slaves can be used as read-only replicas for load distribution.  The "dual masters" topology is also available, where two servers replicate each other.</p>
+
 <h2 id="download">Download</h2>
 
 <p>You can download source packages in the following directories.</p>
@@ -169,7 +171,7 @@ $ make testrun
 
 <p>If the message "Checking completed" is shown, all checks are OK.  You can stop the server process by inputting Ctrl-C on the same terminal.</p>
 
-<h2 id="tutorial">Tutorial</h2>
+<h2 id="Kickstart">Kickstart</h2>
 
 <p>Let's run the server with a simple setting.  By default, an on-memory database of TinyDBM is specified.  By specifying the log level to "debug", every RPC call to the service is printed in the log stream.</p>
 
@@ -352,6 +354,13 @@ world
 <dd><code>--log_level <var>str</var></code> : The minimum log level to be stored: debug, info, warn, error, fatal. (default: info)</dd>
 <dd><code>--log_date <var>str</var></code> : The log date format: simple, simple_micro, w3cdtf, w3cdtf_micro, rfc1123, epoch, epoch_micro. (default: simple)</dd>
 <dd><code>--log_td <var>num</var></code> : The log time difference in seconds. (default: 99999=local)</dd>
+<dd><code>--server_id <var>num</var></code> : The server ID. (default: 1)</dd>
+<dd><code>--ulog_prefix <var>str</var></code> : The prefix of the update log files.</dd>
+<dd><code>--ulog_max_file_size <var>num</var></code> : The maximum file size of each update log file. (default: 1Gi)</dd>
+<dd><code>--repl_ts_file <var>str</var></code> : The replication timestamp file.</dd>
+<dd><code>--repl_ts_from_dbm</code> : Uses the database timestamp if the timestamp file doesn't exist.</dd>
+<dd><code>--repl_ts_skew <var>num</var></code> : Skews the timestamp by a value.</dd>
+<dd><code>--repl_wait <var>num</var></code> : The time in seconds to wait for the next log. (default: 1)</dd>
 <dd><code>--pid_file <var>str</var></code> : The file path of the store the process ID.</dd>
 <dd><code>--daemon</code> : Runs the process as a daemon process.</dd>
 <dd><code>--read_only</code> : Opens the databases in the read-only mode.</dd>
@@ -466,10 +475,12 @@ fi
 <dd><code>--items <var>num</var></code> : The number of items to retrieve. (default: 10)</dd>
 <dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
 <dd><code>--keys</code> : Prints keys only.</dd>
+<dt>Options for the changemaster subcommand:</dt>
+<dd><code>--ts_skew <var>num</var></code> : Skews the timestamp by a value.</dd>
 <dt>Options for the replication subcommand:</dt>
 <dd><code>--ts_file <var>str</var></code> : The replication timestamp file.</dd>
-<dd><code>--ts_db_skew <var>num</var></code> : Uses the database timestamp skewed by a value.</dd>
-<dd><code>--ts_set <var>num</var></code> : Uses the set value as the timestamp.</dd>
+<dd><code>--ts_from_dbm</code> : Uses the database timestamp if the timestamp file doesn't exist.</dd>
+<dd><code>--ts_skew <var>num</var></code> : Skews the timestamp by a value.</dd>
 <dd><code>--server_id <var>num</var></code> : The server ID of the client.</dd>
 <dd><code>--wait <var>num</var></code> : The time in seconds to wait for the next log.</dd>
 <dd><code>--items <var>num</var></code> : The number of items to print. (default: 10)</dd>
@@ -764,6 +775,185 @@ int main(int argc, char** argv) {
 <p>You can shared on-memory databases too.  If an on-memory database is associated with a file, the blocking time during the Synchronize method might be an issue on online services.  Sharding the database mitigates the issue.  For example, an on-memory tree database containing 100 million records takes 24 seconds for the Synchronize method.  You can divide it into 100 shards.  Then, one shard takes only 0.24 seconds, which is not a problem in many cases.</p>
 
 <p>The number of shards can be as large as you like.  The more the shards are, the better the concurrency performance is.  The downside of too many shard is that the iterator and the SearchModal method become slower.</p>
+
+<h2 id="replication">Asynchronous Replication</h2>
+
+<h2 id="replication_overview">Overview</h2>
+
+<p>High availability is a concept to continue the service without any downtime even if some troubles including hardware failures happen.  Data replication is to store the same data on multiple machines, which is a common way to achieve high availability.  Tkrzw-RPC supports asynchronous replication, where data replication is done asynchrnounsly without waiting for the update data to reach a replica server.  It means that updates are lost if the server dies before the replica server replicates the updates.  Meanwhile, performance of asynchronous replication is much better than synchronous replication because the latency of each update query doesn't include the latency of the response of the replica server.</p>
+
+<p>We call the server to which update queries are issued, as "master".  We call another server which monitors the updates on the master and replicate them, as "slave".  The master has to store update logs locally, which is realized by the message queue feature of the core library of Tkrzw.  The slave calls the "Replicate" RPC call to the master to fetch the update logs since a timestamp.  The slave applies the fetched updates on its own databases so that the databases on the master and the databases on the slave are synchronized.  The slave manaages the last timestamp of the fetched updates and use it to resume replication effectively.</p>
+
+<div id="networdstructure" class="illustration"><img src="replication-simple.svg"/></div>
+
+<p>As the databases on the master and the slave have the same content with only a slight delay, clients can retrieve data from either of them.  You can set up two or more slaves for load balancing of retrieval queries.  Updating queries must be called only to the master for consistency.</p>
+
+<p>If the master dies, one of the slaves is promoted as the master.  The other slaves, if any, follows the new master.  If a slave dies, a new slave is added to keep high availability.  Usually, a slave is set up with a backup database and then the content is synchronized to the latest state by fetching updates since the timestamp of the backup database.  Usually, the slave is also configured to stores update logs so that it can be promoted as the master anytime when the original master dies.</p>
+
+<h3 id="replication_client">Replication Client</h3>
+
+<p>Let's set up a master server and monitor the updates with a client utility.  To set up the master, you have to specify the server ID and the prefix of the update log files.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1978" \
+  --async --threads 8 --log_level debug \
+  --server_id 1 --ulog_prefix casket-1-ulog \
+  "casket-1.tkh"
+]]></code></pre>
+
+<p>On another terminal, call update queries to the master.  The master database comes to have two records "one" and "two".  The two correspoinding update logs are stored in the update log file.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address localhost:1978 one first
+$ tkrzw_dbm_remote_util set --address localhost:1978 two second
+]]></code></pre>
+
+<p>Check the content of the update log file.  This command doesn't finish but waits for the next updates.  Keep it unfinished.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address localhost:1978
+1632472502596  1  0  SET  one  first
+1632472506668  1  0  SET  two  second
+]]></code></pre>
+
+<p>On another terminal, send more update queries.  Two new update logs appear on the above terminal.  Then, finish the command on the above terminal by inputting Ctrl-C.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address localhost:1978 three third
+$ tkrzw_dbm_remote_util set --address localhost:1978 four fourth
+]]></code></pre>
+
+<p>You can retrieve update logs and apply them on local databases.  You specify the paths of the database files where update logs are applied.  If the file doesn't exist, a new database is created.  Also, you create the timestamp file by "--ts_file" option to store the last timestamp.  Also, you specify "--wait 0" and "--items 0", not to wait for the future updates.  After that, check the content of the updated database.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address localhost:1978 \
+  --ts_file casket-local.ts --wait 0 --items 0 casket-local.tkh
+Opening DBM: casket-local.tkh
+Using the minimum timestamp: 0
+Connecting to the server: localhost:1978
+Doing replication: localhost:1978
+Done: timestamp=1632474357697
+
+$ tkrzw_dbm_util list casket-local.tkh
+three  third
+two    second
+four   fourth
+one    first
+]]></code></pre>
+
+<p>In this way, you can make backup databases.  If the server manages multiple databases, you should specify the same number of databases.  You can update the backup databases by the same command.  The timestamp stored in the timestamp file is used to get update logs since the timestamp.</p>
+
+<h3 id="replication_slave">Master-slave Topology</h3>
+
+<p>The simplest topology of data replication is composed of one master and one slave.  Let's reuse the master server and the backup file for this excecise.  To set up a slave server, copy the backup database files and the timestamp file.  Then, run the server command spedifying the address of the master server.  As we do this exercise on a single machina end the master uses the port 1978, we use the port 1979 for the slave server.  The slave also have a server ID which must be unique within your service architecture.  Setting of update logs should also be done because the slave can be treated as the master in the future.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ cp casket-local.tkh casket-2.tkh
+$ cp casket-local.ts casket-2.ts
+$ tkrzw_server --address "localhost:1979" \
+  --async --threads 8 --log_level debug \
+  --server_id 2 --ulog_prefix casket-2-ulog \
+  --repl_master "localhost:1978" --repl_ts_file casket-2.ts --repl_ts_skew -10000 \
+  "casket-2.tkh"
+]]></code></pre>
+
+<p>The update logs between the current time and the timestamp stored in the timestamp file are retrieved and applied to the database automatically.  And, updates from now on are also synchronized on the spot.  To confirm it, put some records onto the master server and the list up the content of the slave database.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address localhost:1978 five fifth
+$ tkrzw_dbm_remote_util set --address localhost:1978 six sixth
+
+$ tkrzw_dbm_remote_util list --address localhost:1979
+five   fifth
+three  third
+two    second
+four   fourth
+one    first
+six    sixth
+]]></code></pre>
+
+<p>Let's assume that the master dies and we promote the slave as the new master.  Stop the master and then add a new slabe.  This time, we don't specify the address of the new master but set it later.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ cp casket-local.tkh casket-3.tkh
+$ cp casket-local.ts casket-3.ts
+$ tkrzw_server --address "localhost:1980" \
+  --async --threads 8 --log_level debug \
+  --server_id 3 --ulog_prefix casket-3-ulog \
+  --repl_ts_file casket-3.ts \
+  "casket-3.tkh"
+]]></code></pre>
+
+<p>At this point, replication is not started.  Thus, the records "five" and "six" doesn't exist.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address localhost:1980
+three  third
+two    second
+four   fourth
+one    first
+]]></code></pre>
+
+<p>Let's start the replication by setting the master address to the slave server dynamically.  In this case, "localhost:1980" is the new slave and "localhost:1979" is the new master.  "--ts_skew -10000" means that replication starts from a point 10 seconds before the timestamp of the timestamp file.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address localhost:1980 --ts_skew -10000 localhost:1979
+]]></code></pre>
+
+<p>Confirm that the content has been synchronized automatically.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address localhost:1980
+five   fifth
+three  third
+two    second
+four   fourth
+one    first
+six    sixth
+]]></code></pre>
+
+<p>While updating queries must be done on the master, retrieval (non-updating) queries can be done on either the master or the slave.  Moreover, if retrieval queries care much more than updating queries, using multiple slave servers and doing load balancing is a good way to improve the throughput.</p>
+
+<p>The timestamp of replication must always be given by the master.  The timestamp means a breakpoint from which the replication resumes on the master side.  The content of the timestamp file is the last timestamp given by the server.  Thus, even if the clock of the slave is skewed, replication works properly.  However, if the master dies and a slave becomes the new master, the timestamp is evaluated on the timeline of the new master machine, which is diffeerent from the old master.  Therefore, you should set "--repl_ts_skew" option of tkrzwr_server or "--ts_skew" option of tkrzw_dbm_remote_util with a netagive value to absorb a possible time leap.  Note that update logs are idempotent so duplicated application is acceptable.</p>
+
+<h3 id="replication_slave">Dual Masters Topology</h3>
+
+<p>Whereas the master-slave topology the basics of high availability, it still has downtime against update operations.  Between the time when the master dies and the time when the new master is set up and announced to all clients, updating operations cannot be done.  One workaround is to treat a pre-determined "prime" slave as the acting master.  If clients cannot access the master, they can call updating operations to the acting master.  However, it causes a potential problem of inconsistency.  For some reasons, even if the master is alive, some clients can be unable to access the master and update the acting master.  Then, if the acting master doesn't become the actual master, updates to it are lost.</p>
+
+<p>Dual masters topology can solve this issue.  If the master replicates the prime slave, accidental updates to the prime slave are fed back to the master.  In the context of the dual master topology, the actual master is called "active master" and the prime slave is called "standby master".  To minimize possible inconsistency, clients should usually updates the active master.  Only if they cannot reach the active master, they are allowed to update the standby master.  The point is, each client can determine fallback measures by itself.  It avoids downtime completely at the risk of potential inconsistency which happens when the same record is updated on the active master and the standby master simultaneously.</p>
+
+<p>Let's set up dual masters.  The server #1 at the port 1978 is the active master and the server #2 is the standby master.  They replicates each other.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1978" \
+  --async --threads 8 --log_level debug \
+  --server_id 1 --ulog_prefix casket-1-ulog \
+  --repl_master "localhost:1979" --repl_ts_file casket-1.ts --repl_ts_skew -10000
+  "casket-1.tkh"
+]]></code></pre>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1979" \
+  --async --threads 8 --log_level debug \
+  --server_id 2 --ulog_prefix casket-2-ulog \
+  --repl_master "localhost:1978" --repl_ts_file casket-2.ts --repl_ts_skew -10000
+  "casket-2.tkh"
+]]></code></pre>
+
+<p>Confirm that updates to one server are propagated to the other timely.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address "localhost:1978" japan tokyo
+$ tkrzw_dbm_remote_util set --address "localhost:1979" japan
+tokyo
+$ tkrzw_dbm_remote_util set --address "localhost:1979" korea seoul
+$ tkrzw_dbm_remote_util set --address "localhost:1978" korea
+seoul
+]]></code></pre>
+
+<p>Let's simulate that the active master dies by inputting Ctrl-C on the terminal.  You don't have to configure the server #2 to treat it as the new active master.  Then, set up the server #3 at the port 1980 as the new standby master.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1980" \
+  --async --threads 8 --log_level debug \
+  --server_id 3 --ulog_prefix casket-3-ulog \
+  --repl_master "localhost:1979" --repl_ts_file casket-3.ts --repl_ts_skew -10000
+  "casket-3.tkh"
+]]></code></pre>
+
+<p>Confirm that the new database is synchronized automatically.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address "localhost:1980"
+japan   tokyo
+korea   seoul
+]]></code></pre>
+
+<p>Of cource, you use multiple machines in the actual production service.  If you can do sharding one logical database into multiple shards each of which is composed of dual masters.  If the number of machines in service is more than ten, you should automate the system configuration and server setups, combined with a monitoring system.</p>
 
 <h2 id="faq">Frequently Asked Questions</h2>
 

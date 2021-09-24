@@ -1147,7 +1147,7 @@ class AsyncDBMProcessorInterface {
  public:
   virtual ~AsyncDBMProcessorInterface() = default;
   virtual void Proceed() = 0;
-  virtual void Cancel() = 0;
+  virtual void Cancel(bool is_shutdown) = 0;
 };
 
 template<typename REQUEST, typename RESPONSE>
@@ -1182,8 +1182,10 @@ class AsyncDBMProcessor : public AsyncDBMProcessorInterface {
     }
   }
 
-  void Cancel() override {
-    if (proc_state_ == PROCESS) {
+  void Cancel(bool is_shutdown) override {
+    if (is_shutdown) {
+      delete this;
+    } else if (proc_state_ == PROCESS) {
       proc_state_ = FINISH;;
       responder_.Finish(response_, rpc_status_, this);
     } else {
@@ -1247,8 +1249,10 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
     }
   }
 
-  void Cancel() override {
-    if (proc_state_ == PROCESS) {
+  void Cancel(bool is_shutdown) override {
+    if (is_shutdown) {
+      delete this;
+    } else if (proc_state_ == PROCESS) {
       proc_state_ = FINISH;;
       responder_.Finish(response_, rpc_status_, this);
     } else {
@@ -1314,8 +1318,10 @@ class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
     }
   }
 
-  void Cancel() override {
-    if (proc_state_ == READ || proc_state_ == WRITE) {
+  void Cancel(bool is_shutdown) override {
+    if (is_shutdown) {
+      delete this;
+    } else if (proc_state_ == READ || proc_state_ == WRITE) {
       proc_state_ = FINISH;;
       stream_.Finish(rpc_status_, this);
     } else {
@@ -1373,8 +1379,10 @@ class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
     }
   }
 
-  void Cancel() override {
-    if (proc_state_ == READ || proc_state_ == WRITE) {
+  void Cancel(bool is_shutdown) override {
+    if (is_shutdown) {
+      delete this;
+    } else if (proc_state_ == READ || proc_state_ == WRITE) {
       proc_state_ = FINISH;;
       stream_.Finish(rpc_status_, this);
     } else {
@@ -1430,8 +1438,10 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
     }
   }
 
-  void Cancel() override {
-    if (proc_state_ == WRITE) {
+  void Cancel(bool is_shutdown) override {
+    if (is_shutdown) {
+      delete this;
+    } else if (proc_state_ == WRITE) {
       proc_state_ = FINISH;;
       stream_.Finish(rpc_status_, this);
     } else {
@@ -1533,7 +1543,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
       }
     } else {
       if (proc != nullptr) {
-        proc->Cancel();
+        proc->Cancel(*is_shutdown);
       }
       if (*is_shutdown) {
         break;

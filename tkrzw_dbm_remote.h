@@ -805,8 +805,7 @@ class RemoteDBM final {
    * Changes the master server of the replication.
    * @param master The address of the master server.  If it is empty, replication stops.
    * @param timestamp_skew The timestamp skew in milliseconds.  Negative makes the timestamp back
-   * to the past.  As the wall time can differs among servers and update logs are idempotent,
-   * setting a negative value like -10000 is recommended.
+   * to the past.
    */
   Status ChangeMaster(std::string_view master, double timestamp_skew = 0);
 
