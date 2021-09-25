@@ -915,7 +915,7 @@ six    sixth
 
 <p>Dual masters topology can solve this issue.  If the master replicates the prime slave, accidental updates to the prime slave are fed back to the master.  In the context of the dual master topology, the actual master is called "active master" and the prime slave is called "standby master".  To minimize possible inconsistency, clients should usually updates the active master.  Only if they cannot reach the active master, they are allowed to update the standby master.  The point is, each client can determine fallback measures by itself.  It avoids downtime completely at the risk of potential inconsistency which happens when the same record is updated on the active master and the standby master simultaneously.</p>
 
-<p>Let's set up dual masters.  The server #1 at the port 1978 is the active master and the server #2 is the standby master.  They replicates each other.</p>
+<p>Let's set up dual masters.  The server #1 at the port 1978 is the active master and the server #2 at the port 1979 is the standby master.  They replicates each other.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1978" \
   --async --threads 8 --log_level debug \
@@ -941,7 +941,7 @@ $ tkrzw_dbm_remote_util get --address "localhost:1978" korea
 seoul
 ]]></code></pre>
 
-<p>Let's simulate that the active master dies by inputting Ctrl-C on the terminal.  You don't have to configure the server #2 to treat it as the new active master.  Then, set up the server #3 at the port 1980 as the new standby master.</p>
+<p>Let's simulate that the active master dies by inputting Ctrl-C on the terminal.  The server #2 is concidered as the new active master.  Then, set up the server #3 at the port 1980 as the new standby master.  This time, we specify a non-existing database file so a new empty database is created.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1980" \
   --async --threads 8 --log_level debug \
@@ -957,13 +957,13 @@ japan   tokyo
 korea   seoul
 ]]></code></pre>
 
-<p>Modify the replication master address of the existing standby server to the new master.</p>
+<p>Modify the master address of the new active master to the new standby master.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address localhost:1979 \
   --ts_skew -10000 localhost:1980
 ]]></code></pre>
 
-<p>Of cource, you use multiple machines in the actual production service.  If you can do sharding one logical database into multiple shards each of which is composed of dual masters.  If the number of machines in service is more than ten, you should automate the system configuration and server setups, combined with a monitoring system.</p>
+<p>You use multiple machines in the actual production service.  Moreover, you can shard one logical database into multiple shards each of which is composed of dual masters.  If the number of servers in operation is more than ten, you should automate the system configuration and server setups, combined with a monitoring system.</p>
 
 <h3 id="replication_remove_old_ulog">Remove Old Update Log Files</h3>
 
