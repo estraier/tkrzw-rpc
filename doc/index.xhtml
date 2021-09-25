@@ -843,7 +843,7 @@ one    first
 
 <h3 id="replication_slave">Master-slave Topology</h3>
 
-<p>The simplest topology of data replication is composed of one master and one slave.  Let's reuse the master server and the backup file for this excecise.  To set up a slave server, copy the backup database files and the timestamp file.  Then, run the server command spedifying the address of the master server.  As we do this exercise on a single machina end the master uses the port 1978, we use the port 1979 for the slave server.  The slave also have a server ID which must be unique within your service architecture.  Setting of update logs should also be done because the slave can be treated as the master in the future.</p>
+<p>The simplest topology of data replication is composed of one master and one slave.  Let's reuse the master server and the backup file for this excecise.  To set up a slave server, copy the backup database files and the timestamp file.  Then, run the server command specifying the address of the master server.  As we do this exercise on a single machine and the master uses the port 1978, we use the port 1979 for the slave server.  The slave also have a server ID which must be unique within your service architecture.  Setting of update logs should also be done because the slave can be treated as the master in the future.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ cp casket-local.tkh casket-2.tkh
 $ cp casket-local.ts casket-2.ts
@@ -905,9 +905,9 @@ one    first
 six    sixth
 ]]></code></pre>
 
-<p>While updating queries must be done on the master, retrieval (non-updating) queries can be done on either the master or the slave.  Moreover, if retrieval queries care much more than updating queries, using multiple slave servers and doing load balancing is a good way to improve the throughput.</p>
+<p>While updating queries must be done on the master, retrieval (non-updating) queries can be done on either the master or the slave.  Moreover, if retrieval queries are much more than updating queries, using multiple slave servers and doing load balancing is a good way to improve the throughput.</p>
 
-<p>The timestamp of replication must always be given by the master.  The timestamp means a breakpoint from which the replication resumes on the master side.  The content of the timestamp file is the last timestamp given by the server.  Thus, even if the clock of the slave is skewed, replication works properly.  However, if the master dies and a slave becomes the new master, the timestamp is evaluated on the timeline of the new master machine, which is diffeerent from the old master.  Therefore, you should set "--repl_ts_skew" option of tkrzwr_server or "--ts_skew" option of tkrzw_dbm_remote_util with a netagive value to absorb a possible time leap.  Note that update logs are idempotent so duplicated application is acceptable.</p>
+<p>The timestamp of replication must always be given by the master.  The timestamp means a breakpoint from which the replication resumes on the master side.  The content of the timestamp file is the last timestamp given by the master, which is independent of the local clock.  Thus, even if the clock of the slave is skewed, replication works properly.  However, if the master dies and a slave becomes the new master, the timestamp is evaluated on the timeline of the new master machine, which is diffeerent from the old master.  Therefore, you should set "--repl_ts_skew" option of tkrzwr_server or "--ts_skew" option of tkrzw_dbm_remote_util with a netagive value to absorb a possible time leap.  Note that update logs are idempotent so duplicated application is acceptable.</p>
 
 <h3 id="replication_slave">Dual Masters Topology</h3>
 
@@ -964,6 +964,23 @@ korea   seoul
 ]]></code></pre>
 
 <p>Of cource, you use multiple machines in the actual production service.  If you can do sharding one logical database into multiple shards each of which is composed of dual masters.  If the number of machines in service is more than ten, you should automate the system configuration and server setups, combined with a monitoring system.</p>
+
+<h3 id="replication_remove_old_ulog">Remove Old Update Log Files</h3>
+
+<p>Update log files accumulate on each server.  After you make backup database files, you can remove update log files which are older than the backup files.  You can check the timestamp of each update log files by the following command.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_ulog_util listfiles casket-ulog
+./casket-ulog.0000000000    0    1632561080615    5.8 days    1073741824
+./casket-ulog.0000000001    1    1632652635815    4.6 days    1073743335
+./casket-ulog.0000000002    2    1632744191015    3.5 days    1073748723
+./casket-ulog.0000000003    3    1632835746215    2.4 days    1073745432
+./casket-ulog.0000000004    4    1632927301415    1.3 days    1073742564
+]]></code></pre>
+
+<p>You can remove update log files except for the latest one while the server is running.  If you want to remove files whose timestamp is older than 3 days ago, you run the following command.  Don't forget "-" of "-3D".</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_ulog_util removeoldfiles --timestamp "-3D" --exclude_latest casket-ulog
+]]></code></pre>
 
 <h2 id="faq">Frequently Asked Questions</h2>
 
