@@ -82,7 +82,7 @@ class DBMServiceBase {
   void ManageReplication() {
     logger_->Log(Logger::LEVEL_DEBUG, "Starting the replication manager");
     int64_t max_timestamp = 0;
-    ReplicationParameters params;
+    ReplicationParameters params = repl_params_;
     bool success = true;
     while (alive_.load()) {
       SleepThread(1.0);
@@ -91,10 +91,10 @@ class DBMServiceBase {
         if (repl_params_.master.empty()) {
           continue;
         }
-        params = repl_params_;
-        params.min_timestamp = std::max(max_timestamp, params.min_timestamp);
         if (refresh_repl_manager_) {
           refresh_repl_manager_.store(false);
+          params = repl_params_;
+          params.min_timestamp = std::max(max_timestamp, params.min_timestamp);
           params.min_timestamp = std::max<int64_t>(0, params.min_timestamp + repl_ts_skew_);
           repl_ts_skew_ = 0;
           logger_->LogCat(Logger::LEVEL_INFO, "Replicating ", params.master,

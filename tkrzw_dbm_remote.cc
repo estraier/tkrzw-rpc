@@ -1333,9 +1333,6 @@ RemoteDBMReplicatorImpl::RemoteDBMReplicatorImpl(RemoteDBMImpl* dbm)
     std::lock_guard<SpinSharedMutex> lock(dbm_->mutex_);
     dbm_->replicators_.emplace_back(this);
   }
-  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
-  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
-      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
 }
 
 RemoteDBMReplicatorImpl::~RemoteDBMReplicatorImpl() {

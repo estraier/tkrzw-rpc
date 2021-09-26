@@ -202,7 +202,7 @@ three    third
 two      second
 ]]></code></pre>
 
-<p>Stop the server by inputting Ctrl-C on the terminal of the server command.  Such logs as the following are printed.</p>
+<p>Stop the server by inputting Ctrl-C on the terminal of the server command.  As a result, such logs as the following are printed.</p>
 
 <pre class="rawtext"><![CDATA[2021/09/05 12:16:45 [INFO] ======== Starting the process 39438 as a command ========
 2021/09/05 12:16:45 [INFO] Version: rpc_pkg=0.7.2, rpc_lib=1.5.0, core_pkg=1.0.7, core_lib=1.50.0
@@ -822,7 +822,7 @@ $ tkrzw_dbm_remote_util set --address localhost:1978 two second
 $ tkrzw_dbm_remote_util set --address localhost:1978 four fourth
 ]]></code></pre>
 
-<p>You can retrieve update logs and apply them on local databases.  You specify the paths of the database files where update logs are applied.  If the file doesn't exist, a new database is created.  Also, you create the timestamp file by "--ts_file" option to store the last timestamp.  Also, you specify "--wait 0" and "--items 0", not to wait for the future updates.  After that, check the content of the updated database.</p>
+<p>You can retrieve update logs and apply them on local databases.  You specify the paths of the database files where update logs are applied.  If the file doesn't exist, a new database is created.  Also, you create the timestamp file by "--ts_file" option to store the last timestamp.  You specify "--wait 0" and "--items 0", not to wait for the future updates.  After that, check the content of the updated database.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address localhost:1978 \
   --ts_file casket-local.ts --wait 0 --items 0 casket-local.tkh
@@ -843,7 +843,7 @@ one    first
 
 <h3 id="replication_slave">Master-slave Topology</h3>
 
-<p>The simplest topology of data replication is composed of one master and one slave.  Let's reuse the master server and the backup file for this excecise.  To set up a slave server, copy the backup database files and the timestamp file.  Then, run the server command specifying the address of the master server.  As we do this exercise on a single machine and the master uses the port 1978, we use the port 1979 for the slave server.  The slave also have a server ID which must be unique within your service architecture.  Setting of update logs should also be done because the slave can be treated as the master in the future.</p>
+<p>The simplest topology of data replication is composed of one master and one slave.  Let's reuse the master server and the backup file for this excecise.  To set up a slave server, copy the backup database files and the timestamp file.  Then, run the server command specifying the address of the master server.  As we do this exercise on a single machine and the master uses the port 1978, we use the port 1979 for the slave server.  The slave also have a server ID which must be unique within your service architecture.  Yo should configure update logs for the slave server too because the slave can be treated as the master in the future.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ cp casket-local.tkh casket-2.tkh
 $ cp casket-local.ts casket-2.ts
@@ -868,7 +868,7 @@ one    first
 six    sixth
 ]]></code></pre>
 
-<p>Let's assume that the master dies and we promote the slave as the new master.  Stop the master and then add a new slabe.  This time, we don't specify the address of the new master but set it later.</p>
+<p>Let's assume that the master dies and we promote the slave as the new master.  Stop the master and then add a new slave.  This time, we don't specify the address of the new master but set it later.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ cp casket-local.tkh casket-3.tkh
 $ cp casket-local.ts casket-3.ts
@@ -914,6 +914,11 @@ six    sixth
 <p>Whereas the master-slave topology the basics of high availability, it still has downtime against update operations.  Between the time when the master dies and the time when the new master is set up and announced to all clients, updating operations cannot be done.  One workaround is to treat a pre-determined "prime" slave as the acting master.  If clients cannot access the master, they can call updating operations to the acting master.  However, it causes a potential problem of inconsistency.  For some reasons, even if the master is alive, some clients can be unable to access the master and update the acting master.  Then, if the acting master doesn't become the actual master, updates to it are lost.</p>
 
 <p>Dual masters topology can solve this issue.  If the master replicates the prime slave, accidental updates to the prime slave are fed back to the master.  In the context of the dual master topology, the actual master is called "active master" and the prime slave is called "standby master".  To minimize possible inconsistency, clients should usually updates the active master.  Only if they cannot reach the active master, they are allowed to update the standby master.  The point is, each client can determine fallback measures by itself.  It avoids downtime completely at the risk of potential inconsistency which happens when the same record is updated on the active master and the standby master simultaneously.</p>
+
+<p>Stop the servers of the previous exercise and remove related files.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ rm -f casket-*
+]]></code></pre>
 
 <p>Let's set up dual masters.  The server #1 at the port 1978 is the active master and the server #2 at the port 1979 is the standby master.  They replicates each other.</p>
 
