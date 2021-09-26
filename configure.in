@@ -145,7 +145,7 @@ then
 else
   printf 'no\n'
   printf '#================================================================\n' 1>&2
-  printf '# WARNING: protc is not found.\n' 1>&2
+  printf '# WARNING: protoc is not found.\n' 1>&2
   printf '#================================================================\n' 1>&2
 fi
 
