@@ -61,7 +61,7 @@ static void PrintUsageAndDie() {
   P("  --pid_file str : The file path of the store the process ID.\n");
   P("  --daemon : Runs the process as a daemon process.\n");
   P("  --shutdown_wait num : Time in seconds to wait for the service shutdown gracefully."
-    " (default: 5.0)\n");
+    " (default: 3)\n");
   P("  --read_only : Opens the databases in the read-only mode.\n");
   P("\n");
   P("A database config is in \"path#params\" format.\n");
@@ -171,7 +171,7 @@ static int32_t Process(int32_t argc, const char** args) {
   const double repl_wait_time = GetDoubleArgument(cmd_args, "--repl_wait_time", 0, 1.0);
   const std::string pid_file = GetStringArgument(cmd_args, "--pid_file", 0, "");
   const bool as_daemon = CheckMap(cmd_args, "--daemon");
-  g_shutdown_wait = GetDoubleArgument(cmd_args, "--shutdown_wait", 0, 5.0);
+  g_shutdown_wait = GetDoubleArgument(cmd_args, "--shutdown_wait", 0, 3);
   const bool read_only = CheckMap(cmd_args, "--read_only");
   auto dbm_exprs = SearchMap(cmd_args, "", {});
   if (address.find(":") == std::string::npos) {

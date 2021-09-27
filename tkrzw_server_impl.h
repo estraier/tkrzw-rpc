@@ -27,6 +27,7 @@
 
 #include <google/protobuf/message.h>
 #include <grpc/grpc.h>
+#include <grpcpp/alarm.h>
 #include <grpcpp/security/server_credentials.h>
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
@@ -883,7 +884,7 @@ class DBMServiceBase {
       }
       tkrzw::ReplicateResponse response;
       const grpc::Status status = ReplicateProcessOne(
-          &reader, context, *request, &response);
+          &reader, context, *request, &response, false);
       if (!status.ok()) {
         return status;
       }
@@ -896,7 +897,7 @@ class DBMServiceBase {
 
   grpc::Status ReplicateProcessOne(
       std::unique_ptr<MessageQueue::Reader>* reader, grpc::ServerContext* context,
-      const tkrzw::ReplicateRequest& request, tkrzw::ReplicateResponse* response) {
+      const tkrzw::ReplicateRequest& request, tkrzw::ReplicateResponse* response, bool async) {
     if (*reader == nullptr) {
       LogRequest(context, "Replicate", &request);
       if (mq_ == nullptr) {
@@ -912,7 +913,10 @@ class DBMServiceBase {
     }
     int64_t timestamp = 0;
     std::string message;
-    double wait_time = request.wait_time();
+    double wait_time = async ? 0 : request.wait_time();
+    if (async) {
+      wait_time = std::min(0.000001, request.wait_time());
+    }
     while (true) {
       if (context->IsCancelled()) {
         return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
@@ -1411,12 +1415,13 @@ class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
 class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, BEGIN, WRITE, FINISH};
+  static constexpr int32_t WAIT_DIV = 10;
 
   AsyncDBMProcessorReplicate(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
       : service_(service), queue_(queue),
         context_(), stream_(&context_), proc_state_(CREATE),
-        reader_(nullptr), rpc_status_(grpc::Status::OK) {
+        reader_(nullptr), alarm_(), wait_count_(0), rpc_status_(grpc::Status::OK) {
     Proceed();
   }
 
@@ -1430,10 +1435,21 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
         new AsyncDBMProcessorReplicate(service_, queue_);
       }
       response_.Clear();
-      rpc_status_ = service_->ReplicateProcessOne(&reader_, &context_, request_, &response_);
+      rpc_status_ = service_->ReplicateProcessOne(
+          &reader_, &context_, request_, &response_, true);
       if (rpc_status_.ok()) {
-        proc_state_ = WRITE;
-        stream_.Write(response_, this);
+        if (response_.status().code() == tkrzw::Status::INFEASIBLE_ERROR &&
+            wait_count_ < WAIT_DIV) {
+          proc_state_ = WRITE;
+          wait_count_++;
+          const auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(
+              std::max<int64_t>(1, request_.wait_time() * 1000 / WAIT_DIV));
+          alarm_.Set(queue_, deadline, this);
+        } else {
+          proc_state_ = WRITE;
+          wait_count_ = 0;
+          stream_.Write(response_, this);
+        }
       } else {
         proc_state_ = FINISH;;
         stream_.Finish(rpc_status_, this);
@@ -1444,6 +1460,7 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
   }
 
   void Cancel(bool is_shutdown) override {
+    alarm_.Cancel();
     if (is_shutdown) {
       delete this;
     } else if (proc_state_ == WRITE) {
@@ -1463,6 +1480,8 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
   std::unique_ptr<MessageQueue::Reader> reader_;
   tkrzw::ReplicateRequest request_;
   tkrzw::ReplicateResponse response_;
+  grpc::Alarm alarm_;
+  int32_t wait_count_;
   grpc::Status rpc_status_;
 };
 

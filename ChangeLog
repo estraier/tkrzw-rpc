@@ -3,7 +3,7 @@
 	- Release: 0.9.1
 	- Library version: 1.7.0
 
-	- Add test cases.
+	- Fix a bug of Replicate in the asynchronous mode.
 
 2021-09-23  Mikio Hirabayashi  <hirarin@gmail.com>
 
