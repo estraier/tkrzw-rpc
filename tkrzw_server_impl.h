@@ -913,7 +913,7 @@ class DBMServiceBase {
     }
     int64_t timestamp = 0;
     std::string message;
-    double wait_time = async ? std::min(0.000001, request.wait_time()) : request.wait_time();
+    double wait_time = async ? 0 : request.wait_time();
     while (true) {
       if (context->IsCancelled()) {
         return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
@@ -950,6 +950,9 @@ class DBMServiceBase {
           mq_->UpdateTimestamp(-1);
           wait_time = 0;
           continue;
+        }
+        if (async) {
+          mq_->UpdateTimestamp(-1);
         }
         response->set_timestamp(timestamp);
       }
