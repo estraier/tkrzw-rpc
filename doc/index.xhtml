@@ -984,7 +984,7 @@ paris
 
 <h3 id="replication_remove_old_ulog">Remove Old Update Log Files</h3>
 
-<p>Update log files accumulate on each server.  After you make backup database files, you can remove update log files which are older than the backup files.  You can check the timestamp of each update log files by the following command.</p>
+<p>Update log files accumulate on each server.  By default, when the file size exceeds 1GB, a new file with a new ID suffix is created.  After you make backup database files, you can remove update log files which are older than the backup files.  You can check the timestamp of each update log files by the following command.  It shows the file path, the ID, the timestamp of the last record, the oldness of the timestamp, and the filesize.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_ulog_util listfiles casket-ulog
 ./casket-ulog.0000000000    0    1632561080615    5.8 days    1073741824
