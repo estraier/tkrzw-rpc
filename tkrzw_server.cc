@@ -316,6 +316,7 @@ static int32_t Process(int32_t argc, const char** args) {
     std::signal(SIGQUIT, ShutdownServer);
     if (with_async) {
       auto* async_service = (DBMAsyncServiceImpl*)service.get();
+      async_service->StartReplication();
       auto task =
           [&](grpc::ServerCompletionQueue* queue) {
             async_service->OperateQueue(queue, &g_is_shutdown);
@@ -330,8 +331,12 @@ static int32_t Process(int32_t argc, const char** args) {
       for (auto& queue : async_queues) {
         async_service->ShutdownQueue(queue.get());
       }
+      async_service->StopReplication();
     } else {
+      auto* sync_service = (DBMServiceImpl*)service.get();
+      sync_service->StartReplication();
       server->Wait();
+      sync_service->StopReplication();
     }
     logger.Log(Logger::LEVEL_INFO, "The server finished");
   }

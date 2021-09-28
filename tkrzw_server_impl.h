@@ -62,21 +62,18 @@ class DBMServiceBase {
       Logger* logger, int32_t server_id, MessageQueue* mq,
       const ReplicationParameters& repl_params = {})
       : dbms_(dbms), logger_(logger), server_id_(server_id), mq_(mq),
-        repl_params_(repl_params), repl_ts_skew_(0),
-        alive_(true), thread_repl_manager_(), refresh_repl_manager_(true), mutex_() {
-    StartManager();
-  }
+        repl_params_(repl_params), repl_ts_skew_(0), thread_repl_manager_(),
+        repl_alive_(false), refresh_repl_manager_(true), mutex_() {}
 
-  ~DBMServiceBase() {
-    StopManager();
-  }
+  virtual ~DBMServiceBase() = default;
 
-  void StartManager() {
+  void StartReplication() {
+    repl_alive_.store(true);
     thread_repl_manager_ = std::thread([&]{ ManageReplication(); });
   }
 
-  void StopManager() {
-    alive_.store(false);
+  void StopReplication() {
+    repl_alive_.store(false);
     thread_repl_manager_.join();
   }
 
@@ -85,7 +82,7 @@ class DBMServiceBase {
     int64_t max_timestamp = 0;
     ReplicationParameters params = repl_params_;
     bool success = true;
-    while (alive_.load()) {
+    while (repl_alive_.load()) {
       SleepThread(1.0);
       {
         std::lock_guard<SpinMutex> lock(mutex_);
@@ -141,7 +138,7 @@ class DBMServiceBase {
     const int32_t master_id = repl->GetMasterServerID();
     RemoteDBM::ReplicateLog op;
     int64_t count = 0;
-    while (alive_.load() && !refresh_repl_manager_.load()) {
+    while (repl_alive_.load() && !refresh_repl_manager_.load()) {
       int64_t timestamp = 0;
       status = repl->Read(&timestamp, &op);
       if (status == Status::SUCCESS) {
@@ -979,8 +976,8 @@ class DBMServiceBase {
   MessageQueue* mq_;
   ReplicationParameters repl_params_;
   int64_t repl_ts_skew_;
-  std::atomic_bool alive_;
   std::thread thread_repl_manager_;
+  std::atomic_bool repl_alive_;
   std::atomic_bool refresh_repl_manager_;
   SpinMutex mutex_;
 };
