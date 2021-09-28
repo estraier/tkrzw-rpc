@@ -256,7 +256,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         const std::string_view value(
-            value_buf + static_cast<uint32_t>(i) * (i + 1) % value_extra,
+            value_buf + static_cast<uint32_t>(i) * (i + 1U) % value_extra,
           is_random_value ? value_size_dist(misc_mt) : value_size);
         const Status status = stream->Set(key, value, true, ignore_result);
         if (status != Status::SUCCESS) {
@@ -271,7 +271,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
             const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
             const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
             const std::string_view value(
-                value_buf + static_cast<uint32_t>(j * (j + 1)) % value_extra,
+                value_buf + static_cast<uint32_t>(j * (j + 1U)) % value_extra,
                 is_random_value ? value_size_dist(misc_mt) : value_size);
             records.emplace(std::string(key_buf, key_size), std::string(value));
           }
@@ -287,7 +287,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         const std::string_view value(
-            value_buf + static_cast<uint32_t>(i * (i + 1)) % value_extra,
+            value_buf + static_cast<uint32_t>(i * (i + 1U)) % value_extra,
             is_random_value ? value_size_dist(misc_mt) : value_size);
         const Status status = task_dbm->Set(key, value);
         if (status != Status::SUCCESS) {
