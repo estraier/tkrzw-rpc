@@ -61,8 +61,9 @@ class DBMServiceBase {
       const std::vector<std::unique_ptr<ParamDBM>>& dbms,
       Logger* logger, int32_t server_id, MessageQueue* mq,
       const ReplicationParameters& repl_params = {})
-      : dbms_(dbms), logger_(logger), server_id_(server_id), start_time_(GetWallTime()),
-        mq_(mq), repl_params_(repl_params), repl_ts_skew_(0), thread_repl_manager_(),
+      : num_active_calls_(0), dbms_(dbms), logger_(logger), server_id_(server_id),
+        start_time_(GetWallTime()), num_standby_calls_(0), mq_(mq),
+        repl_params_(repl_params), repl_ts_skew_(0), thread_repl_manager_(),
         repl_alive_(false), refresh_repl_manager_(true), mutex_() {}
 
   virtual ~DBMServiceBase() = default;
@@ -294,6 +295,10 @@ class DBMServiceBase {
       out_record = response->add_records();
       out_record->set_first("memory_capacity");
       out_record->set_second(ToString(GetMemoryCapacity()));
+      out_record = response->add_records();
+      out_record->set_first("num_active_calls");
+      out_record->set_second(ToString(num_active_calls_.load() - num_standby_calls_));
+      out_record = response->add_records();
       out_record->set_first("running_time");
       out_record->set_second(SPrintF("%.3f", GetWallTime() - start_time_));
     }
@@ -971,11 +976,14 @@ class DBMServiceBase {
     return grpc::Status::OK;
   }
 
+  std::atomic_int32_t num_active_calls_;
+
  protected:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;
   int32_t server_id_;
   double start_time_;
+  int32_t num_standby_calls_;
   MessageQueue* mq_;
   ReplicationParameters repl_params_;
   int64_t repl_ts_skew_;
@@ -996,144 +1004,168 @@ class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
   grpc::Status Echo(
       grpc::ServerContext* context, const EchoRequest* request,
       EchoResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return EchoImpl(context, request, response);
   }
 
   grpc::Status Inspect(
       grpc::ServerContext* context, const InspectRequest* request,
       InspectResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return InspectImpl(context, request, response);
   }
 
   grpc::Status Get(
       grpc::ServerContext* context, const GetRequest* request,
       GetResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return GetImpl(context, request, response);
   }
 
   grpc::Status GetMulti(
       grpc::ServerContext* context, const GetMultiRequest* request,
       GetMultiResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return GetMultiImpl(context, request, response);
   }
 
   grpc::Status Set(
       grpc::ServerContext* context, const SetRequest* request,
       SetResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return SetImpl(context, request, response);
   }
 
   grpc::Status SetMulti(
       grpc::ServerContext* context, const SetMultiRequest* request,
       SetMultiResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return SetMultiImpl(context, request, response);
   }
 
   grpc::Status Remove(
       grpc::ServerContext* context, const RemoveRequest* request,
       RemoveResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return RemoveImpl(context, request, response);
   }
 
   grpc::Status RemoveMulti(
       grpc::ServerContext* context, const RemoveMultiRequest* request,
       RemoveMultiResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return RemoveMultiImpl(context, request, response);
   }
 
   grpc::Status Append(
       grpc::ServerContext* context, const AppendRequest* request,
       AppendResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return AppendImpl(context, request, response);
   }
 
   grpc::Status AppendMulti(
       grpc::ServerContext* context, const AppendMultiRequest* request,
       AppendMultiResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return AppendMultiImpl(context, request, response);
   }
 
   grpc::Status CompareExchange(
       grpc::ServerContext* context, const CompareExchangeRequest* request,
       CompareExchangeResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return CompareExchangeImpl(context, request, response);
   }
 
   grpc::Status Increment(
       grpc::ServerContext* context, const IncrementRequest* request,
       IncrementResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return IncrementImpl(context, request, response);
   }
 
   grpc::Status CompareExchangeMulti(
       grpc::ServerContext* context, const CompareExchangeMultiRequest* request,
       CompareExchangeMultiResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return CompareExchangeMultiImpl(context, request, response);
   }
 
   grpc::Status Count(
       grpc::ServerContext* context, const CountRequest* request,
       CountResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return CountImpl(context, request, response);
   }
 
   grpc::Status GetFileSize(
       grpc::ServerContext* context, const GetFileSizeRequest* request,
       GetFileSizeResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return GetFileSizeImpl(context, request, response);
   }
 
   grpc::Status Clear(
       grpc::ServerContext* context, const ClearRequest* request,
       ClearResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return ClearImpl(context, request, response);
   }
 
   grpc::Status Rebuild(
       grpc::ServerContext* context, const RebuildRequest* request,
       RebuildResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return RebuildImpl(context, request, response);
   }
 
   grpc::Status ShouldBeRebuilt(
       grpc::ServerContext* context, const ShouldBeRebuiltRequest* request,
       ShouldBeRebuiltResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return ShouldBeRebuiltImpl(context, request, response);
   }
 
   grpc::Status Synchronize(
       grpc::ServerContext* context, const SynchronizeRequest* request,
       SynchronizeResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return SynchronizeImpl(context, request, response);
   }
 
   grpc::Status SearchModal(
       grpc::ServerContext* context, const SearchModalRequest* request,
       SearchModalResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return SearchModalImpl(context, request, response);
   }
 
   grpc::Status Stream(
       grpc::ServerContext* context,
       grpc::ServerReaderWriter<tkrzw::StreamResponse, tkrzw::StreamRequest>* stream) override {
+    ScopedCounter sc(&num_active_calls_);
     return StreamImpl(context, stream);
   }
 
   grpc::Status Iterate(
       grpc::ServerContext* context,
       grpc::ServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest>* stream) override {
+    ScopedCounter sc(&num_active_calls_);
     return IterateImpl(context, stream);
   }
 
   grpc::Status Replicate(
       grpc::ServerContext* context, const tkrzw::ReplicateRequest* request,
       grpc::ServerWriter<tkrzw::ReplicateResponse>* writer) override {
+    ScopedCounter sc(&num_active_calls_);
     return ReplicateImpl(context, request, writer);
   }
 
   grpc::Status ChangeMaster(
       grpc::ServerContext* context, const ChangeMasterRequest* request,
       ChangeMasterResponse* response) override {
+    ScopedCounter sc(&num_active_calls_);
     return ChangeMasterImpl(context, request, response);
   }
 };
@@ -1152,9 +1184,14 @@ class DBMAsyncServiceImpl : public DBMServiceBase, public DBMService::AsyncServi
 
 class AsyncDBMProcessorInterface {
  public:
+  explicit AsyncDBMProcessorInterface(std::atomic_int32_t* num_active_calls)
+      : sc_(num_active_calls) {}
   virtual ~AsyncDBMProcessorInterface() = default;
   virtual void Proceed() = 0;
   virtual void Cancel(bool is_shutdown) = 0;
+
+ private:
+  ScopedCounter<std::atomic_int32_t> sc_;
 };
 
 template<typename REQUEST, typename RESPONSE>
@@ -1170,7 +1207,8 @@ class AsyncDBMProcessor : public AsyncDBMProcessorInterface {
   AsyncDBMProcessor(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue,
       RequestCall request_call, Call call)
-      : service_(service), queue_(queue), request_call_(request_call), call_(call),
+      : AsyncDBMProcessorInterface(&service->num_active_calls_),
+        service_(service), queue_(queue), request_call_(request_call), call_(call),
         context_(), responder_(&context_), proc_state_(CREATE), rpc_status_(grpc::Status::OK) {
     Proceed();
   }
@@ -1226,7 +1264,8 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
   AsyncBackgroundDBMProcessor(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue,
       RequestCall request_call, Call call)
-      : service_(service), queue_(queue), request_call_(request_call), call_(call),
+      : AsyncDBMProcessorInterface(&service->num_active_calls_),
+        service_(service), queue_(queue), request_call_(request_call), call_(call),
         context_(), responder_(&context_), proc_state_(CREATE), rpc_status_(grpc::Status::OK),
         bg_thread_() {
     Proceed();
@@ -1287,7 +1326,8 @@ class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
 
   AsyncDBMProcessorStream(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
-      : service_(service), queue_(queue),
+      : AsyncDBMProcessorInterface(&service->num_active_calls_),
+        service_(service), queue_(queue),
         context_(), stream_(&context_), proc_state_(CREATE),
         rpc_status_(grpc::Status::OK) {
     Proceed();
@@ -1353,7 +1393,8 @@ class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
 
   AsyncDBMProcessorIterate(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
-      : service_(service), queue_(queue),
+      : AsyncDBMProcessorInterface(&service->num_active_calls_),
+        service_(service), queue_(queue),
         context_(), stream_(&context_), proc_state_(CREATE),
         iter_(nullptr), dbm_index_(-1), rpc_status_(grpc::Status::OK) {
     Proceed();
@@ -1417,7 +1458,8 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
 
   AsyncDBMProcessorReplicate(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
-      : service_(service), queue_(queue),
+      : AsyncDBMProcessorInterface(&service->num_active_calls_),
+        service_(service), queue_(queue),
         context_(), stream_(&context_), proc_state_(CREATE),
         reader_(nullptr), rpc_status_(grpc::Status::OK),
         alarm_(), wait_time_(0), bg_thread_(), alive_(true), mutex_() {
@@ -1582,6 +1624,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncDBMProcessor<ChangeMasterRequest, ChangeMasterResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestChangeMaster,
       &DBMServiceBase::ChangeMasterImpl);
+  num_standby_calls_ = num_active_calls_.load();
   while (true) {
     void* tag = nullptr;
     bool ok = false;
