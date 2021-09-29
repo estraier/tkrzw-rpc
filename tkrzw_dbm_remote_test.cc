@@ -566,4 +566,71 @@ TEST_F(RemoteDBMTest, IterateAction) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, iter->Remove());
 }
 
+TEST_F(RemoteDBMTest, Replicate) {
+  auto stream = std::make_unique<grpc::testing::MockClientReader<tkrzw::ReplicateResponse>>();
+  tkrzw::ReplicateRequest request;
+  request.set_min_timestamp(100);
+  request.set_server_id(123);
+  request.set_wait_time(2.0);
+  tkrzw::ReplicateResponse response_start;
+  response_start.set_server_id(2);
+  tkrzw::ReplicateResponse response_read1;
+  response_read1.set_timestamp(110);
+  response_read1.set_server_id(2);
+  response_read1.set_dbm_index(3);
+  response_read1.set_op_type(tkrzw::ReplicateResponse::OP_SET);
+  response_read1.set_key("key1");
+  response_read1.set_value("value1");
+  tkrzw::ReplicateResponse response_read2;
+  response_read2.set_timestamp(120);
+  response_read2.set_server_id(4);
+  response_read2.set_dbm_index(6);
+  response_read2.set_op_type(tkrzw::ReplicateResponse::OP_REMOVE);
+  response_read2.set_key("key2");
+  tkrzw::ReplicateResponse response_read3;
+  response_read3.set_timestamp(130);
+  response_read3.set_server_id(6);
+  response_read3.set_dbm_index(9);
+  response_read3.set_op_type(tkrzw::ReplicateResponse::OP_CLEAR);
+  tkrzw::ReplicateResponse response_read4;
+  response_read4.mutable_status()->set_code(tkrzw::Status::INFEASIBLE_ERROR);
+  response_read4.set_timestamp(140);
+  EXPECT_CALL(*stream, Read(_))
+      .WillOnce(DoAll(SetArgPointee<0>(response_start), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_read1), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_read2), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_read3), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(response_read4), Return(true)));
+  auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
+  EXPECT_CALL(*stub, ReplicateRaw(_, EqualsProto(request)))
+      .WillOnce(Return(stream.release()));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  auto repl = dbm.MakeReplicator();
+  EXPECT_EQ(tkrzw::Status::SUCCESS, repl->Start(100, 123, 2.0));
+  EXPECT_EQ(2, repl->GetMasterServerID());
+  int64_t timestamp = 0;
+  tkrzw::RemoteDBM::ReplicateLog op;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, repl->Read(&timestamp, &op));
+  EXPECT_EQ(110, timestamp);
+  EXPECT_EQ(tkrzw::DBMUpdateLoggerMQ::OP_SET, op.op_type);
+  EXPECT_EQ(2, op.server_id);
+  EXPECT_EQ(3, op.dbm_index);
+  EXPECT_EQ("key1", op.key);
+  EXPECT_EQ("value1", op.value);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, repl->Read(&timestamp, &op));
+  EXPECT_EQ(120, timestamp);
+  EXPECT_EQ(tkrzw::DBMUpdateLoggerMQ::OP_REMOVE, op.op_type);
+  EXPECT_EQ(4, op.server_id);
+  EXPECT_EQ(6, op.dbm_index);
+  EXPECT_EQ("key2", op.key);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, repl->Read(&timestamp, &op));
+  EXPECT_EQ(130, timestamp);
+  EXPECT_EQ(tkrzw::DBMUpdateLoggerMQ::OP_CLEAR, op.op_type);
+  EXPECT_EQ(6, op.server_id);
+  EXPECT_EQ(9, op.dbm_index);
+  EXPECT_EQ(tkrzw::Status::INFEASIBLE_ERROR, repl->Read(&timestamp, &op));
+  EXPECT_EQ(140, timestamp);
+}
+
 // END OF FILE
