@@ -63,7 +63,7 @@ TEST_F(ServerTest, Basic) {
   EXPECT_EQ(tkrzw::Status::SUCCESS,
             dbms[1]->OpenAdvanced(tree_file_path, true, tkrzw::File::OPEN_DEFAULT, tree_params));
   tkrzw::StreamLogger logger;
-  tkrzw::DBMServiceImpl server(dbms, &logger, nullptr);
+  tkrzw::DBMServiceImpl server(dbms, &logger, 1, nullptr);
   grpc::ServerContext context;
   {
     tkrzw::EchoRequest request;
@@ -366,7 +366,7 @@ TEST_F(ServerTest, Stream) {
   EXPECT_EQ(tkrzw::Status::SUCCESS,
             dbms[0]->OpenAdvanced(file_path, true, tkrzw::File::OPEN_DEFAULT, params));
   tkrzw::StreamLogger logger;
-  tkrzw::DBMServiceImpl server(dbms, &logger, nullptr);
+  tkrzw::DBMServiceImpl server(dbms, &logger, 1, nullptr);
   grpc::ServerContext context;
   MockServerReaderWriter<tkrzw::StreamResponse, tkrzw::StreamRequest> stream;
   tkrzw::StreamRequest request_echo;
@@ -447,7 +447,7 @@ TEST_F(ServerTest, Iterator) {
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(key, value));
   }
   tkrzw::StreamLogger logger;
-  tkrzw::DBMServiceImpl server(dbms, &logger, nullptr);
+  tkrzw::DBMServiceImpl server(dbms, &logger, 1, nullptr);
   grpc::ServerContext context;
   MockServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest> stream;
   tkrzw::IterateRequest request_get;
