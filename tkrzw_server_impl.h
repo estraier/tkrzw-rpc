@@ -1477,7 +1477,11 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
   void MonitorQueue() {
     while (alive_.load()) {
       if (proc_state_ == WAITING) {
-        Status status = reader_->Wait(wait_time_);
+        Status status(Status::SUCCESS);
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          status = reader_->Wait(1.0);
+        }
         if (alive_.load() && status == Status::SUCCESS) {
           alarm_.Cancel();
         }
@@ -1499,7 +1503,10 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
         request_.set_wait_time(0);
       }
       response_.Clear();
-      rpc_status_ = service_->ReplicateProcessOne(&reader_, &context_, request_, &response_);
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        rpc_status_ = service_->ReplicateProcessOne(&reader_, &context_, request_, &response_);
+      }
       if (proc_state_ == BEGIN) {
         bg_thread_ = std::thread([&]{ MonitorQueue(); });
       }
