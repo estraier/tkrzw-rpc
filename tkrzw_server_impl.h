@@ -1409,16 +1409,37 @@ class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
 
 class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
  public:
-  enum ProcState {CREATE, BEGIN, WRITE, FINISH};
+  enum ProcState {CREATE, BEGIN, WRITING, WAITING, FINISH};
   static constexpr int32_t WAIT_DIV = 10;
 
   AsyncDBMProcessorReplicate(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
       : service_(service), queue_(queue),
         context_(), stream_(&context_), proc_state_(CREATE),
-        reader_(nullptr), alarm_(), wait_time_(0), wait_count_(0),
-        rpc_status_(grpc::Status::OK) {
+        reader_(nullptr), rpc_status_(grpc::Status::OK),
+        alarm_(), wait_time_(0), bg_thread_(), alive_(true), mutex_() {
     Proceed();
+  }
+
+  ~AsyncDBMProcessorReplicate() {
+    alive_.store(false);
+    cond_.notify_one();
+    if (bg_thread_.joinable()) {
+      bg_thread_.join();
+    }
+  }
+
+  void MonitorQueue() {
+    while (alive_.load()) {
+      if (proc_state_ == WAITING) {
+        Status status = reader_->Wait(wait_time_);
+        if (alive_.load() && status == Status::SUCCESS) {
+          alarm_.Cancel();
+        }
+      }
+      std::unique_lock<std::mutex> lock(mutex_);
+      cond_.wait_for(lock, std::chrono::milliseconds(1000));
+    }
   }
 
   void Proceed() override {
@@ -1426,25 +1447,27 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
       context_.grpc::ServerContext::AsyncNotifyWhenDone(nullptr);
       proc_state_ = BEGIN;
       service_->RequestReplicate(&context_, &request_, &stream_, queue_, queue_, this);
-    } else if (proc_state_ == BEGIN || proc_state_ == WRITE) {
+    } else if (proc_state_ == BEGIN || proc_state_ == WRITING || proc_state_ == WAITING) {
       if (proc_state_ == BEGIN) {
         new AsyncDBMProcessorReplicate(service_, queue_);
-        wait_time_ = request_.wait_time();
+        wait_time_ = request_.wait_time() < 0 ? INT32MAX : request_.wait_time();
         request_.set_wait_time(0);
       }
       response_.Clear();
       rpc_status_ = service_->ReplicateProcessOne(&reader_, &context_, request_, &response_);
+      if (proc_state_ == BEGIN) {
+        bg_thread_ = std::thread([&]{ MonitorQueue(); });
+      }
       if (rpc_status_.ok()) {
         if (response_.status().code() == tkrzw::Status::INFEASIBLE_ERROR &&
-            wait_count_ < WAIT_DIV) {
-          proc_state_ = WRITE;
-          wait_count_++;
+            proc_state_ == WRITING) {
+          proc_state_ = WAITING;
           const auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(
-              std::max<int64_t>(1, wait_time_ * 1000 / WAIT_DIV));
+              std::max<int64_t>(1, wait_time_ * 1000));
           alarm_.Set(queue_, deadline, this);
+          cond_.notify_one();
         } else {
-          proc_state_ = WRITE;
-          wait_count_ = 0;
+          proc_state_ = WRITING;
           stream_.Write(response_, this);
         }
       } else {
@@ -1457,10 +1480,11 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
   }
 
   void Cancel(bool is_shutdown) override {
-    alarm_.Cancel();
     if (is_shutdown) {
       delete this;
-    } else if (proc_state_ == WRITE) {
+    } else if (proc_state_ == WAITING) {
+      Proceed();
+    } else if (proc_state_ == WRITING) {
       proc_state_ = FINISH;;
       stream_.Finish(rpc_status_, this);
     } else {
@@ -1473,14 +1497,17 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
   grpc::ServerCompletionQueue* queue_;
   grpc::ServerContext context_;
   grpc::ServerAsyncWriter<ReplicateResponse> stream_;
-  ProcState proc_state_;
+  std::atomic<ProcState> proc_state_;
   std::unique_ptr<MessageQueue::Reader> reader_;
   tkrzw::ReplicateRequest request_;
   tkrzw::ReplicateResponse response_;
+  grpc::Status rpc_status_;
   grpc::Alarm alarm_;
   double wait_time_;
-  int32_t wait_count_;
-  grpc::Status rpc_status_;
+  std::thread bg_thread_;
+  std::atomic_bool alive_;
+  std::mutex mutex_;
+  std::condition_variable cond_;
 };
 
 inline void DBMAsyncServiceImpl::OperateQueue(
