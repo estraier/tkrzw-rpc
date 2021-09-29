@@ -61,8 +61,8 @@ class DBMServiceBase {
       const std::vector<std::unique_ptr<ParamDBM>>& dbms,
       Logger* logger, int32_t server_id, MessageQueue* mq,
       const ReplicationParameters& repl_params = {})
-      : dbms_(dbms), logger_(logger), server_id_(server_id), mq_(mq),
-        repl_params_(repl_params), repl_ts_skew_(0), thread_repl_manager_(),
+      : dbms_(dbms), logger_(logger), server_id_(server_id), start_time_(GetWallTime()),
+        mq_(mq), repl_params_(repl_params), repl_ts_skew_(0), thread_repl_manager_(),
         repl_alive_(false), refresh_repl_manager_(true), mutex_() {}
 
   virtual ~DBMServiceBase() = default;
@@ -294,6 +294,8 @@ class DBMServiceBase {
       out_record = response->add_records();
       out_record->set_first("memory_capacity");
       out_record->set_second(ToString(GetMemoryCapacity()));
+      out_record->set_first("running_time");
+      out_record->set_second(SPrintF("%.3f", GetWallTime() - start_time_));
     }
     return grpc::Status::OK;
   }
@@ -973,6 +975,7 @@ class DBMServiceBase {
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
   Logger* logger_;
   int32_t server_id_;
+  double start_time_;
   MessageQueue* mq_;
   ReplicationParameters repl_params_;
   int64_t repl_ts_skew_;

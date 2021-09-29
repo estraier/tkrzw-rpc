@@ -506,6 +506,18 @@ China  Beijing
 Korea  Seoul
 ]]></code></pre>
 
+<p>You can check the current status of the server with the "inspect" subcommand.  If the "--index" parameter is negative, the metadata of the server is shown.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util inspect --index -1
+version=0.9.2
+num_dbms=1
+dbm_0_path=casket-2.tkh
+dbm_0_count=38298
+dbm_0_class=HashDBM
+memory_usage=19844000
+running_time=4872.382
+]]></code></pre>
+
 <h3 id="commands_tkrzw_dbm_remote_perf">tkrzw_dbm_remote_perf: Performance Checker</h3>
 
 <p>tkrzw_dbm_remote_perf is a command for checking performance of RPC invodation.  Thereby, you can check performance of remote database operations in various scenarios including multithreading.  A subcommand name comes as the first argument.  Some options and other arguments can follow.</p>
