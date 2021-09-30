@@ -880,7 +880,7 @@ class DBMServiceBase {
 
   grpc::Status ReplicateImpl(
       grpc::ServerContext* context, const tkrzw::ReplicateRequest* request,
-      grpc::ServerWriter<tkrzw::ReplicateResponse>* writer) {
+      grpc::ServerWriterInterface<tkrzw::ReplicateResponse>* writer) {
     std::unique_ptr<MessageQueue::Reader> reader;
     while (true) {
       if (context->IsCancelled()) {

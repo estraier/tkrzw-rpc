@@ -43,8 +43,21 @@ class MockServerReaderWriter : public grpc::ServerReaderWriterInterface<W, R> {
   MOCK_METHOD2_T(Write, bool(const W&, const grpc::WriteOptions));
 };
 
+template <class W>
+class MockServerWriter : public grpc::ServerWriterInterface<W> {
+ public:
+  MockServerWriter() = default;
+  MOCK_METHOD0_T(SendInitialMetadata, void());
+  MOCK_METHOD1_T(NextMessageSize, bool(uint32_t*));
+  MOCK_METHOD2_T(Write, bool(const W&, const grpc::WriteOptions));
+};
+
 MATCHER_P(EqualsProto, rhs, "Equality matcher for protos") {
   return google::protobuf::util::MessageDifferencer::Equivalent(arg, rhs);
+}
+
+MATCHER_P(EqualsProtoStatus, rhs, "Equality matcher for protos") {
+  return arg.status().code() == rhs.status().code();
 }
 
 TEST_F(ServerTest, Basic) {
@@ -524,6 +537,73 @@ TEST_F(ServerTest, Iterator) {
   EXPECT_CALL(stream, Write(EqualsProto(response_get_set), _)).WillOnce(Return(true));
   EXPECT_CALL(stream, Write(EqualsProto(response_get_remove), _)).WillOnce(Return(true));
   grpc::Status status = server.IterateImpl(&context, &stream);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
+}
+
+TEST_F(ServerTest, Replicator) {
+  tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
+  const std::string file_path = tmp_dir.MakeUniquePath();
+  const std::string ulog_prefix = file_path + "-ulog";
+  std::vector<std::unique_ptr<tkrzw::ParamDBM>> dbms(1);
+  dbms[0] = std::make_unique<tkrzw::PolyDBM>();
+  const std::map<std::string, std::string> params =
+      {{"dbm", "TreeDBM"}, {"num_buckets", "10"}};
+  EXPECT_EQ(tkrzw::Status::SUCCESS,
+            dbms[0]->OpenAdvanced(file_path, true, tkrzw::File::OPEN_DEFAULT, params));
+  tkrzw::MessageQueue mq;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, mq.Open(ulog_prefix, 50));
+  tkrzw::DBMUpdateLoggerMQ ulog(&mq, 123, 321, 100);
+  dbms[0]->SetUpdateLogger(&ulog);
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Clear());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set("key", "value"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Append("key", "value", ":"));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Remove("key"));
+  tkrzw::StreamLogger logger;
+  tkrzw::DBMServiceImpl server(dbms, &logger, 2, &mq);
+  grpc::ServerContext context;
+  MockServerWriter<tkrzw::ReplicateResponse> stream;
+  tkrzw::ReplicateRequest request_start;
+  request_start.set_min_timestamp(100);
+  request_start.set_server_id(1);
+  request_start.set_wait_time(0);
+  tkrzw::ReplicateResponse response_start;
+  response_start.set_server_id(2);
+  tkrzw::ReplicateResponse response_write1;
+  response_write1.set_timestamp(100);
+  response_write1.set_server_id(123);
+  response_write1.set_dbm_index(321);
+  response_write1.set_op_type(tkrzw::ReplicateResponse::OP_CLEAR);
+  tkrzw::ReplicateResponse response_write2;
+  response_write2.set_timestamp(100);
+  response_write2.set_server_id(123);
+  response_write2.set_dbm_index(321);
+  response_write2.set_op_type(tkrzw::ReplicateResponse::OP_SET);
+  response_write2.set_key("key");
+  response_write2.set_value("value");
+  tkrzw::ReplicateResponse response_write3;
+  response_write3.set_timestamp(100);
+  response_write3.set_server_id(123);
+  response_write3.set_dbm_index(321);
+  response_write3.set_op_type(tkrzw::ReplicateResponse::OP_SET);
+  response_write3.set_key("key");
+  response_write3.set_value("value:value");
+  tkrzw::ReplicateResponse response_write4;
+  response_write4.set_timestamp(100);
+  response_write4.set_server_id(123);
+  response_write4.set_dbm_index(321);
+  response_write4.set_op_type(tkrzw::ReplicateResponse::OP_REMOVE);
+  response_write4.set_key("key");
+  tkrzw::ReplicateResponse response_end;
+  response_end.mutable_status()->set_code(tkrzw::Status::INFEASIBLE_ERROR);
+  EXPECT_CALL(stream, Write(EqualsProto(response_start), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_write1), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_write2), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_write3), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_write4), _)).WillOnce(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProtoStatus(response_end), _))
+      .WillOnce(Return(true)).WillOnce(Return(false));
+  grpc::Status status = server.ReplicateImpl(&context, &request_start, &stream);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
 }
