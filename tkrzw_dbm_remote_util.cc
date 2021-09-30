@@ -705,7 +705,7 @@ static int32_t ProcessChangeMaster(int32_t argc, const char** args) {
 static int32_t ProcessReplicate(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"--address", 1}, {"--timeout", 1}, {"--index", 1},
-    {"--ts_file", 1}, {"--ts_from_dbm", 1},{"--ts_skew", 1},
+    {"--ts_file", 1}, {"--ts_from_dbm", 0},{"--ts_skew", 1},
     {"--server_id", 1}, {"--wait", 1},
     {"--items", 1}, {"--escape", 0},
   };
@@ -795,6 +795,9 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   }
   RemoteDBM::ReplicateLog op;
   int64_t count = 0;
+  int64_t count_ops_set = 0;
+  int64_t count_ops_remove = 0;
+  int64_t count_ops_clear = 0;
   int64_t max_timestamp = -1;
   const int64_t mod_num_items = num_items > 0 ? num_items : INT64MAX;
   while (g_process_alive && count < mod_num_items) {
@@ -830,6 +833,7 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
         DBM* local_dbm = local_dbms[op.dbm_index].get();
         switch (op.op_type) {
           case DBMUpdateLoggerMQ::OP_SET:
+            count_ops_set++;
             status = local_dbm->Set(op.key, op.value);
             if (status != Status::SUCCESS) {
               EPrintL("Set failed: ", status);
@@ -837,13 +841,15 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
             }
             break;
           case DBMUpdateLoggerMQ::OP_REMOVE:
+            count_ops_remove++;
             status = local_dbm->Remove(op.key);
-            if (status != Status::SUCCESS) {
+            if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
               EPrintL("Remove failed: ", status);
               ok = false;
             }
             break;
           case DBMUpdateLoggerMQ::OP_CLEAR:
+            count_ops_clear++;
             status = local_dbm->Clear();
             if (status != Status::SUCCESS) {
               EPrintL("Clear failed: ", status);
@@ -876,7 +882,8 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   }
   repl.reset(nullptr);
   if (!local_dbms.empty()) {
-    PrintL("Done: timestamp=", max_timestamp);
+    PrintL("Done: timestamp=", max_timestamp, ", set=", count_ops_set,
+           ", remove=", count_ops_remove,  ", clear=", count_ops_clear);
   }
   if (!ts_file.empty() && max_timestamp >= 0) {
     status = WriteFileAtomic(ts_file, ToString(max_timestamp) + "\n");

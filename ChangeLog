@@ -4,6 +4,7 @@
 	- Library version: 1.8.0
 
 	- Fix a bug of Replicate in the asynchronous mode.
+	- Add metadata for the inspect command.
 
 2021-09-25  Mikio Hirabayashi  <hirarin@gmail.com>
 

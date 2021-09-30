@@ -398,7 +398,7 @@ world
 
 <p>The following command starts the database service as a daemon process.  Usually, it is run by the start up script of the system.</p>
 
-<pre><code class="language-shell-session"><![CDATA[tkrzw_server --address 0.0.0.0:1978 \
+<pre><code class="language-shell-session"><![CDATA[tkrzw_server --address "0.0.0.0:1978" \
   --async --threads 4 \
   --log_file /var/log/tkrzw_server.log \
   --pid_file /run/tkrzw_server.pid \
@@ -410,16 +410,16 @@ world
 
 <pre><code class="language-shell-session"><![CDATA[if test -f /run/tkrzw_server.pid
 then
-  kill -TERM `cat /run/tkrzw_server.pid`
+  kill -TERM $(cat /run/tkrzw_server.pid)
 fi
 ]]></code></pre>
 
 <p>For log rotation, you run the following script.  Usually, it is run by a cron script invoked periodically.</p>
 
-<pre><code class="language-shell-session"><![CDATA[mv /var/log/tkrzw_server.log /var/log/tkrzw_server.log.`date "+%Y%m%d%H%M%S"`
+<pre><code class="language-shell-session"><![CDATA[mv /var/log/tkrzw_server.log /var/log/tkrzw_server.log.$(date "+%Y%m%d%H%M%S")
 if test -f /run/tkrzw_server.pid
 then
-  kill -HUP `cat /run/tkrzw_server.pid`
+  kill -HUP $(cat /run/tkrzw_server.pid)
 fi
 ]]></code></pre>
 
@@ -821,32 +821,32 @@ int main(int argc, char** argv) {
 
 <p>On another terminal, call update queries to the master.  The master database comes to have two records "one" and "two".  The two correspoinding update logs are stored in the update log file.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address localhost:1978 one first
-$ tkrzw_dbm_remote_util set --address localhost:1978 two second
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address "localhost:1978" one first
+$ tkrzw_dbm_remote_util set --address "localhost:1978" two second
 ]]></code></pre>
 
 <p>Check the content of the update log file.  This command doesn't finish but waits for the next updates.  Keep it unfinished.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address localhost:1978
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address "localhost:1978"
 1632472502596  1  0  SET  one  first
 1632472506668  1  0  SET  two  second
 ]]></code></pre>
 
 <p>On another terminal, send more update queries.  Two new update logs appear on the above terminal.  Then, finish the command on the above terminal by inputting Ctrl-C.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address localhost:1978 three third
-$ tkrzw_dbm_remote_util set --address localhost:1978 four fourth
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address "localhost:1978" three third
+$ tkrzw_dbm_remote_util set --address "localhost:1978" four fourth
 ]]></code></pre>
 
 <p>You can retrieve update logs and apply them on local databases.  You specify the paths of the database files where update logs are applied.  If the file doesn't exist, a new database is created.  Also, you create the timestamp file by "--ts_file" option to store the last timestamp.  You specify "--wait 0" and "--items 0", not to wait for the future updates.  After that, check the content of the updated database.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address localhost:1978 \
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address "localhost:1978" \
   --ts_file casket-local.ts --wait 0 --items 0 casket-local.tkh
 Opening DBM: casket-local.tkh
 Using the minimum timestamp: 0
 Connecting to the server: localhost:1978
 Doing replication: localhost:1978
-Done: timestamp=1632474357697
+Done: timestamp=1632474357697, set=4, remove=0, clear=0
 
 $ tkrzw_dbm_util list casket-local.tkh
 three  third
@@ -872,10 +872,10 @@ $ tkrzw_server --address "localhost:1979" \
 
 <p>The update logs between the current time and the timestamp stored in the timestamp file are retrieved and applied to the database automatically.  And, updates from now on are also synchronized on the spot.  To confirm it, put some records onto the master server and the list up the content of the slave database.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address localhost:1978 five fifth
-$ tkrzw_dbm_remote_util set --address localhost:1978 six sixth
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address "localhost:1978" five fifth
+$ tkrzw_dbm_remote_util set --address "localhost:1978" six sixth
 
-$ tkrzw_dbm_remote_util list --address localhost:1979
+$ tkrzw_dbm_remote_util list --address "localhost:1979"
 five   fifth
 three  third
 two    second
@@ -897,7 +897,7 @@ $ tkrzw_server --address "localhost:1980" \
 
 <p>At this point, replication is not started.  Thus, the records "five" and "six" doesn't exist.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address localhost:1980
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address "localhost:1980"
 three  third
 two    second
 four   fourth
@@ -906,13 +906,13 @@ one    first
 
 <p>Let's start the replication by setting the master address to the slave server dynamically.  In this case, "localhost:1980" is the new slave and "localhost:1979" is the new master.  "--ts_skew -10000" means that replication starts from a point 10 seconds before the timestamp of the timestamp file.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address localhost:1980 \
-  --ts_skew -10000 localhost:1979
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address "localhost:1980" \
+  --ts_skew -10000 "localhost:1979"
 ]]></code></pre>
 
 <p>Confirm that the content has been synchronized automatically.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address localhost:1980
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address "localhost:1980"
 five   fifth
 three  third
 two    second
@@ -931,12 +931,12 @@ six    sixth
 
 <p>Dual masters topology can solve this issue.  If the master replicates the prime slave, accidental updates to the prime slave are fed back to the master.  In the context of the dual master topology, the actual master is called "active master" and the prime slave is called "standby master".  To minimize possible inconsistency, clients should usually updates the active master.  Only if they cannot reach the active master, they are allowed to update the standby master.  The point is, each client can determine fallback measures by itself.  It avoids downtime completely at the risk of potential inconsistency which happens when the same record is updated on the active master and the standby master simultaneously.</p>
 
-<p>Stop the servers of the previous exercise and remove related files.</p>
+<p>Let's set up dual masters.  Before that, stop the servers of the previous exercise and remove related files.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ rm -f casket-*
 ]]></code></pre>
 
-<p>Let's set up dual masters.  The server #1 at the port 1978 is the active master and the server #2 at the port 1979 is the standby master.  They replicates each other.</p>
+<p>The server #1 at the port 1978 is the active master and the server #2 at the port 1979 is the standby master.  They replicates each other.  Note that the server ID must be unique.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1978" \
   --async --threads 8 --log_level debug \
@@ -971,7 +971,7 @@ seoul
   "casket-3.tkh"
 ]]></code></pre>
 
-<p>Confirm that the new database is synchronized automatically.</p>
+<p>Confirm that the new database has been synchronized automatically.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address "localhost:1980"
 japan   tokyo
@@ -980,8 +980,8 @@ korea   seoul
 
 <p>Modify the master address of the new active master to the new standby master.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address localhost:1979 \
-  --ts_skew -10000 localhost:1980
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address "localhost:1979" \
+  --ts_skew -10000 "localhost:1980"
 ]]></code></pre>
 
 <p>Confirm that the mutal replication is working.</p>
@@ -994,26 +994,98 @@ $ tkrzw_dbm_remote_util get --address "localhost:1979" france
 paris
 ]]></code></pre>
 
+<p>You might be sceptical whether each and every update on one server is consistently replicated to the other server.  Then, let's do a load test where 10 threads updates the active master server simultaneously 100 million times in total.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_perf wicked --address "localhost:1979" --iter 100000 --threads 10
+]]></code></pre>
+
+<p>Confirm that the number of records are the same as each other.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util inspect --address "localhost:1979" --index -1
+...
+dbm_0_count=293529
+...
+
+$ tkrzw_dbm_remote_util inspect --address "localhost:1980" --index -1
+...
+dbm_0_count=293529
+...
+]]></code></pre>
+
 <p>If you add more slaves, usually they specify the active master as their master.  It minimizes the delay of propagation of updates.  And, the operation to modify the master setting is simple.  Although it is possible for the slaves to follow the standby master, the delay is larger and the switching operation is more complex.</p>
 
 <p>You use multiple machines in the actual production service.  Moreover, you can shard one logical database into multiple shards each of which is composed of dual masters.  If the number of servers in operation is more than ten, you should automate the system configuration and server setups, combined with a monitoring system.</p>
+
+<h3 id="replication_manage_backup">Managing Backup Files</h3>
+
+<p>Basically, backup files should be stored on a different host from the server hosts, for the sake of fault tolerance.  Let's call the host to store backup files as "storage host".  When you make a backup file for the first time, you should make an empty database file with proper tuning parameters, on the storage host.  For example, if you expect the number of records is 10 million, the number of hash buckets of HashDBM should be about 20 million.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_util create --buckets 20m casket-latest.tkh
+]]></code></pre>
+
+<p>You can also make a backup file on a database server, which can be a master or a slave.  Then, copy the file to the storage host.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util sync --address "server001:1978" \
+  --hard "make_backup=latest"
+$ scp server001:/var/db/casket.tkh.backup.latest casket-latest.tkh
+]]></code></pre>
+
+<p>Then, you should copy the latest backup file as another file named after the date suffix like "20200211023001".</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ cp casket-latest.tkh casket-$(date "+%Y%m%d%H%M%S").tkh
+]]></code></pre>
+
+<p>Periodically, you update the latest backup file by replicating updates from a database server, which should be the master server to minimize the delay.  The timestamp at which the replication resumes is specified by the timestamp file set by the "--ts_file" option.  If the timestamp file doesn't exist or is empty, the "--ts_from_dbm" option extracts the timestamp from the database file.  If the both didn't work, replication would start from the oldest update log on the server.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address "server001:1978" \
+  --ts_file casket-latest.ts --ts_from_dbm --ts_skew -10000 \
+  --wait 0 --items 0 casket-latest.tkh
+]]></code></pre>
+
+<p>You can also make a full backup by the above "tkrzw_dbm_remote_util sync" command.  However, making a full backup blocks the operations of the server for seconds or minutes.  Thus, differential backup by replication is usually preferrable.</p>
+
+<p>Sometimes, you can also rebuild the backup file to optimize for time/space efficiency.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_util rebuild casket-latest.tkh
+]]></code></pre>
+
+<p>After that, you should copy the latest backup file as a file with the date suffix in the same way described above.  You remove oldest database files if the storage usage is close to the capacity.</p>
+
+<p>You can check the timestamp value by reading the content of the time stamp file.  Note that the value is in milliseconds and calculated by the clock on the mater server.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ cat casket-latest.ts
+1632744191015
+]]></code></pre>
+
+<p>In the above procedures, you don't save the timestamp file for each backup file.  However, you can use the timestamp embedded in the backup database file.  Note that the timestamp in the database file is in seconds so you should multiply it by 1000 to specify as a timestamp for Tkrzw-RPC.  This information is used by the "--ts_from_dbm" option of "tkrzw_dbm_remote_util" and "--repl_ts_from_dbm" of "tkrzw_server".</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_util inspect casket-20210930200228.tkh
+Inspection:
+  ...
+  timestamp=1632973702.855152
+...
+]]></code></pre>
+
+<p>Note that the timestamp of the database represents the time when the database is closed by a writer process last time.  Thus, if you have opened the backup database in the writable mode, this method is not feasible.  Anyway, you should never update the backup files with date suffixes.</p>
 
 <h3 id="replication_remove_old_ulog">Remove Old Update Log Files</h3>
 
 <p>Update log files accumulate on each server.  By default, when the file size exceeds 1GB, a new file with a new ID suffix is created.  After you make backup database files, you can remove update log files which are older than the backup files.  You can check the timestamp of each update log files by the following command.  It shows the file path, the ID, the timestamp of the last record, the oldness of the timestamp, and the filesize.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_ulog_util listfiles casket-ulog
-./casket-ulog.0000000000    0    1632561080615    5.8 days    1073741824
-./casket-ulog.0000000001    1    1632652635815    4.6 days    1073743335
-./casket-ulog.0000000002    2    1632744191015    3.5 days    1073748723
-./casket-ulog.0000000003    3    1632835746215    2.4 days    1073745432
-./casket-ulog.0000000004    4    1632927301415    1.3 days    1073742564
+./casket-ulog.0000000000    0    1632561080673    5.8 days    1073741824
+./casket-ulog.0000000001    1    1632652635825    4.6 days    1073743335
+./casket-ulog.0000000002    2    1632744191054    3.5 days    1073748723
+./casket-ulog.0000000003    3    1632835746292    2.4 days    1073745432
+./casket-ulog.0000000004    4    1632927301421    1.3 days    1073742564
 ]]></code></pre>
 
 <p>You can remove update log files except for the latest one while the server is running.  If you want to remove files whose timestamp is older than 3 days ago, you run the following command.  Don't forget "-" of "-3D".</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_ulog_util removeoldfiles --timestamp "-3D" --exclude_latest casket-ulog
 ]]></code></pre>
+
+<p>In theory, after you make a full backup or a differential backup, you can remove all update whose timestamp is older than the timestamp of the backup file.  However, retaining update logs for a decent period is a good practice for traceability.  It is also a good practice to copy the old update log files to the storage host before removing them.</p>
 
 <h2 id="faq">Frequently Asked Questions</h2>
 

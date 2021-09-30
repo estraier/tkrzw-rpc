@@ -1454,7 +1454,6 @@ class AsyncDBMProcessorIterate : public AsyncDBMProcessorInterface {
 class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, BEGIN, WRITING, WAITING, FINISH};
-  static constexpr int32_t WAIT_DIV = 10;
 
   AsyncDBMProcessorReplicate(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)

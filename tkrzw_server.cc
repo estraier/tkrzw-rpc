@@ -138,7 +138,7 @@ static int32_t Process(int32_t argc, const char** args) {
     {"--version", 0}, {"--address", 1}, {"--async", 0}, {"--threads", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
     {"--server_id", 1}, {"--ulog_prefix", 1}, {"--ulog_max_file_size", 1},
-    {"--repl_master", 1}, {"--repl_ts_file", 1}, {"--repl_ts_from_dbm", 1},
+    {"--repl_master", 1}, {"--repl_ts_file", 1}, {"--repl_ts_from_dbm", 0},
     {"--repl_ts_skew", 1}, {"--repl_wait", 1},
     {"--pid_file", 1}, {"--daemon", 0}, {"--shutdown_wait", 1},
     {"--read_only", 0},
@@ -374,6 +374,7 @@ int main(int argc, char** argv) {
     tkrzw::EPrintL(e.what());
     rv = 1;
   }
+  google::protobuf::ShutdownProtobufLibrary();
   return rv;
 }
 
