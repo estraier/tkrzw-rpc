@@ -1461,6 +1461,7 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
         service_(service), queue_(queue),
         context_(), stream_(&context_), proc_state_(CREATE),
         reader_(nullptr), rpc_status_(grpc::Status::OK),
+        deadline_(std::chrono::system_clock::now()),
         alarm_(), wait_time_(0), bg_thread_(), alive_(true), mutex_() {
     Proceed();
   }
@@ -1486,7 +1487,7 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
         }
       }
       std::unique_lock<std::mutex> lock(mutex_);
-      cond_.wait_for(lock, std::chrono::milliseconds(1000));
+      cond_.wait_for(lock, std::chrono::milliseconds(50));
     }
   }
 
@@ -1511,14 +1512,15 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
       }
       if (rpc_status_.ok()) {
         if (response_.status().code() == tkrzw::Status::INFEASIBLE_ERROR &&
-            proc_state_ == WRITING) {
+            proc_state_ == WRITING &&
+            std::chrono::system_clock::now() <= deadline_) {
           proc_state_ = WAITING;
-          const auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(
-              std::max<int64_t>(1, wait_time_ * 1000));
-          alarm_.Set(queue_, deadline, this);
+          alarm_.Set(queue_, deadline_, this);
           cond_.notify_one();
         } else {
           proc_state_ = WRITING;
+          deadline_ = std::chrono::system_clock::now() + std::chrono::milliseconds(
+              std::max<int64_t>(1, wait_time_ * 1000));
           stream_.Write(response_, this);
         }
       } else {
@@ -1553,6 +1555,7 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
   tkrzw::ReplicateRequest request_;
   tkrzw::ReplicateResponse response_;
   grpc::Status rpc_status_;
+  std::chrono::time_point<std::chrono::system_clock> deadline_;
   grpc::Alarm alarm_;
   double wait_time_;
   std::thread bg_thread_;
