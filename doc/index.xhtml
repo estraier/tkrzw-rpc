@@ -94,7 +94,7 @@ window.onload = function(){
 
 <p>Tkrzw-RPC is a package of a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to manage key-value storages in various algorithms.  With Tkrzw, applications can handle database files efficiently in the process without any network overhead.  However, multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves this issue by using a server program which manages database files and allowing other processes to access the contents via RPC.</p>
 
-<div id="networdstructure" class="illustration"><img src="network.svg"/></div>
+<div class="illustration"><img src="network.svg"/></div>
 
 <p>One server process can handle multiple databases, each of which can be different data structure and tuning parameters.  Each database is an instance of the <a href="https://dbmx.net/tkrzw/#polydbm_overview">PolyDBM</a> class, which is an adapter class to handle the following classes with the same interface.</p>
 
@@ -803,7 +803,7 @@ int main(int argc, char** argv) {
 
 <p>We call the server to which update queries are issued, as "master".  We call another server which monitors the updates on the master and replicate them, as "slave".  The master has to store update logs locally, which is realized by the message queue feature of the core library of Tkrzw.  The slave calls the "Replicate" RPC call to the master to fetch the update logs since a timestamp.  The slave applies the fetched updates on its own databases so that the databases on the master and the databases on the slave are synchronized.  The slave manaages the last timestamp of the fetched updates and use it to resume replication effectively.</p>
 
-<div id="networdstructure" class="illustration"><img src="replication-simple.svg"/></div>
+<div class="illustration"><img src="replication-simple.svg"/></div>
 
 <p>As the databases on the master and the slave have the same content with only a slight delay, clients can retrieve data from either of them.  You can set up two or more slaves for load balancing of retrieval queries.  Updating queries must be called only to the master for consistency.</p>
 
@@ -930,6 +930,8 @@ six    sixth
 <p>Whereas the master-slave topology provides the basics of high availability, it still has downtime against update operations.  Between the time when the master dies and the time when the new master is set up and announced to the clients, updating operations cannot be done.  One workaround is to treat a pre-determined "prime" slave as the acting master.  If clients cannot access the master, they can call updating operations to the acting master.  However, it causes a potential problem of inconsistency.  For some reasons, even if the master is alive, some clients can be unable to access the master so they update the acting master.  Then, if the acting master doesn't become the actual master, updates to the acting master are lost.</p>
 
 <p>Dual masters topology can solve this issue.  If the master replicates the prime slave, accidental updates to the prime slave are fed back to the master.  In the context of the dual master topology, the actual master is called "active master" and the prime slave is called "standby master".  To minimize possible inconsistency, clients should usually updates the active master.  Only if they cannot reach the active master, they are allowed to update the standby master.  The point is, each client can determine fallback measures by itself.  It avoids downtime completely at the risk of potential inconsistency which happens when the same record is updated on the active master and the standby master simultaneously.</p>
+
+<div class="illustration"><img src="dual-masters.svg"/></div>
 
 <p>Let's set up dual masters.  Before that, stop the servers of the previous exercise and remove related files.</p>
 
