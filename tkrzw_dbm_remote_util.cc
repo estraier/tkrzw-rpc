@@ -722,7 +722,7 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, -1);
   const std::string ts_file = GetStringArgument(cmd_args, "--ts_file", 0, "");
   const bool ts_from_dbm = CheckMap(cmd_args, "--ts_from_dbm");
-  const int64_t ts_skew = GetIntegerArgument(cmd_args, "--ts_set", 0, 0);
+  const int64_t ts_skew = GetIntegerArgument(cmd_args, "--ts_skew", 0, 0);
   const int32_t server_id = GetIntegerArgument(cmd_args, "--server_id", 0, 0);
   const double wait_time = GetDoubleArgument(cmd_args, "--wait", 0, 1.0);
   const int64_t num_items = GetIntegerArgument(cmd_args, "--items", 0, INT64MAX);
@@ -800,9 +800,16 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
   int64_t count_ops_clear = 0;
   int64_t max_timestamp = -1;
   const int64_t mod_num_items = num_items > 0 ? num_items : INT64MAX;
+  bool first = true;
   while (g_process_alive && count < mod_num_items) {
     int64_t timestamp = 0;
     status = repl->Read(&timestamp, &op);
+    if (first && !local_dbms.empty()) {
+      const double diff = GetWallTime() - timestamp / 1000.0;
+      std::string ts_expr = MakeRelativeTimeExpr(diff);
+      PrintL("First: timestamp=", timestamp, " (", ts_expr, ")");
+    }
+    first = false;
     if (status == Status::SUCCESS) {
       max_timestamp = std::max(timestamp, max_timestamp);
       if (dbm_index >= 0 && op.dbm_index != dbm_index) {

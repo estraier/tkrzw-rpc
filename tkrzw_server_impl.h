@@ -63,8 +63,8 @@ class DBMServiceBase {
       const ReplicationParameters& repl_params = {})
       : num_active_calls_(0), dbms_(dbms), logger_(logger), server_id_(server_id),
         start_time_(GetWallTime()), num_standby_calls_(0), mq_(mq),
-        repl_params_(repl_params), repl_ts_skew_(0), thread_repl_manager_(),
-        repl_alive_(false), refresh_repl_manager_(true), mutex_() {}
+        repl_params_(repl_params), thread_repl_manager_(),
+        repl_max_timestamp_(0), repl_alive_(false), refresh_repl_manager_(true), mutex_() {}
 
   virtual ~DBMServiceBase() = default;
 
@@ -80,7 +80,6 @@ class DBMServiceBase {
 
   void ManageReplication() {
     logger_->Log(Logger::LEVEL_DEBUG, "Starting the replication manager");
-    int64_t max_timestamp = 0;
     ReplicationParameters params = repl_params_;
     bool success = true;
     while (repl_alive_.load()) {
@@ -93,33 +92,26 @@ class DBMServiceBase {
         if (refresh_repl_manager_) {
           refresh_repl_manager_.store(false);
           params = repl_params_;
-          params.min_timestamp = std::max(max_timestamp, params.min_timestamp);
-          params.min_timestamp = std::max<int64_t>(0, params.min_timestamp + repl_ts_skew_);
-          repl_ts_skew_ = 0;
           logger_->LogCat(Logger::LEVEL_INFO, "Replicating ", params.master,
                           " with the min_timestamp ", params.min_timestamp);
           success = true;
         }
       }
-      success = DoReplicationSession(&params, success);
-      max_timestamp = std::max(max_timestamp, params.min_timestamp);
+      success = DoReplicationSession(params, success);
     }
     logger_->Log(Logger::LEVEL_DEBUG, "The replicatin manager finished");
   }
 
-  void SaveTimestamp(const ReplicationParameters& params) {
-    if (params.ts_file.empty()) {
-      return;
-    }
-    const Status status = WriteFileAtomic(params.ts_file, ToString(params.min_timestamp) + "\n");
+  void SaveTimestamp(const std::string& path) {
+    const Status status = WriteFileAtomic(path, ToString(repl_max_timestamp_.load()) + "\n");
     if (status != Status::SUCCESS) {
       logger_->LogCat(Logger::LEVEL_ERROR, "unable to save the timestamp: ", status);
     }
   }
 
-  bool DoReplicationSession(ReplicationParameters* params, bool success) {
+  bool DoReplicationSession(const ReplicationParameters& params, bool success) {
     RemoteDBM master;
-    Status status = master.Connect(params->master);
+    Status status = master.Connect(params.master);
     if (status != Status::SUCCESS) {
       if (success) {
         logger_->Log(Logger::LEVEL_WARN, "unable to reach the master");
@@ -127,11 +119,11 @@ class DBMServiceBase {
       return false;
     }
     if (!success) {
-      logger_->LogCat(Logger::LEVEL_INFO, "Reconnected to ", params->master,
-                      " with the min_timestamp ", params->min_timestamp);
+      logger_->LogCat(Logger::LEVEL_INFO, "Reconnected to ", params.master,
+                      " with the min_timestamp ", params.min_timestamp);
     }
     auto repl = master.MakeReplicator();
-    status = repl->Start(params->min_timestamp, server_id_, params->wait_time);
+    status = repl->Start(params.min_timestamp, server_id_, params.wait_time);
     if (status != Status::SUCCESS) {
       logger_->LogCat(Logger::LEVEL_WARN, "replication error: ", status);
       return false;
@@ -142,11 +134,13 @@ class DBMServiceBase {
     while (repl_alive_.load() && !refresh_repl_manager_.load()) {
       int64_t timestamp = 0;
       status = repl->Read(&timestamp, &op);
+      if (count == 0 && logger_->CheckLevel(Logger::LEVEL_INFO)) {
+        const double diff = GetWallTime() - timestamp / 1000.0;
+        std::string ts_expr = MakeRelativeTimeExpr(diff);
+        logger_->LogCat(Logger::LEVEL_INFO, "replication start: master_id=", master_id,
+                        ", timestamp=", timestamp, " (", ts_expr, ")");
+      }
       if (status == Status::SUCCESS) {
-        if (count == 0) {
-          logger_->LogCat(Logger::LEVEL_INFO, "replication start: master_id=", master_id,
-                          ", timestamp=", timestamp);
-        }
         if (op.dbm_index < 0 || op.dbm_index >= static_cast<int32_t>(dbms_.size())) {
           logger_->LogCat(Logger::LEVEL_ERROR, "out-of-range DBM index");
           return true;
@@ -156,7 +150,7 @@ class DBMServiceBase {
           return true;
         }
         DBM* dbm = dbms_[op.dbm_index].get();
-        params->min_timestamp = std::max(timestamp, params->min_timestamp);
+        repl_max_timestamp_.store(std::max(timestamp, repl_max_timestamp_.load()));
         switch (op.op_type) {
           case DBMUpdateLoggerMQ::OP_SET: {
             logger_->LogCat(Logger::LEVEL_DEBUG, "replication: ts=", timestamp,
@@ -200,18 +194,20 @@ class DBMServiceBase {
           default:
             break;
         }
-        if (count % TIMESTAMP_FILE_SYNC_FREQ == 0) {
-          SaveTimestamp(*params);
-        }
-        count++;
       } else if (status == Status::INFEASIBLE_ERROR) {
-        params->min_timestamp = std::max(timestamp, params->min_timestamp);
+        repl_max_timestamp_.store(std::max(timestamp, repl_max_timestamp_.load()));
       } else {
         logger_->LogCat(Logger::LEVEL_WARN, "replication error: ", status);
         break;
       }
+      if (count % TIMESTAMP_FILE_SYNC_FREQ == 0 && !params.ts_file.empty()) {
+        SaveTimestamp(params.ts_file);
+      }
+      count++;
     }
-    SaveTimestamp(*params);
+    if (!params.ts_file.empty()) {
+      SaveTimestamp(params.ts_file);
+    }
     return true;
   }
 
@@ -295,6 +291,9 @@ class DBMServiceBase {
       out_record = response->add_records();
       out_record->set_first("memory_capacity");
       out_record->set_second(ToString(GetMemoryCapacity()));
+      out_record = response->add_records();
+      out_record->set_first("repl_max_timestamp");
+      out_record->set_second(ToString(repl_max_timestamp_.load()));
       out_record = response->add_records();
       out_record->set_first("num_active_calls");
       out_record->set_second(ToString(num_active_calls_.load() - num_standby_calls_));
@@ -971,7 +970,9 @@ class DBMServiceBase {
     LogRequest(context, "ChangeMaster", request);
     std::lock_guard<SpinMutex> lock(mutex_);
     repl_params_.master = request->master();
-    repl_ts_skew_ = request->timestamp_skew();
+    repl_params_.min_timestamp =
+        std::max<int64_t>(0, repl_max_timestamp_.load() + request->timestamp_skew());
+    repl_max_timestamp_.store(repl_params_.min_timestamp);
     refresh_repl_manager_.store(true);
     return grpc::Status::OK;
   }
@@ -986,8 +987,8 @@ class DBMServiceBase {
   int32_t num_standby_calls_;
   MessageQueue* mq_;
   ReplicationParameters repl_params_;
-  int64_t repl_ts_skew_;
   std::thread thread_repl_manager_;
+  std::atomic_int64_t repl_max_timestamp_;
   std::atomic_bool repl_alive_;
   std::atomic_bool refresh_repl_manager_;
   SpinMutex mutex_;

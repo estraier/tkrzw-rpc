@@ -167,7 +167,7 @@ static int32_t Process(int32_t argc, const char** args) {
   const std::string repl_master = GetStringArgument(cmd_args, "--repl_master", 0, "");
   const std::string repl_ts_file = GetStringArgument(cmd_args, "--repl_ts_file", 0, "");
   const bool repl_ts_from_dbm = CheckMap(cmd_args, "--repl_ts_from_dbm");
-  const int64_t repl_ts_skew = GetIntegerArgument(cmd_args, "--repl_ts_set", 0, 0);
+  const int64_t repl_ts_skew = GetIntegerArgument(cmd_args, "--repl_ts_skew", 0, 0);
   const double repl_wait_time = GetDoubleArgument(cmd_args, "--repl_wait_time", 0, 1.0);
   const std::string pid_file = GetStringArgument(cmd_args, "--pid_file", 0, "");
   const bool as_daemon = CheckMap(cmd_args, "--daemon");
