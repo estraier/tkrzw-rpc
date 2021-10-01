@@ -79,8 +79,49 @@ function insert_toc() {
     header.appendChild(anchor);
   }
 }
+function insert_slides() {
+  let slide_url = "";
+  if (navigator.language == "ja") {
+    slide_url = "https://docs.google.com/presentation/d/e/2PACX-1vTNeWc0mxRp9LRkAUWtKgz8gdQWjlcjCcS3RxuvMyvwHyGzL4cNExGFojfaSoFBFacpRP2S0IEJ6F3O/embed?start=false&loop=false&delayms=1000000";
+  } else {
+    return;
+  }
+  let logo = document.getElementById("logo");
+  if (logo) {
+    while (logo.firstChild) {
+      logo.removeChild(logo.firstChild);
+    }
+    let slides = document.createElement("iframe");
+    slides.src = slide_url;
+    slides.width = 600;
+    slides.height = 380;
+    slides.allowFullscreen = true;
+    slides.mozAllowFullscreen = true;
+    slides.webkitAllowFullscreen = true;
+    logo.appendChild(slides);
+  }
+}
+function check_links() {
+  let ids = {};
+  for (let link of document.querySelectorAll("*")) {
+    if (link.id) {
+      ids[link.id] = true;
+    }
+  }
+  let doc_url = document.location.href.replace(/#.*/, "") + "#";
+  for (let link of document.querySelectorAll("a")) {
+    if (link.href && link.href.startsWith(doc_url)) {
+      let target = link.href.substr(link.href.indexOf("#") + 1);
+      if (!ids[target]) {
+        console.warn(target + " is missing link");
+      }
+    }
+  }
+}
 window.onload = function(){
   insert_toc();
+  insert_slides();
+  check_links();
 }
 /*]]>*/</script>
 </head>
@@ -89,6 +130,8 @@ window.onload = function(){
 <article>
 
 <h1 id="title">Tkrzw-RPC: RPC interface of Tkrzw</h1>
+
+<div id="logo" class="logo"><img src="ilove-logo.png"/></div>
 
 <h2 id="overview">Overview</h2>
 
