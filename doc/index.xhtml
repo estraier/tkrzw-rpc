@@ -92,7 +92,7 @@ window.onload = function(){
 
 <h2 id="overview">Overview</h2>
 
-<p>Tkrzw-RPC is a package of a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to manage key-value storages in various algorithms.  With Tkrzw, applications can handle database files efficiently in the process without any network overhead.  However, multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves this issue by using a server program which manages database files and allowing other processes to access the contents via RPC.</p>
+<p>Tkrzw-RPC is a package of a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  <a href="https://dbmx.net/tkrzw/">Tkrzw</a> is a library to manage key-value storages in various algorithms.  With Tkrzw, applications can handle database files efficiently in the process without any network overhead.  However, multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves this issue by using a server program which manages database files and allowing other processes to access the contents via RPC.</p>
 
 <div class="illustration"><img src="network.svg"/></div>
 
@@ -367,7 +367,7 @@ world
 <dd><code>--read_only</code> : Opens the databases in the read-only mode.</dd>
 </dl>
 
-<p>If you don't set database configurations, an on-memory database of TinyDBM with the default tuning is served.  You can set one or more database configurations too.  Each confituration is in the format of "path#name1=value1,name2=value2,..." which is composed of the file path of the database, "#", and CSV of tuning parameters.  The extension of the database path determines the database class.  ".tkh" for HashDBM, ".tkt" for TreeDBM, ".tks" for SkipDBM, ".tkmt" for TinyDBM, ".tkmb" for BabyDBM, and ".tkmc" for CacheDBM.  The database path can be empty for on-memory databases.  The "dbm" parameter overwrites the decision by the extension.  The following are samples.  See <a href="https://dbmx.net/tkrzw/#polydbm_overview">PolyDBM</a> for details.</p>
+<p>If you don't set database configurations, an on-memory database of TinyDBM with the default tuning is served.  You can set one or more database configurations too.  Each confituration is in the format of "path#name1=value1,name2=value2,..." which is composed of the file path of the database, "#", and CSV of tuning parameters.  The extension of the database path determines the database class.  ".tkh" for HashDBM, ".tkt" for TreeDBM, ".tks" for SkipDBM, ".tkmt" for TinyDBM, ".tkmb" for BabyDBM, and ".tkmc" for CacheDBM.  The database path can be empty for on-memory databases.  The "dbm" parameter overwrites the decision by the extension.  See <a href="https://dbmx.net/tkrzw/#polydbm_overview">PolyDBM</a> for details.  The following are samples.</p>
 
 <dl>
 <dt>#dbm=BabyDBM</dt>
@@ -389,6 +389,8 @@ world
 <dt>casket.tkmc#cap_rec_num=10M,cap_mem_size=2Gi</dt>
 <dd>Opens the file "casket.tkmc" as a CacheDBM.  The maximum number of records is 10 million.  The total memory size to use is 2GiB.</dd>
 </dl>
+
+<p>Some tuning parameters of file databases (HashDBM, TreeDBM, SkipDBM) are embedded in the file.  Thus, you can create a new database with <a href="https://dbmx.net/tkrzw/#commands_tkrzw_dbm_util">tkrzw_dbm_util</a> command with proper tuning parameters and specify it to tkrzw_server without tuning parameters.  All tuning parameters of on-memory databases have to be set every time.  Unit suffixes can be added to numeric values.  "k" or "K" means 1,000 times, "ki" or "Ki" means 1024 times.  "m" or "M" means 1,000,000 times.  "mi" or "Mi" means 1,048,576 times.  "g" or "G" means 1,000,000,000 times.  "gi" or "Gi" means 1,073,741,824 times.</p>
 
 <p>By default, the server address is "0.0.0.0:1978", which means that the socket is bound to all network interfaces of IPv4 and IPv6 on the machine and that the port number is 1978.  To use a UNIX domain socket, specify the socket file path like "unix:/run/tkrzw_server.socket".</p>
 
