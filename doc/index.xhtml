@@ -251,9 +251,9 @@ $ tkrzw_dbm_remote_util set --index 1 korea seoul
 <p>Confirm that the records are loaded properly.  As the second database is an ordered database, the record keys are in acsending order for sure.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list
-three	 third
-two	   second
-one	   first
+three  third
+two    second
+one    first
 
 $ tkrzw_dbm_remote_util list --index 1
 china  beijing
@@ -481,7 +481,6 @@ fi
 <dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
 <dd><code>--keys</code> : Prints keys only.</dd>
 <dt>Options for the changemaster subcommand:</dt>
-<dd><code>--ts_skew <var>num</var></code> : Skews the timestamp by a value.</dd>
 <dt>Options for the replication subcommand:</dt>
 <dd><code>--ts_file <var>str</var></code> : The replication timestamp file.</dd>
 <dd><code>--ts_from_dbm</code> : Uses the database timestamp if the timestamp file doesn't exist.</dd>
@@ -495,17 +494,17 @@ fi
 <p>The following is a sample usage to make a remove database to associate country names to their capital cities' names.  If the extension of the file is "tkh", the type of the database is regarded as HashDBM.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util clear
-$ tkrzw_dbm_remote_util set Japan Tokyo
-$ tkrzw_dbm_remote_util set Korea Seoul
-$ tkrzw_dbm_remote_util set China Beijing
-$ tkrzw_dbm_remote_util get Japan
-Tokyo
-$ tkrzw_dbm_remote_util remove Japan
+$ tkrzw_dbm_remote_util set japan tokyo
+$ tkrzw_dbm_remote_util set korea seoul
+$ tkrzw_dbm_remote_util set china beijing
+$ tkrzw_dbm_remote_util get japan
+tokyo
+$ tkrzw_dbm_remote_util remove japan
 $ tkrzw_dbm_remote_util rebuild "num_buckets=100"
 $ tkrzw_dbm_remote_util sync --hard
 $ tkrzw_dbm_remote_util list
-China  Beijing
-Korea  Seoul
+china  beijing
+korea  seoul
 ]]></code></pre>
 
 <p>You can check the current status of the server with the "inspect" subcommand.  If the "--index" is zero or positive, the metadata of the corresponding database is shown.  If it is negative, the metadata of the server is shown.</p>
@@ -821,6 +820,8 @@ int main(int argc, char** argv) {
   "casket-1.tkh"
 ]]></code></pre>
 
+<p>If you use the synchronous mode by omitting "--async", the number of threads should be increased by the estimated number of slaves because one slave dominates one thread.  In the asynchronous mode, replication sessions and other sessions share the same threads.</p>
+
 <p>On another terminal, call update queries to the master.  The master database comes to have two records "one" and "two".  The two correspoinding update logs are stored in the update log file.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util set --address "localhost:1978" one first
@@ -840,10 +841,11 @@ $ tkrzw_dbm_remote_util set --address "localhost:1978" two second
 $ tkrzw_dbm_remote_util set --address "localhost:1978" four fourth
 ]]></code></pre>
 
-<p>You can retrieve update logs and apply them on local databases.  You specify the paths of the database files where update logs are applied.  If the file doesn't exist, a new database is created.  Also, you create the timestamp file by "--ts_file" option to store the last timestamp.  You specify "--wait 0" and "--items 0", not to wait for the future updates.  After that, check the content of the updated database.</p>
+<p>You can retrieve update logs and apply them on local databases.  You specify the paths of the database files where update logs are applied.  If the file doesn't exist, a new database is created.  Also, you create the timestamp file by the "--ts_file" option to store the last timestamp.  The stored value is used to as the minimum timestamp when the command is executed again.  The "--ts_skew" option specifies the skew applied to the minimum timestamp to absorb the time difference between servers.  You specify "--wait 0" and "--items 0", not to wait for the future updates.  After that, check the content of the updated database.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util replicate --address "localhost:1978" \
-  --ts_file casket-local.ts --wait 0 --items 0 casket-local.tkh
+  --ts_file casket-local.ts --ts_skew -10000 \
+  --wait 0 --items 0 casket-local.tkh
 Opening DBM: casket-local.tkh
 Using the minimum timestamp: 0
 Connecting to the server: localhost:1978
@@ -897,7 +899,7 @@ $ tkrzw_server --address "localhost:1980" \
   "casket-3.tkh"
 ]]></code></pre>
 
-<p>At this point, replication is not started.  Thus, the records "five" and "six" doesn't exist.</p>
+<p>At this point, replication is not started.  Thus, the records "five" and "six" don't exist.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util list --address "localhost:1980"
 three  third
@@ -906,7 +908,7 @@ four   fourth
 one    first
 ]]></code></pre>
 
-<p>Let's start the replication by setting the master address to the slave server dynamically.  In this case, "localhost:1980" is the new slave and "localhost:1979" is the new master.  "--ts_skew -10000" means that replication starts from a point 10 seconds before the timestamp of the timestamp file.</p>
+<p>Let's start the replication by setting the master address to the slave server dynamically.  In this case, "localhost:1980" is the new slave and "localhost:1979" is the new master.  "--ts_skew -10000" means that replication starts from a point 10 seconds before the current timestamp.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util changemaster --address "localhost:1980" \
   --ts_skew -10000 "localhost:1979"
@@ -1086,7 +1088,7 @@ Inspection:
 
 <p>You can remove update log files except for the latest one while the server is running.  If you want to remove files whose timestamp is older than 3 days ago, you run the following command.  Don't forget "-" of "-3D".</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ tkrzw_ulog_util removeoldfiles --timestamp "-3D" --exclude_latest casket-ulog
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_ulog_util removeoldfiles --timestamp -3D --exclude_latest casket-ulog
 ]]></code></pre>
 
 <p>In theory, after you make a full backup or a differential backup, you can remove all update whose timestamp is older than the timestamp of the backup file.  However, retaining update logs for a decent period is a good practice for traceability.  It is also a good practice to copy the old update log files to the storage host before removing them.</p>
