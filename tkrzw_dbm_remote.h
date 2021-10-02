@@ -35,7 +35,8 @@ class RemoteDBMReplicatorImpl;
 /**
  * RPC interface to access the database service via gRPC protocol.
  * @details All operations are thread-safe; Multiple threads can access the same connection
- * concurrently.
+ * concurrently.  The SetDBMIndex affects all threads so it should be called before the object is
+ * shared.
  */
 class RemoteDBM final {
  public:
