@@ -4,7 +4,7 @@
 
 @section Introduction
 
-Tkrzw-RPC is provides a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to mange key-value storages in various algorithms.  With Tkrzw, the application can handle database files efficiently in process without any network overhead.  However, it means that multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves the issue by using a server program which manages database files and allowing other processes access the contents via RPC.  See the <a href="http://dbmx.net/tkrzw-rpc/">core document</a> for details.
+Tkrzw-RPC provides a server program which manages databases of Tkrzw and a library to access the service via gRPC protocol.  Tkrzw is a library to mange key-value storages in various algorithms.  With Tkrzw, the application can handle database files efficiently in process without any network overhead.  However, it means that multiple processes cannot open the same database file simultaneously.  Tkrzw-RPC solves the issue by using a server program which manages database files and allowing other processes access the contents via RPC.  See the <a href="http://dbmx.net/tkrzw-rpc/">core document</a> for details.
 
 @li tkrzw::RemoteDBM -- Remote database manager implementation.
 
