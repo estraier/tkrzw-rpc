@@ -344,8 +344,8 @@ message SynchronizeResponse {
   StatusProto status = 1;
 }
 
-// Request of the SearchModal method.
-message SearchModalRequest {
+// Request of the Search method.
+message SearchRequest {
   // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
   // The search mode.
@@ -356,8 +356,8 @@ message SearchModalRequest {
   int32 capacity = 4;
 }
 
-// Response of the SearchModal method.
-message SearchModalResponse {
+// Response of the Search method.
+message SearchResponse {
   // The result status.
   StatusProto status = 1;
   // A list of matched keys.
@@ -521,7 +521,7 @@ service DBMService {
   rpc Rebuild(RebuildRequest) returns (RebuildResponse);
   rpc ShouldBeRebuilt(ShouldBeRebuiltRequest) returns (ShouldBeRebuiltResponse);
   rpc Synchronize(SynchronizeRequest) returns (SynchronizeResponse);
-  rpc SearchModal(SearchModalRequest) returns (SearchModalResponse);
+  rpc Search(SearchRequest) returns (SearchResponse);
   rpc Stream(stream StreamRequest) returns (stream StreamResponse);
   rpc Iterate(stream IterateRequest) returns (stream IterateResponse);
   rpc Replicate(ReplicateRequest) returns (stream ReplicateResponse);

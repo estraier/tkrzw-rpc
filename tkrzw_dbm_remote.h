@@ -805,7 +805,7 @@ class RemoteDBM final {
    * @param capacity The maximum records to obtain.  0 means unlimited.
    * @return The result status.
    */
-  Status SearchModal(
+  Status Search(
       std::string_view mode, std::string_view pattern,
       std::vector<std::string>* matched, size_t capacity = 0);
 

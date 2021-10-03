@@ -626,7 +626,7 @@ static int32_t ProcessSearch(int32_t argc, const char** args) {
   dbm.SetDBMIndex(dbm_index);
   bool ok = false;
   std::vector<std::string> matched;
-  status = dbm.SearchModal(mode, pattern, &matched, num_items);
+  status = dbm.Search(mode, pattern, &matched, num_items);
   if (status == Status::SUCCESS) {
     if (keys_only) {
       for (const auto& key : matched) {

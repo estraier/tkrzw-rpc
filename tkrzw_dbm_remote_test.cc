@@ -346,22 +346,22 @@ TEST_F(RemoteDBMTest, Synchronize) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Synchronize(true, {{"reducer", "last"}}));
 }
 
-TEST_F(RemoteDBMTest, SearchModal) {
+TEST_F(RemoteDBMTest, Search) {
   auto stub = std::make_unique<tkrzw::MockDBMServiceStub>();
-  tkrzw::SearchModalRequest request;
+  tkrzw::SearchRequest request;
   request.set_mode("end");
   request.set_pattern("5");
   request.set_capacity(3);
-  tkrzw::SearchModalResponse response;
+  tkrzw::SearchResponse response;
   response.add_matched("5");
   response.add_matched("15");
   response.add_matched("25");
-  EXPECT_CALL(*stub, SearchModal(_, EqualsProto(request), _)).WillOnce(
+  EXPECT_CALL(*stub, Search(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::RemoteDBM dbm;
   dbm.InjectStub(stub.release());
   std::vector<std::string> matched;
-  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.SearchModal("end", "5", &matched, 3));
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Search("end", "5", &matched, 3));
   EXPECT_THAT(matched, UnorderedElementsAre("5", "15", "25"));
 }
 

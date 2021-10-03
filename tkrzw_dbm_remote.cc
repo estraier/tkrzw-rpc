@@ -103,8 +103,8 @@ class RemoteDBMImpl final {
   Status Rebuild(const std::map<std::string, std::string>& params);
   Status ShouldBeRebuilt(bool* tobe);
   Status Synchronize(bool hard, const std::map<std::string, std::string>& params);
-  Status SearchModal(std::string_view mode, std::string_view pattern,
-                     std::vector<std::string>* matched, size_t capacity);
+  Status Search(std::string_view mode, std::string_view pattern,
+                std::vector<std::string>* matched, size_t capacity);
   Status ChangeMaster(std::string_view master, double timestamp_skew);
 
  private:
@@ -683,8 +683,8 @@ Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::st
   return MakeStatusFromProto(response.status());
 }
 
-Status RemoteDBMImpl::SearchModal(std::string_view mode, std::string_view pattern,
-                                  std::vector<std::string>* matched, size_t capacity) {
+Status RemoteDBMImpl::Search(std::string_view mode, std::string_view pattern,
+                             std::vector<std::string>* matched, size_t capacity) {
   std::shared_lock<SpinSharedMutex> lock(mutex_);
   if (stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
@@ -692,12 +692,12 @@ Status RemoteDBMImpl::SearchModal(std::string_view mode, std::string_view patter
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  SearchModalRequest request;
+  SearchRequest request;
   request.set_mode(std::string(mode));
   request.set_pattern(pattern.data(), pattern.size());
   request.set_capacity(capacity);
-  SearchModalResponse response;
-  grpc::Status status = stub_->SearchModal(&context, request, &response);
+  SearchResponse response;
+  grpc::Status status = stub_->Search(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
   }
@@ -1535,10 +1535,10 @@ Status RemoteDBM::Synchronize(bool hard, const std::map<std::string, std::string
   return impl_->Synchronize(hard, params);
 }
 
-Status RemoteDBM::SearchModal(
+Status RemoteDBM::Search(
     std::string_view mode, std::string_view pattern,
     std::vector<std::string>* matched, size_t capacity) {
-  return impl_->SearchModal(mode, pattern, matched, capacity);
+  return impl_->Search(mode, pattern, matched, capacity);
 }
 
 Status RemoteDBM::ChangeMaster(std::string_view master, double timestamp_skew) {

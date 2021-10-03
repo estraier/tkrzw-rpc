@@ -648,10 +648,10 @@ class DBMServiceBase {
     return grpc::Status::OK;
   }
 
-  grpc::Status SearchModalImpl(
-      grpc::ServerContext* context, const SearchModalRequest* request,
-      SearchModalResponse* response) {
-    LogRequest(context, "SearchModal", request);
+  grpc::Status SearchImpl(
+      grpc::ServerContext* context, const SearchRequest* request,
+      SearchResponse* response) {
+    LogRequest(context, "Search", request);
     if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
@@ -1135,11 +1135,11 @@ class DBMServiceImpl : public DBMServiceBase, public DBMService::Service {
     return SynchronizeImpl(context, request, response);
   }
 
-  grpc::Status SearchModal(
-      grpc::ServerContext* context, const SearchModalRequest* request,
-      SearchModalResponse* response) override {
+  grpc::Status Search(
+      grpc::ServerContext* context, const SearchRequest* request,
+      SearchResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
-    return SearchModalImpl(context, request, response);
+    return SearchImpl(context, request, response);
   }
 
   grpc::Status Stream(
@@ -1625,9 +1625,9 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncBackgroundDBMProcessor<SynchronizeRequest, SynchronizeResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestSynchronize,
       &DBMServiceBase::SynchronizeImpl);
-  new AsyncDBMProcessor<SearchModalRequest, SearchModalResponse>(
-      this, queue, &DBMAsyncServiceImpl::RequestSearchModal,
-      &DBMServiceBase::SearchModalImpl);
+  new AsyncDBMProcessor<SearchRequest, SearchResponse>(
+      this, queue, &DBMAsyncServiceImpl::RequestSearch,
+      &DBMServiceBase::SearchImpl);
   new AsyncDBMProcessorStream(this, queue);
   new AsyncDBMProcessorIterate(this, queue);
   new AsyncDBMProcessorReplicate(this, queue);

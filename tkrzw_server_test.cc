@@ -352,12 +352,12 @@ TEST_F(ServerTest, Basic) {
       const std::string key = tkrzw::ToString(i);
       EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(key, ""));
     }
-    tkrzw::SearchModalRequest request;
+    tkrzw::SearchRequest request;
     request.set_mode("end");
     request.set_pattern("5");
     request.set_capacity(3);
-    tkrzw::SearchModalResponse response;
-    grpc::Status status = server.SearchModal(&context, &request, &response);
+    tkrzw::SearchResponse response;
+    grpc::Status status = server.Search(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
     EXPECT_EQ(3, response.matched_size());
