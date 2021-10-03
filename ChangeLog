@@ -3,6 +3,8 @@
 	- Release: 0.9.3
 	- Library version: 1.9.0
 
+	- Rename SearchModal to Search.
+
 2021-09-27  Mikio Hirabayashi  <hirarin@gmail.com>
 
 	- Release: 0.9.2
