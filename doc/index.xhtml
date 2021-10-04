@@ -198,6 +198,14 @@ $ sudo make install
 /usr/local/bin/tkrzw_dbm_remote_perf
 ]]></code></pre>
 
+<p>To perform the integration tests, run these command on two respective terminals.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server
+]]></code></pre>
+
+<pre><code class="language-shell-session"><![CDATA[$ make check
+]]></code></pre>
+
 <p>To run the test suite, GoogleTest is required.  Although testing the library is not necessary for most users, you can do so just in case.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ make test
