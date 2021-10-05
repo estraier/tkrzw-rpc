@@ -11,7 +11,7 @@
 
 syntax = "proto3";
 
-package tkrzw;
+package tkrzw_rpc;
 
 // Status data corresponding to the Status class.
 message StatusProto {

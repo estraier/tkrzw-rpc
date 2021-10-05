@@ -56,12 +56,12 @@ std::string GRPCStatusString(const grpc::Status& status) {
   return StrCat(GRPCStatusCodeName(status.error_code()), ": ", msg);
 }
 
-Status MakeStatusFromProto(const tkrzw::StatusProto& proto) {
+Status MakeStatusFromProto(const tkrzw_rpc::StatusProto& proto) {
   const auto& message = proto.message();
   if (message.empty()) {
-    return Status(tkrzw::Status::Code(proto.code()));
+    return Status(Status::Code(proto.code()));
   }
-  return Status(tkrzw::Status::Code(proto.code()), message);
+  return Status(Status::Code(proto.code()), message);
 }
 
 class RemoteDBMImpl final {
@@ -108,7 +108,7 @@ class RemoteDBMImpl final {
   Status ChangeMaster(std::string_view master, double timestamp_skew);
 
  private:
-  std::unique_ptr<DBMService::StubInterface> stub_;
+  std::unique_ptr<tkrzw_rpc::DBMService::StubInterface> stub_;
   double timeout_;
   int32_t dbm_index_;
   StreamList streams_;
@@ -138,7 +138,7 @@ class RemoteDBMStreamImpl final {
   RemoteDBMImpl* dbm_;
   grpc::ClientContext context_;
   std::unique_ptr<grpc::ClientReaderWriterInterface<
-                    tkrzw::StreamRequest, tkrzw::StreamResponse>> stream_;
+                    tkrzw_rpc::StreamRequest, tkrzw_rpc::StreamResponse>> stream_;
   std::atomic_bool healthy_;
 };
 
@@ -163,7 +163,7 @@ class RemoteDBMIteratorImpl final {
   RemoteDBMImpl* dbm_;
   grpc::ClientContext context_;
   std::unique_ptr<grpc::ClientReaderWriterInterface<
-                    tkrzw::IterateRequest, tkrzw::IterateResponse>> stream_;
+                    tkrzw_rpc::IterateRequest, tkrzw_rpc::IterateResponse>> stream_;
   std::atomic_bool healthy_;
 };
 
@@ -180,7 +180,7 @@ class RemoteDBMReplicatorImpl final {
  private:
   RemoteDBMImpl* dbm_;
   grpc::ClientContext context_;
-  std::unique_ptr<grpc::ClientReaderInterface<tkrzw::ReplicateResponse>> stream_;
+  std::unique_ptr<grpc::ClientReaderInterface<tkrzw_rpc::ReplicateResponse>> stream_;
   std::atomic_bool healthy_;
   int32_t server_id_;
 };
@@ -202,7 +202,7 @@ RemoteDBMImpl::~RemoteDBMImpl() {
 }
 
 void RemoteDBMImpl::InjectStub(void* stub) {
-  stub_.reset(reinterpret_cast<DBMService::StubInterface*>(stub));
+  stub_.reset(reinterpret_cast<tkrzw_rpc::DBMService::StubInterface*>(stub));
 }
 
 Status RemoteDBMImpl::Connect(const std::string& address, double timeout) {
@@ -226,7 +226,7 @@ Status RemoteDBMImpl::Connect(const std::string& address, double timeout) {
       return Status(Status::NETWORK_ERROR, "connection failed");
     }
   }
-  stub_ = DBMService::NewStub(channel);
+  stub_ = tkrzw_rpc::DBMService::NewStub(channel);
   timeout_ = timeout;
   return Status(Status::SUCCESS);
 }
@@ -257,9 +257,9 @@ Status RemoteDBMImpl::Echo(std::string_view message, std::string* echo) {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  EchoRequest request;
+  tkrzw_rpc::EchoRequest request;
   request.set_message(std::string(message));
-  EchoResponse response;
+  tkrzw_rpc::EchoResponse response;
   grpc::Status status = stub_->Echo(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -276,9 +276,9 @@ Status RemoteDBMImpl::Inspect(std::vector<std::pair<std::string, std::string>>* 
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  InspectRequest request;
+  tkrzw_rpc::InspectRequest request;
   request.set_dbm_index(dbm_index_);
-  InspectResponse response;
+  tkrzw_rpc::InspectResponse response;
   grpc::Status status = stub_->Inspect(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -297,13 +297,13 @@ Status RemoteDBMImpl::Get(std::string_view key, std::string* value) {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  GetRequest request;
+  tkrzw_rpc::GetRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
   if (value == nullptr) {
     request.set_omit_value(true);
   }
-  GetResponse response;
+  tkrzw_rpc::GetResponse response;
   grpc::Status status = stub_->Get(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -323,12 +323,12 @@ Status RemoteDBMImpl::GetMulti(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  GetMultiRequest request;
+  tkrzw_rpc::GetMultiRequest request;
   request.set_dbm_index(dbm_index_);
   for (const auto& key : keys) {
     request.add_keys(std::string(key));
   }
-  GetMultiResponse response;
+  tkrzw_rpc::GetMultiResponse response;
   grpc::Status status = stub_->GetMulti(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -347,12 +347,12 @@ Status RemoteDBMImpl::Set(std::string_view key, std::string_view value, bool ove
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  SetRequest request;
+  tkrzw_rpc::SetRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
   request.set_value(value.data(), value.size());
   request.set_overwrite(overwrite);
-  SetResponse response;
+  tkrzw_rpc::SetResponse response;
   grpc::Status status = stub_->Set(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -369,7 +369,7 @@ Status RemoteDBMImpl::SetMulti(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  SetMultiRequest request;
+  tkrzw_rpc::SetMultiRequest request;
   request.set_dbm_index(dbm_index_);
   for (const auto& record : records) {
     auto* req_record = request.add_records();
@@ -377,7 +377,7 @@ Status RemoteDBMImpl::SetMulti(
     req_record->set_second(std::string(record.second));
   }
   request.set_overwrite(overwrite);
-  SetMultiResponse response;
+  tkrzw_rpc::SetMultiResponse response;
   grpc::Status status = stub_->SetMulti(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -393,10 +393,10 @@ Status RemoteDBMImpl::Remove(std::string_view key) {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  RemoveRequest request;
+  tkrzw_rpc::RemoveRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
-  RemoveResponse response;
+  tkrzw_rpc::RemoveResponse response;
   grpc::Status status = stub_->Remove(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -412,12 +412,12 @@ Status RemoteDBMImpl::RemoveMulti(const std::vector<std::string_view>& keys) {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  RemoveMultiRequest request;
+  tkrzw_rpc::RemoveMultiRequest request;
   request.set_dbm_index(dbm_index_);
   for (const auto& key : keys) {
     request.add_keys(std::string(key));
   }
-  RemoveMultiResponse response;
+  tkrzw_rpc::RemoveMultiResponse response;
   grpc::Status status = stub_->RemoveMulti(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -434,12 +434,12 @@ Status RemoteDBMImpl::Append(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  AppendRequest request;
+  tkrzw_rpc::AppendRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
   request.set_value(value.data(), value.size());
   request.set_delim(delim.data(), delim.size());
-  AppendResponse response;
+  tkrzw_rpc::AppendResponse response;
   grpc::Status status = stub_->Append(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -456,7 +456,7 @@ Status RemoteDBMImpl::AppendMulti(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  AppendMultiRequest request;
+  tkrzw_rpc::AppendMultiRequest request;
   request.set_dbm_index(dbm_index_);
   for (const auto& record : records) {
     auto* req_record = request.add_records();
@@ -464,7 +464,7 @@ Status RemoteDBMImpl::AppendMulti(
     req_record->set_second(std::string(record.second));
   }
   request.set_delim(std::string(delim));
-  AppendMultiResponse response;
+  tkrzw_rpc::AppendMultiResponse response;
   grpc::Status status = stub_->AppendMulti(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -481,7 +481,7 @@ Status RemoteDBMImpl::CompareExchange(std::string_view key, std::string_view exp
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  CompareExchangeRequest request;
+  tkrzw_rpc::CompareExchangeRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
   if (expected.data() != nullptr) {
@@ -492,7 +492,7 @@ Status RemoteDBMImpl::CompareExchange(std::string_view key, std::string_view exp
     request.set_desired_existence(true);
     request.set_desired_value(desired.data(), desired.size());
   }
-  CompareExchangeResponse response;
+  tkrzw_rpc::CompareExchangeResponse response;
   grpc::Status status = stub_->CompareExchange(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -509,12 +509,12 @@ Status RemoteDBMImpl::Increment(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  IncrementRequest request;
+  tkrzw_rpc::IncrementRequest request;
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
   request.set_increment(increment);
   request.set_initial(initial);
-  IncrementResponse response;
+  tkrzw_rpc::IncrementResponse response;
   grpc::Status status = stub_->Increment(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -535,7 +535,7 @@ Status RemoteDBMImpl::CompareExchangeMulti(
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  CompareExchangeMultiRequest request;
+  tkrzw_rpc::CompareExchangeMultiRequest request;
   request.set_dbm_index(dbm_index_);
   for (const auto& record : expected) {
     auto* req_record = request.add_expected();
@@ -553,7 +553,7 @@ Status RemoteDBMImpl::CompareExchangeMulti(
       req_record->set_value(std::string(record.second));
     }
   }
-  CompareExchangeMultiResponse response;
+  tkrzw_rpc::CompareExchangeMultiResponse response;
   grpc::Status status = stub_->CompareExchangeMulti(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -569,8 +569,8 @@ Status RemoteDBMImpl::Count(int64_t* count) {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  CountRequest request;
-  CountResponse response;
+  tkrzw_rpc::CountRequest request;
+  tkrzw_rpc::CountResponse response;
   grpc::Status status = stub_->Count(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -589,8 +589,8 @@ Status RemoteDBMImpl::GetFileSize(int64_t* file_size) {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  GetFileSizeRequest request;
-  GetFileSizeResponse response;
+  tkrzw_rpc::GetFileSizeRequest request;
+  tkrzw_rpc::GetFileSizeResponse response;
   grpc::Status status = stub_->GetFileSize(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -609,8 +609,8 @@ Status RemoteDBMImpl::Clear() {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  ClearRequest request;
-  ClearResponse response;
+  tkrzw_rpc::ClearRequest request;
+  tkrzw_rpc::ClearResponse response;
   grpc::Status status = stub_->Clear(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -626,13 +626,13 @@ Status RemoteDBMImpl::Rebuild(const std::map<std::string, std::string>& params) 
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  RebuildRequest request;
+  tkrzw_rpc::RebuildRequest request;
   for (const auto& param : params) {
     auto* req_param = request.add_params();
     req_param->set_first(param.first);
     req_param->set_second(param.second);
   }
-  RebuildResponse response;
+  tkrzw_rpc::RebuildResponse response;
   grpc::Status status = stub_->Rebuild(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -648,8 +648,8 @@ Status RemoteDBMImpl::ShouldBeRebuilt(bool* tobe) {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  ShouldBeRebuiltRequest request;
-  ShouldBeRebuiltResponse response;
+  tkrzw_rpc::ShouldBeRebuiltRequest request;
+  tkrzw_rpc::ShouldBeRebuiltResponse response;
   grpc::Status status = stub_->ShouldBeRebuilt(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -668,14 +668,14 @@ Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::st
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  SynchronizeRequest request;
+  tkrzw_rpc::SynchronizeRequest request;
   request.set_hard(hard);
   for (const auto& param : params) {
     auto* req_param = request.add_params();
     req_param->set_first(param.first);
     req_param->set_second(param.second);
   }
-  SynchronizeResponse response;
+  tkrzw_rpc::SynchronizeResponse response;
   grpc::Status status = stub_->Synchronize(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -692,11 +692,11 @@ Status RemoteDBMImpl::Search(std::string_view mode, std::string_view pattern,
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  SearchRequest request;
+  tkrzw_rpc::SearchRequest request;
   request.set_mode(std::string(mode));
   request.set_pattern(pattern.data(), pattern.size());
   request.set_capacity(capacity);
-  SearchResponse response;
+  tkrzw_rpc::SearchResponse response;
   grpc::Status status = stub_->Search(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -716,10 +716,10 @@ Status RemoteDBMImpl::ChangeMaster(std::string_view master, double timestamp_ske
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
-  ChangeMasterRequest request;
+  tkrzw_rpc::ChangeMasterRequest request;
   request.set_master(std::string(master));
   request.set_timestamp_skew(timestamp_skew);
-  ChangeMasterResponse response;
+  tkrzw_rpc::ChangeMasterResponse response;
   grpc::Status status = stub_->ChangeMaster(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
@@ -766,7 +766,7 @@ Status RemoteDBMStreamImpl::Echo(std::string_view message, std::string* echo) {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  StreamRequest stream_request;
+  tkrzw_rpc::StreamRequest stream_request;
   auto* request = stream_request.mutable_echo_request();
   request->set_message(std::string(message));
   if (!stream_->Write(stream_request)) {
@@ -774,13 +774,13 @@ Status RemoteDBMStreamImpl::Echo(std::string_view message, std::string* echo) {
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  StreamResponse stream_response;
+  tkrzw_rpc::StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
-  const EchoResponse& response = stream_response.echo_response();
+  const tkrzw_rpc::EchoResponse& response = stream_response.echo_response();
   *echo = response.echo();
   return Status(Status::SUCCESS);
 }
@@ -795,7 +795,7 @@ Status RemoteDBMStreamImpl::Get(std::string_view key, std::string* value) {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  StreamRequest stream_request;
+  tkrzw_rpc::StreamRequest stream_request;
   auto* request = stream_request.mutable_get_request();
   request->set_dbm_index(dbm_->dbm_index_);
   request->set_key(key.data(), key.size());
@@ -807,13 +807,13 @@ Status RemoteDBMStreamImpl::Get(std::string_view key, std::string* value) {
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  StreamResponse stream_response;
+  tkrzw_rpc::StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
-  const GetResponse& response = stream_response.get_response();
+  const tkrzw_rpc::GetResponse& response = stream_response.get_response();
   if (response.status().code() == 0) {
     if (value != nullptr) {
       *value = response.value();
@@ -833,7 +833,7 @@ Status RemoteDBMStreamImpl::Set(std::string_view key, std::string_view value,
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  StreamRequest stream_request;
+  tkrzw_rpc::StreamRequest stream_request;
   auto* request = stream_request.mutable_set_request();
   request->set_dbm_index(dbm_->dbm_index_);
   request->set_key(key.data(), key.size());
@@ -850,13 +850,13 @@ Status RemoteDBMStreamImpl::Set(std::string_view key, std::string_view value,
   if (ignore_result) {
     return Status(Status::SUCCESS);
   }
-  StreamResponse stream_response;
+  tkrzw_rpc::StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
-  const SetResponse& response = stream_response.set_response();
+  const tkrzw_rpc::SetResponse& response = stream_response.set_response();
   return MakeStatusFromProto(response.status());
 }
 
@@ -870,7 +870,7 @@ Status RemoteDBMStreamImpl::Remove(std::string_view key, bool ignore_result) {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  StreamRequest stream_request;
+  tkrzw_rpc::StreamRequest stream_request;
   auto* request = stream_request.mutable_remove_request();
   request->set_dbm_index(dbm_->dbm_index_);
   request->set_key(key.data(), key.size());
@@ -885,13 +885,13 @@ Status RemoteDBMStreamImpl::Remove(std::string_view key, bool ignore_result) {
   if (ignore_result) {
     return Status(Status::SUCCESS);
   }
-  StreamResponse stream_response;
+  tkrzw_rpc::StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
-  const RemoveResponse& response = stream_response.remove_response();
+  const tkrzw_rpc::RemoveResponse& response = stream_response.remove_response();
   return MakeStatusFromProto(response.status());
 }
 
@@ -906,7 +906,7 @@ Status RemoteDBMStreamImpl::Append(
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  StreamRequest stream_request;
+  tkrzw_rpc::StreamRequest stream_request;
   auto* request = stream_request.mutable_append_request();
   request->set_dbm_index(dbm_->dbm_index_);
   request->set_key(key.data(), key.size());
@@ -923,13 +923,13 @@ Status RemoteDBMStreamImpl::Append(
   if (ignore_result) {
     return Status(Status::SUCCESS);
   }
-  StreamResponse stream_response;
+  tkrzw_rpc::StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
-  const AppendResponse& response = stream_response.append_response();
+  const tkrzw_rpc::AppendResponse& response = stream_response.append_response();
   return MakeStatusFromProto(response.status());
 }
 
@@ -944,7 +944,7 @@ Status RemoteDBMStreamImpl::CompareExchange(
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  StreamRequest stream_request;
+  tkrzw_rpc::StreamRequest stream_request;
   auto* request = stream_request.mutable_compare_exchange_request();
   request->set_dbm_index(dbm_->dbm_index_);
   request->set_key(key.data(), key.size());
@@ -961,13 +961,13 @@ Status RemoteDBMStreamImpl::CompareExchange(
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  StreamResponse stream_response;
+  tkrzw_rpc::StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
-  const CompareExchangeResponse& response = stream_response.compare_exchange_response();
+  const tkrzw_rpc::CompareExchangeResponse& response = stream_response.compare_exchange_response();
   return MakeStatusFromProto(response.status());
 }
 
@@ -983,7 +983,7 @@ Status RemoteDBMStreamImpl::Increment(
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  StreamRequest stream_request;
+  tkrzw_rpc::StreamRequest stream_request;
   auto* request = stream_request.mutable_increment_request();
   request->set_dbm_index(dbm_->dbm_index_);
   request->set_key(key.data(), key.size());
@@ -997,13 +997,13 @@ Status RemoteDBMStreamImpl::Increment(
   if (ignore_result) {
     return Status(Status::SUCCESS);
   }
-  StreamResponse stream_response;
+  tkrzw_rpc::StreamResponse stream_response;
   if (!stream_->Read(&stream_response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
-  const IncrementResponse& response = stream_response.increment_response();
+  const tkrzw_rpc::IncrementResponse& response = stream_response.increment_response();
   if (current != nullptr) {
     *current = response.current();
   }
@@ -1049,15 +1049,15 @@ Status RemoteDBMIteratorImpl::First() {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_FIRST);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_FIRST);
   if (!stream_->Write(request)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1076,15 +1076,15 @@ Status RemoteDBMIteratorImpl::Last() {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_LAST);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_LAST);
   if (!stream_->Write(request)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1103,16 +1103,16 @@ Status RemoteDBMIteratorImpl::Jump(std::string_view key) {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_JUMP);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_JUMP);
   request.set_key(std::string(key));
   if (!stream_->Write(request)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1130,9 +1130,9 @@ Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_JUMP_LOWER);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_JUMP_LOWER);
   request.set_key(std::string(key));
   request.set_jump_inclusive(inclusive);
   if (!stream_->Write(request)) {
@@ -1140,7 +1140,7 @@ Status RemoteDBMIteratorImpl::JumpLower(std::string_view key, bool inclusive) {
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1158,9 +1158,9 @@ Status RemoteDBMIteratorImpl::JumpUpper(std::string_view key, bool inclusive) {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_JUMP_UPPER);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_JUMP_UPPER);
   request.set_key(std::string(key));
   request.set_jump_inclusive(inclusive);
   if (!stream_->Write(request)) {
@@ -1168,7 +1168,7 @@ Status RemoteDBMIteratorImpl::JumpUpper(std::string_view key, bool inclusive) {
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1187,15 +1187,15 @@ Status RemoteDBMIteratorImpl::Next() {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_NEXT);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_NEXT);
   if (!stream_->Write(request)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1214,15 +1214,15 @@ Status RemoteDBMIteratorImpl::Previous() {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_PREVIOUS);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_PREVIOUS);
   if (!stream_->Write(request)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1241,9 +1241,9 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_GET);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_GET);
   if (key == nullptr) {
     request.set_omit_key(true);
   }
@@ -1255,7 +1255,7 @@ Status RemoteDBMIteratorImpl::Get(std::string* key, std::string* value) {
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1282,16 +1282,16 @@ Status RemoteDBMIteratorImpl::Set(std::string_view value) {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_SET);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_SET);
   request.set_value(std::string(value));
   if (!stream_->Write(request)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1310,15 +1310,15 @@ Status RemoteDBMIteratorImpl::Remove() {
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  IterateRequest request;
+  tkrzw_rpc::IterateRequest request;
   request.set_dbm_index(dbm_->dbm_index_);
-  request.set_operation(IterateRequest::OP_REMOVE);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_REMOVE);
   if (!stream_->Write(request)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
   }
-  IterateResponse response;
+  tkrzw_rpc::IterateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1365,18 +1365,18 @@ Status RemoteDBMReplicatorImpl::Start(
   }
   context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
       static_cast<int64_t>(dbm_->timeout_ * 1000000)));
-  ReplicateRequest request;
+  tkrzw_rpc::ReplicateRequest request;
   request.set_min_timestamp(min_timestamp);
   request.set_server_id(server_id);
   request.set_wait_time(wait_time);
   stream_ = dbm_->stub_->Replicate(&context_, request);
-  ReplicateResponse response;
+  tkrzw_rpc::ReplicateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
-  if (response.op_type() != ReplicateResponse::OP_NOOP) {
+  if (response.op_type() != tkrzw_rpc::ReplicateResponse::OP_NOOP) {
     return Status(Status::BROKEN_DATA_ERROR, "invalid operation type");
   }
   server_id_ = response.server_id();
@@ -1394,7 +1394,7 @@ Status RemoteDBMReplicatorImpl::Read(int64_t* timestamp, RemoteDBM::ReplicateLog
   if (!healthy_.load()) {
     return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
   }
-  ReplicateResponse response;
+  tkrzw_rpc::ReplicateResponse response;
   if (!stream_->Read(&response)) {
     healthy_.store(false);
     const std::string message = GRPCStatusString(stream_->Finish());
@@ -1403,13 +1403,13 @@ Status RemoteDBMReplicatorImpl::Read(int64_t* timestamp, RemoteDBM::ReplicateLog
   *timestamp = response.timestamp();
   delete[] op->buffer_;
   switch (response.op_type()) {
-    case ReplicateResponse::OP_SET:
+    case tkrzw_rpc::ReplicateResponse::OP_SET:
       op->op_type = DBMUpdateLoggerMQ::OP_SET;
       break;
-    case ReplicateResponse::OP_REMOVE:
+    case tkrzw_rpc::ReplicateResponse::OP_REMOVE:
       op->op_type = DBMUpdateLoggerMQ::OP_REMOVE;
       break;
-    case ReplicateResponse::OP_CLEAR:
+    case tkrzw_rpc::ReplicateResponse::OP_CLEAR:
       op->op_type = DBMUpdateLoggerMQ::OP_CLEAR;
       break;
     default:

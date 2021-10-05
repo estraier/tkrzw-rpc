@@ -1,3 +1,10 @@
+2021-10-05  Mikio Hirabayashi  <hirarin@gmail.com>
+
+	- Release: 0.9.4
+	- Library version: 1.10.0
+
+	- The namespace is renamed to tkrzw_rpc.
+
 2021-10-01  Mikio Hirabayashi  <hirarin@gmail.com>
 
 	- Release: 0.9.3

@@ -79,17 +79,17 @@ TEST_F(ServerTest, Basic) {
   tkrzw::DBMServiceImpl server(dbms, &logger, 1, nullptr);
   grpc::ServerContext context;
   {
-    tkrzw::EchoRequest request;
+    tkrzw_rpc::EchoRequest request;
     request.set_message("hello");
-    tkrzw::EchoResponse response;
+    tkrzw_rpc::EchoResponse response;
     grpc::Status status = server.Echo(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ("hello", response.echo());
   }
   {
-    tkrzw::InspectRequest request;
+    tkrzw_rpc::InspectRequest request;
     request.set_dbm_index(-1);
-    tkrzw::InspectResponse response;
+    tkrzw_rpc::InspectResponse response;
     grpc::Status status = server.Inspect(&context, &request, &response);
     std::map<std::string, std::string> records;
     for (const auto& record : response.records()) {
@@ -103,9 +103,9 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ("TreeDBM", records["dbm_1_class"]);
   }
   {
-    tkrzw::InspectRequest request;
+    tkrzw_rpc::InspectRequest request;
     request.set_dbm_index(0);
-    tkrzw::InspectResponse response;
+    tkrzw_rpc::InspectResponse response;
     grpc::Status status = server.Inspect(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     std::map<std::string, std::string> records;
@@ -117,9 +117,9 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ("0", records["num_records"]);
   }
   {
-    tkrzw::InspectRequest request;
+    tkrzw_rpc::InspectRequest request;
     request.set_dbm_index(1);
-    tkrzw::InspectResponse response;
+    tkrzw_rpc::InspectResponse response;
     grpc::Status status = server.Inspect(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     std::map<std::string, std::string> records;
@@ -131,39 +131,39 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ("0", records["num_records"]);
   }
   {
-    tkrzw::SetRequest request;
+    tkrzw_rpc::SetRequest request;
     request.set_key("one");
     request.set_value("first");
-    tkrzw::SetResponse response;
+    tkrzw_rpc::SetResponse response;
     grpc::Status status = server.Set(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
   }
   {
-    tkrzw::SetMultiRequest request;
+    tkrzw_rpc::SetMultiRequest request;
     auto *record = request.add_records();
     record->set_first("two");
     record->set_second("second");
     record = request.add_records();
     record->set_first("three");
     record->set_second("third");
-    tkrzw::SetMultiResponse response;
+    tkrzw_rpc::SetMultiResponse response;
     grpc::Status status = server.SetMulti(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
   }
   {
-    tkrzw::AppendRequest request;
+    tkrzw_rpc::AppendRequest request;
     request.set_key("one");
     request.set_value("1");
     request.set_delim(":");
-    tkrzw::AppendResponse response;
+    tkrzw_rpc::AppendResponse response;
     grpc::Status status = server.Append(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
   }
   {
-    tkrzw::AppendMultiRequest request;
+    tkrzw_rpc::AppendMultiRequest request;
     auto *record = request.add_records();
     record->set_first("two");
     record->set_second("2");
@@ -171,41 +171,41 @@ TEST_F(ServerTest, Basic) {
     record->set_first("three");
     record->set_second("3");
     request.set_delim(":");
-    tkrzw::AppendMultiResponse response;
+    tkrzw_rpc::AppendMultiResponse response;
     grpc::Status status = server.AppendMulti(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
   }
   {
-    tkrzw::CountRequest request;
-    tkrzw::CountResponse response;
+    tkrzw_rpc::CountRequest request;
+    tkrzw_rpc::CountResponse response;
     grpc::Status status = server.Count(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
     EXPECT_EQ(3, response.count());
   }
   {
-    tkrzw::GetFileSizeRequest request;
-    tkrzw::GetFileSizeResponse response;
+    tkrzw_rpc::GetFileSizeRequest request;
+    tkrzw_rpc::GetFileSizeResponse response;
     grpc::Status status = server.GetFileSize(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
     EXPECT_GT(response.file_size(), 4096);
   }
   {
-    tkrzw::GetRequest request;
+    tkrzw_rpc::GetRequest request;
     request.set_key("one");
-    tkrzw::GetResponse response;
+    tkrzw_rpc::GetResponse response;
     grpc::Status status = server.Get(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
     EXPECT_EQ("first:1", response.value());
   }
   {
-    tkrzw::GetMultiRequest request;
+    tkrzw_rpc::GetMultiRequest request;
     request.add_keys("two");
     request.add_keys("three");
-    tkrzw::GetMultiResponse response;
+    tkrzw_rpc::GetMultiResponse response;
     grpc::Status status = server.GetMulti(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
@@ -218,30 +218,30 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ("third:3", records["three"]);
   }
   {
-    tkrzw::RemoveRequest request;
+    tkrzw_rpc::RemoveRequest request;
     request.set_key("one");
-    tkrzw::RemoveResponse response;
+    tkrzw_rpc::RemoveResponse response;
     grpc::Status status = server.Remove(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
     EXPECT_EQ(2, dbms[0]->CountSimple());
   }
   {
-    tkrzw::RemoveMultiRequest request;
+    tkrzw_rpc::RemoveMultiRequest request;
     request.add_keys("two");
     request.add_keys("three");
-    tkrzw::RemoveMultiResponse response;
+    tkrzw_rpc::RemoveMultiResponse response;
     grpc::Status status = server.RemoveMulti(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
     EXPECT_EQ(0, dbms[0]->CountSimple());
   }
   {
-    tkrzw::CompareExchangeRequest request;
+    tkrzw_rpc::CompareExchangeRequest request;
     request.set_key("one");
     request.set_desired_existence(true);
     request.set_desired_value("ichi");
-    tkrzw::CompareExchangeResponse response;
+    tkrzw_rpc::CompareExchangeResponse response;
     grpc::Status status = server.CompareExchange(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
@@ -256,7 +256,7 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ("*", dbms[0]->GetSimple("one", "*"));
   }
   {
-    tkrzw::CompareExchangeMultiRequest request;
+    tkrzw_rpc::CompareExchangeMultiRequest request;
     auto* record = request.add_expected();
     record->set_key("two");
     record = request.add_expected();
@@ -269,7 +269,7 @@ TEST_F(ServerTest, Basic) {
     record->set_existence(true);
     record->set_key("three");
     record->set_value("san");
-    tkrzw::CompareExchangeMultiResponse response;
+    tkrzw_rpc::CompareExchangeMultiResponse response;
     grpc::Status status = server.CompareExchangeMulti(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
@@ -294,11 +294,11 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(0, dbms[0]->CountSimple());
   }
   {
-    tkrzw::IncrementRequest request;
+    tkrzw_rpc::IncrementRequest request;
     request.set_key("num");
     request.set_increment(5);
     request.set_initial(100);
-    tkrzw::IncrementResponse response;
+    tkrzw_rpc::IncrementResponse response;
     grpc::Status status = server.Increment(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
@@ -310,29 +310,29 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(expr, expr));
   }
   {
-    tkrzw::ShouldBeRebuiltRequest request;
-    tkrzw::ShouldBeRebuiltResponse response;
+    tkrzw_rpc::ShouldBeRebuiltRequest request;
+    tkrzw_rpc::ShouldBeRebuiltResponse response;
     grpc::Status status = server.ShouldBeRebuilt(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
     EXPECT_TRUE(response.tobe());
   }
   {
-    tkrzw::RebuildRequest request;
+    tkrzw_rpc::RebuildRequest request;
     auto* param = request.add_params();
     param->set_first("align_pow");
     param->set_second("0");
-    tkrzw::RebuildResponse response;
+    tkrzw_rpc::RebuildResponse response;
     grpc::Status status = server.Rebuild(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
   }
   {
-    tkrzw::RebuildRequest request;
+    tkrzw_rpc::RebuildRequest request;
     auto* param = request.add_params();
     param->set_first("align_pow");
     param->set_second("0");
-    tkrzw::RebuildResponse response;
+    tkrzw_rpc::RebuildResponse response;
     grpc::Status status = server.Rebuild(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
@@ -341,8 +341,8 @@ TEST_F(ServerTest, Basic) {
     EXPECT_FALSE(tobe);
   }
   {
-    tkrzw::SynchronizeRequest request;
-    tkrzw::SynchronizeResponse response;
+    tkrzw_rpc::SynchronizeRequest request;
+    tkrzw_rpc::SynchronizeResponse response;
     grpc::Status status = server.Synchronize(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
@@ -352,11 +352,11 @@ TEST_F(ServerTest, Basic) {
       const std::string key = tkrzw::ToString(i);
       EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(key, ""));
     }
-    tkrzw::SearchRequest request;
+    tkrzw_rpc::SearchRequest request;
     request.set_mode("end");
     request.set_pattern("5");
     request.set_capacity(3);
-    tkrzw::SearchResponse response;
+    tkrzw_rpc::SearchResponse response;
     grpc::Status status = server.Search(&context, &request, &response);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(0, response.status().code());
@@ -381,48 +381,48 @@ TEST_F(ServerTest, Stream) {
   tkrzw::StreamLogger logger;
   tkrzw::DBMServiceImpl server(dbms, &logger, 1, nullptr);
   grpc::ServerContext context;
-  MockServerReaderWriter<tkrzw::StreamResponse, tkrzw::StreamRequest> stream;
-  tkrzw::StreamRequest request_echo;
+  MockServerReaderWriter<tkrzw_rpc::StreamResponse, tkrzw_rpc::StreamRequest> stream;
+  tkrzw_rpc::StreamRequest request_echo;
   auto* echo_req = request_echo.mutable_echo_request();
   echo_req->set_message("hello");
-  tkrzw::StreamRequest request_set;
+  tkrzw_rpc::StreamRequest request_set;
   auto* set_req = request_set.mutable_set_request();
   set_req->set_key("key");
   set_req->set_value("value");
-  tkrzw::StreamRequest request_append;
+  tkrzw_rpc::StreamRequest request_append;
   auto* append_req = request_append.mutable_append_request();
   append_req->set_key("key");
   append_req->set_value("value");
   append_req->set_delim(":");
-  tkrzw::StreamRequest request_get;
+  tkrzw_rpc::StreamRequest request_get;
   auto* get_req = request_get.mutable_get_request();
   get_req->set_key("key");
-  tkrzw::StreamRequest request_remove;
+  tkrzw_rpc::StreamRequest request_remove;
   auto* remove_req = request_remove.mutable_remove_request();
   remove_req->set_key("missing_key");
-  tkrzw::StreamRequest request_compare_exchange;
+  tkrzw_rpc::StreamRequest request_compare_exchange;
   auto* compare_exchange_req = request_compare_exchange.mutable_compare_exchange_request();
   compare_exchange_req->set_key("key");
-  tkrzw::StreamRequest request_increment;
+  tkrzw_rpc::StreamRequest request_increment;
   auto* increment_req = request_increment.mutable_increment_request();
   increment_req->set_key("num");
   increment_req->set_increment(5);
   increment_req->set_initial(100);
-  tkrzw::StreamResponse response_echo;
+  tkrzw_rpc::StreamResponse response_echo;
   auto* echo_res = response_echo.mutable_echo_response();
   echo_res->set_echo("hello");
-  tkrzw::StreamResponse response_set;
+  tkrzw_rpc::StreamResponse response_set;
   response_set.mutable_set_response();
-  tkrzw::StreamResponse response_get;
+  tkrzw_rpc::StreamResponse response_get;
   auto* get_res = response_get.mutable_get_response();
   get_res->set_value("value:value");
-  tkrzw::StreamResponse response_remove;
+  tkrzw_rpc::StreamResponse response_remove;
   auto* remove_res = response_remove.mutable_remove_response();
   remove_res->mutable_status()->set_code(tkrzw::Status::NOT_FOUND_ERROR);
-  tkrzw::StreamResponse response_compare_exchange;
+  tkrzw_rpc::StreamResponse response_compare_exchange;
   auto* compare_exchange_res = response_compare_exchange.mutable_compare_exchange_response();
   compare_exchange_res->mutable_status()->set_code(tkrzw::Status::INFEASIBLE_ERROR);
-  tkrzw::StreamResponse response_increment;
+  tkrzw_rpc::StreamResponse response_increment;
   auto* increment_res = response_increment.mutable_increment_response();
   increment_res->set_current(105);
   EXPECT_CALL(stream, Read(_))
@@ -462,52 +462,52 @@ TEST_F(ServerTest, Iterator) {
   tkrzw::StreamLogger logger;
   tkrzw::DBMServiceImpl server(dbms, &logger, 1, nullptr);
   grpc::ServerContext context;
-  MockServerReaderWriter<tkrzw::IterateResponse, tkrzw::IterateRequest> stream;
-  tkrzw::IterateRequest request_get;
-  request_get.set_operation(tkrzw::IterateRequest::OP_GET);
-  tkrzw::IterateRequest request_first;
-  request_first.set_operation(tkrzw::IterateRequest::OP_FIRST);
-  tkrzw::IterateRequest request_jump;
-  request_jump.set_operation(tkrzw::IterateRequest::OP_JUMP);
+  MockServerReaderWriter<tkrzw_rpc::IterateResponse, tkrzw_rpc::IterateRequest> stream;
+  tkrzw_rpc::IterateRequest request_get;
+  request_get.set_operation(tkrzw_rpc::IterateRequest::OP_GET);
+  tkrzw_rpc::IterateRequest request_first;
+  request_first.set_operation(tkrzw_rpc::IterateRequest::OP_FIRST);
+  tkrzw_rpc::IterateRequest request_jump;
+  request_jump.set_operation(tkrzw_rpc::IterateRequest::OP_JUMP);
   request_jump.set_key("00000004");
-  tkrzw::IterateRequest request_next;
-  request_next.set_operation(tkrzw::IterateRequest::OP_NEXT);
-  tkrzw::IterateRequest request_jump_upper;
-  request_jump_upper.set_operation(tkrzw::IterateRequest::OP_JUMP_UPPER);
+  tkrzw_rpc::IterateRequest request_next;
+  request_next.set_operation(tkrzw_rpc::IterateRequest::OP_NEXT);
+  tkrzw_rpc::IterateRequest request_jump_upper;
+  request_jump_upper.set_operation(tkrzw_rpc::IterateRequest::OP_JUMP_UPPER);
   request_jump_upper.set_key("00000008");
   request_jump_upper.set_jump_inclusive(true);
-  tkrzw::IterateRequest request_previous;
-  request_previous.set_operation(tkrzw::IterateRequest::OP_PREVIOUS);
-  tkrzw::IterateRequest request_last;
-  request_last.set_operation(tkrzw::IterateRequest::OP_LAST);
-  tkrzw::IterateRequest request_set;
-  request_set.set_operation(tkrzw::IterateRequest::OP_SET);
+  tkrzw_rpc::IterateRequest request_previous;
+  request_previous.set_operation(tkrzw_rpc::IterateRequest::OP_PREVIOUS);
+  tkrzw_rpc::IterateRequest request_last;
+  request_last.set_operation(tkrzw_rpc::IterateRequest::OP_LAST);
+  tkrzw_rpc::IterateRequest request_set;
+  request_set.set_operation(tkrzw_rpc::IterateRequest::OP_SET);
   request_set.set_value("setvalue");
-  tkrzw::IterateRequest request_remove;
-  request_remove.set_operation(tkrzw::IterateRequest::OP_REMOVE);
-  tkrzw::IterateResponse response_move;
-  tkrzw::IterateResponse response_get_first;
+  tkrzw_rpc::IterateRequest request_remove;
+  request_remove.set_operation(tkrzw_rpc::IterateRequest::OP_REMOVE);
+  tkrzw_rpc::IterateResponse response_move;
+  tkrzw_rpc::IterateResponse response_get_first;
   response_get_first.set_key("00000001");
   response_get_first.set_value("1");
-  tkrzw::IterateResponse response_get_jump;
+  tkrzw_rpc::IterateResponse response_get_jump;
   response_get_jump.set_key("00000004");
   response_get_jump.set_value("16");
-  tkrzw::IterateResponse response_get_next;
+  tkrzw_rpc::IterateResponse response_get_next;
   response_get_next.set_key("00000005");
   response_get_next.set_value("25");
-  tkrzw::IterateResponse response_get_jump_upper;
+  tkrzw_rpc::IterateResponse response_get_jump_upper;
   response_get_jump_upper.set_key("00000008");
   response_get_jump_upper.set_value("64");
-  tkrzw::IterateResponse response_get_previous;
+  tkrzw_rpc::IterateResponse response_get_previous;
   response_get_previous.set_key("00000007");
   response_get_previous.set_value("49");
-  tkrzw::IterateResponse response_get_last;
+  tkrzw_rpc::IterateResponse response_get_last;
   response_get_last.set_key("00000010");
   response_get_last.set_value("100");
-  tkrzw::IterateResponse response_get_set;
+  tkrzw_rpc::IterateResponse response_get_set;
   response_get_set.set_key("00000010");
   response_get_set.set_value("setvalue");
-  tkrzw::IterateResponse response_get_remove;
+  tkrzw_rpc::IterateResponse response_get_remove;
   response_get_remove.mutable_status()->set_code(tkrzw::Status::NOT_FOUND_ERROR);
   EXPECT_CALL(stream, Read(_))
       .WillOnce(DoAll(SetArgPointee<0>(request_first), Return(true)))
@@ -562,39 +562,39 @@ TEST_F(ServerTest, Replicator) {
   tkrzw::StreamLogger logger;
   tkrzw::DBMServiceImpl server(dbms, &logger, 2, &mq);
   grpc::ServerContext context;
-  MockServerWriter<tkrzw::ReplicateResponse> stream;
-  tkrzw::ReplicateRequest request_start;
+  MockServerWriter<tkrzw_rpc::ReplicateResponse> stream;
+  tkrzw_rpc::ReplicateRequest request_start;
   request_start.set_min_timestamp(100);
   request_start.set_server_id(1);
   request_start.set_wait_time(0);
-  tkrzw::ReplicateResponse response_start;
+  tkrzw_rpc::ReplicateResponse response_start;
   response_start.set_server_id(2);
-  tkrzw::ReplicateResponse response_write1;
+  tkrzw_rpc::ReplicateResponse response_write1;
   response_write1.set_timestamp(100);
   response_write1.set_server_id(123);
   response_write1.set_dbm_index(321);
-  response_write1.set_op_type(tkrzw::ReplicateResponse::OP_CLEAR);
-  tkrzw::ReplicateResponse response_write2;
+  response_write1.set_op_type(tkrzw_rpc::ReplicateResponse::OP_CLEAR);
+  tkrzw_rpc::ReplicateResponse response_write2;
   response_write2.set_timestamp(100);
   response_write2.set_server_id(123);
   response_write2.set_dbm_index(321);
-  response_write2.set_op_type(tkrzw::ReplicateResponse::OP_SET);
+  response_write2.set_op_type(tkrzw_rpc::ReplicateResponse::OP_SET);
   response_write2.set_key("key");
   response_write2.set_value("value");
-  tkrzw::ReplicateResponse response_write3;
+  tkrzw_rpc::ReplicateResponse response_write3;
   response_write3.set_timestamp(100);
   response_write3.set_server_id(123);
   response_write3.set_dbm_index(321);
-  response_write3.set_op_type(tkrzw::ReplicateResponse::OP_SET);
+  response_write3.set_op_type(tkrzw_rpc::ReplicateResponse::OP_SET);
   response_write3.set_key("key");
   response_write3.set_value("value:value");
-  tkrzw::ReplicateResponse response_write4;
+  tkrzw_rpc::ReplicateResponse response_write4;
   response_write4.set_timestamp(100);
   response_write4.set_server_id(123);
   response_write4.set_dbm_index(321);
-  response_write4.set_op_type(tkrzw::ReplicateResponse::OP_REMOVE);
+  response_write4.set_op_type(tkrzw_rpc::ReplicateResponse::OP_REMOVE);
   response_write4.set_key("key");
-  tkrzw::ReplicateResponse response_end;
+  tkrzw_rpc::ReplicateResponse response_end;
   response_end.mutable_status()->set_code(tkrzw::Status::INFEASIBLE_ERROR);
   EXPECT_CALL(stream, Write(EqualsProto(response_start), _)).WillOnce(Return(true));
   EXPECT_CALL(stream, Write(EqualsProto(response_write1), _)).WillOnce(Return(true));
