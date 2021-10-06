@@ -760,9 +760,10 @@ class RemoteDBM final {
    * Rebuilds the entire database.
    * @param params Optional parameters.
    * @return The result status.
-   * @details Tuning options can be given by the optional parameters, as with the Open method.
-   * A unset parameter means that the current setting is succeeded or calculated implicitly.
-   * In addition, HashDBM, TreeDBM, and SkipDBM supports the following parameters.
+   * @details Tuning options can be given by the optional parameters, as with the Open method of
+   * the PolyDBM class and the database configurations of the server command.  A unset parameter
+   * means that the current setting is succeeded or calculated implicitly.
+   * @details In addition, HashDBM, TreeDBM, and SkipDBM supports the following parameters.
    *   - skip_broken_records (bool): If true, the operation continues even if there are broken
    *     records which can be skipped.
    *   - sync_hard (bool): If true, physical synchronization with the hardware is done before
