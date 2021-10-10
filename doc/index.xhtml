@@ -150,7 +150,7 @@ window.onload = function(){
 <li><strong><a href="https://dbmx.net/tkrzw/#cachedbm_overview">CacheDBM</a></strong> : On-memory database manager implementation with LRU deletion.</li>
 </ul>
 
-<p>The library of Tkrzw-RPC is a C++ library to access the database service via gRPC protocol.  Thus, you can easily write application programs in C++.  You use the class <a href="#remotedbm_overview">RemoteDBM</a> whose API is very similar to the PolyDBM class so that you can use it as if you operates local databases.  Moreover, gRPC automates to generate client interfaces in various languages, based on the service definition in the protocol buffers <a href="https://github.com/estraier/tkrzw-rpc/blob/master/tkrzw_rpc.proto">tkrzw_rpc.proto</a>.  Tkrzw-RPC also provides command line utilities to access the database service.</p>
+<p>The library of Tkrzw-RPC provides C++ components to access the database service via gRPC protocol.  Thus, you can easily write application programs in C++.  You use the class <a href="#remotedbm_overview">RemoteDBM</a> whose API is very similar to the PolyDBM class so that you can use it as if you operates local databases.  Moreover, gRPC automates to generate client interfaces in various languages, based on the service definition in the protocol buffers <a href="https://github.com/estraier/tkrzw-rpc/blob/master/tkrzw_rpc.proto">tkrzw_rpc.proto</a>.  Tkrzw-RPC also provides command line utilities to access the database service.  Separate packages of client libraries for Python, Ruby, and Go are also provided.</p>
 
 <p>The server supports asynchronous replication for high availability of the service.  Every update on the databases of a server called "master" can be monitored by another server called "slave" and updates are applied to the databases on the slave immediately.  Thus, databases on both servers are synchronized.  If the master dies, clients connects to the slave to continue the service without any downtime.  The slave is treated as the new master by adding another slave.  Slaves can be used as read-only replicas for load distribution.  The "dual masters" topology is also available, where two servers replicate each other.</p>
 
@@ -162,6 +162,7 @@ window.onload = function(){
 <li><a href="http://dbmx.net/tkrzw-rpc/pkg/">C++ source packages</a></li>
 <li><a href="http://dbmx.net/tkrzw-rpc/pkg-python/">Python client library packages</a></li>
 <li><a href="http://dbmx.net/tkrzw-rpc/pkg-ruby/">Ruby client library packages</a></li>
+<li><a href="http://dbmx.net/tkrzw-rpc/pkg-go/">Go client library packages</a></li>
 </ul>
 
 <h2 id="api_documents">API Documents</h2>
@@ -172,6 +173,7 @@ window.onload = function(){
 <li><a href="http://dbmx.net/tkrzw-rpc/api/">C++ API documents</a></li>
 <li><a href="http://dbmx.net/tkrzw-rpc/api-python/">Python API documents</a></li>
 <li><a href="http://dbmx.net/tkrzw-rpc/api-ruby/">Ruby API documents</a></li>
+<li><a href="http://dbmx.net/tkrzw-rpc/api-go/">Go API documents</a></li>
 </ul>
 
 <h2 id="installation">Installation</h2>
