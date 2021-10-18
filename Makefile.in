@@ -175,6 +175,7 @@ check-remotedbm-perf :
 	  --iterator --sync --clear --rebuild
 	$(RUNENV) ./tkrzw_dbm_remote_perf wicked --threads 4 --separate --iter 5000 \
 	  --iterator --sync --clear --rebuild
+	$(RUNENV) ./tkrzw_dbm_remote_perf queue --threads 4 --iter 1000
 
 test : $(TESTFILES)
 
