@@ -1692,6 +1692,18 @@ inline void DBMAsyncServiceImpl::OperateQueue(
     tkrzw_rpc::CompareExchangeMultiRequest, tkrzw_rpc::CompareExchangeMultiResponse>(
         this, queue, &DBMAsyncServiceImpl::RequestCompareExchangeMulti,
         &DBMServiceBase::CompareExchangeMultiImpl);
+  new AsyncDBMProcessor<
+    tkrzw_rpc::RekeyRequest, tkrzw_rpc::RekeyResponse>(
+        this, queue, &DBMAsyncServiceImpl::RequestRekey,
+        &DBMServiceBase::RekeyImpl);
+  new AsyncDBMProcessor<
+    tkrzw_rpc::PopFirstRequest, tkrzw_rpc::PopFirstResponse>(
+        this, queue, &DBMAsyncServiceImpl::RequestPopFirst,
+        &DBMServiceBase::PopFirstImpl);
+  new AsyncDBMProcessor<
+    tkrzw_rpc::PushLastRequest, tkrzw_rpc::PushLastResponse>(
+        this, queue, &DBMAsyncServiceImpl::RequestPushLast,
+        &DBMServiceBase::PushLastImpl);
   new AsyncDBMProcessor<tkrzw_rpc::CountRequest, tkrzw_rpc::CountResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestCount,
       &DBMServiceBase::CountImpl);

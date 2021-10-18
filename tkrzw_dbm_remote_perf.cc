@@ -37,6 +37,8 @@ static void PrintUsageAndDie() {
   P("    : Checks echoing/setting/getting/removing performance in sequence.\n");
   P("  %s wicked [options]\n", progname);
   P("    : Checks consistency with various operations.\n");
+  P("  %s queue [options]\n", progname);
+  P("    : Checks queueing and dequeueing operations.\n");
   P("\n");
   P("Common options:\n");
   P("  --address : The address and the port of the service (default: localhost:1978)\n");
@@ -127,6 +129,11 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   }
   dbm.SetDBMIndex(dbm_index);
   std::atomic_bool has_error(false);
+  status = dbm.Clear();
+  if (status != Status::SUCCESS) {
+    EPrintL("Clear failed: ", status);
+    has_error = true;
+  }
   const int32_t dot_mod = std::max(num_iterations / 1000, 1);
   const int32_t fold_mod = std::max(num_iterations / 20, 1);
   auto echoing_task = [&](int32_t id) {
@@ -591,6 +598,11 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
            mem_usage);
     PrintL();
   }
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("disonnect failed: ", status);
+    has_error = true;
+  }
   return has_error ? 1 : 0;
 }
 
@@ -628,6 +640,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   if (num_threads < 1) {
     Die("Invalid number of threads");
   }
+  const int64_t start_mem_rss = GetMemoryUsage();
   RemoteDBM dbm;
   Status status = dbm.Connect(address, timeout);
   if (status != Status::SUCCESS) {
@@ -636,6 +649,11 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   }
   dbm.SetDBMIndex(dbm_index);
   std::atomic_bool has_error(false);
+  status = dbm.Clear();
+  if (status != Status::SUCCESS) {
+    EPrintL("Clear failed: ", status);
+    has_error = true;
+  }
   const int32_t dot_mod = std::max(num_iterations / 1000, 1);
   const int32_t fold_mod = std::max(num_iterations / 20, 1);
   auto task = [&](int32_t id) {
@@ -829,6 +847,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   };
   PrintF("Doing: num_iterations=%d value_size=%d num_threads=%d\n",
          num_iterations, value_size, num_threads);
+  const double start_time = GetWallTime();
   std::vector<std::thread> threads;
   for (int32_t i = 0; i < num_threads; i++) {
     threads.emplace_back(std::thread(task, i));
@@ -836,7 +855,172 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   for (auto& thread : threads) {
     thread.join();
   }
+  const double end_time = GetWallTime();
+  const double elapsed_time = end_time - start_time;
+  const int64_t num_records = dbm.CountSimple();
+  const int64_t mem_usage = GetMemoryUsage() - start_mem_rss;
+  PrintF("Done: elapsed_time=%.6f num_records=%lld qps=%.0f mem=%lld\n",
+         elapsed_time, num_records, num_iterations * num_threads / elapsed_time,
+         mem_usage);
   PrintL();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("disonnect failed: ", status);
+    has_error = true;
+  }
+  return has_error ? 1 : 0;
+}
+
+// Processes the queue subcommand.
+static int32_t ProcessQueue(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const int32_t num_iterations = GetIntegerArgument(cmd_args, "--iter", 0, 10000);
+  const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
+  const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 1);
+  const bool with_separate = CheckMap(cmd_args, "--separate");
+  if (num_iterations < 1) {
+    Die("Invalid number of iterations");
+  }
+  if (value_size < 1) {
+    Die("Invalid size of a record");
+  }
+  if (num_threads < 1) {
+    Die("Invalid number of threads");
+  }
+  const int64_t start_mem_rss = GetMemoryUsage();
+  RemoteDBM dbm;
+  Status status = dbm.Connect(address, timeout);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  dbm.SetDBMIndex(dbm_index);
+  std::atomic_bool has_error(false);
+  status = dbm.Clear();
+  if (status != Status::SUCCESS) {
+    EPrintL("Clear failed: ", status);
+    has_error = true;
+  }
+  const int32_t dot_mod = std::max(num_iterations / 1000, 1);
+  const int32_t fold_mod = std::max(num_iterations / 20, 1);
+  auto queue_task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
+    if (with_separate && id > 0) {
+      const Status status = task_dbm->Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
+    char* value_buf = new char[value_size];
+    std::memset(value_buf, '0' + id % 10, value_size);
+    bool midline = false;
+    for (int32_t i = 0; !has_error && i < num_iterations; i++) {
+      std::string_view value(value_buf, value_size);
+      const Status status = dbm.PushLast(value);
+      if (status != Status::SUCCESS) {
+        EPrintL("PushLastfailed: ", status);
+        has_error = true;
+        break;
+      }
+      if (id == 0 && (i + 1) % dot_mod == 0) {
+        PutChar('.');
+        midline = true;
+        if ((i + 1) % fold_mod == 0) {
+          PrintF(" (%08d)\n", i + 1);
+          midline = false;
+        }
+      }
+    }
+    if (midline) {
+      PrintF(" (%08d)\n", num_iterations);
+    }
+    delete[] value_buf;
+  };
+  auto dequeue_task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
+    if (with_separate && id > 0) {
+      const Status status = task_dbm->Connect(address, timeout);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
+    int32_t count = 0;
+    while (count < num_iterations && !has_error) {
+      std::string key, value;
+      const Status status = dbm.PopFirst(&key, &value);
+      if (status == Status::SUCCESS) {
+        count++;
+      } else {
+        if (status == Status::NOT_FOUND_ERROR) {
+          std::this_thread::yield();
+        } else {
+          EPrintL("PushLast failed: ", status);
+          has_error = true;
+          break;
+        }
+      }
+    }
+  };
+  PrintF("Doing: num_iterations=%d value_size=%d num_threads=%d\n",
+         num_iterations, value_size, num_threads);
+  const double start_time = GetWallTime();
+  std::vector<std::thread> threads;
+  for (int32_t i = 0; i < num_threads; i++) {
+    threads.emplace_back(std::thread(queue_task, i));
+  }
+  for (int32_t i = 0; i < num_threads; i++) {
+    threads.emplace_back(std::thread(dequeue_task, i));
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  const double end_time = GetWallTime();
+  const double elapsed_time = end_time - start_time;
+  const int64_t num_records = dbm.CountSimple();
+  const int64_t mem_usage = GetMemoryUsage() - start_mem_rss;
+  PrintF("Done: elapsed_time=%.6f num_records=%lld qps=%.0f mem=%lld\n",
+         elapsed_time, num_records, num_iterations * num_threads / elapsed_time,
+         mem_usage);
+  PrintL();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("disonnect failed: ", status);
+    has_error = true;
+  }
   return has_error ? 1 : 0;
 }
 
@@ -854,6 +1038,8 @@ int main(int argc, char** argv) {
       rv = tkrzw::ProcessSequence(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "wicked") == 0) {
       rv = tkrzw::ProcessWicked(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "queue") == 0) {
+      rv = tkrzw::ProcessQueue(argc - 1, args + 1);
     } else {
       tkrzw::PrintUsageAndDie();
     }
