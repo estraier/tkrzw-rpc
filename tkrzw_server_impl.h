@@ -513,6 +513,55 @@ class DBMServiceBase {
     return grpc::Status::OK;
   }
 
+  grpc::Status RekeyImpl(
+      grpc::ServerContext* context, const tkrzw_rpc::RekeyRequest* request,
+      tkrzw_rpc::RekeyResponse* response) {
+    LogRequest(context, "Rekey", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    const Status status = dbm.Rekey(
+        request->old_key(), request->new_key(), request->overwrite(), request->copying());
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
+  grpc::Status PopFirstImpl(
+      grpc::ServerContext* context, const tkrzw_rpc::PopFirstRequest* request,
+      tkrzw_rpc::PopFirstResponse* response) {
+    LogRequest(context, "PopFirst", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    std::string key, value;
+    const Status status = dbm.PopFirst(request->omit_key() ? nullptr : &key,
+                                       request->omit_value() ? nullptr : &value);
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    if (status == Status::SUCCESS) {
+      response->set_key(key);
+      response->set_value(value);
+    }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status PushLastImpl(
+      grpc::ServerContext* context, const tkrzw_rpc::PushLastRequest* request,
+      tkrzw_rpc::PushLastResponse* response) {
+    LogRequest(context, "PushLast", request);
+    if (request->dbm_index() < 0 || request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    auto& dbm = *dbms_[request->dbm_index()];
+    const Status status = dbm.PushLast(request->value(), request->wtime());
+    response->mutable_status()->set_code(status.GetCode());
+    response->mutable_status()->set_message(status.GetMessage());
+    return grpc::Status::OK;
+  }
+
   grpc::Status CountImpl(
       grpc::ServerContext* context, const tkrzw_rpc::CountRequest* request,
       tkrzw_rpc::CountResponse* response) {
@@ -870,6 +919,18 @@ class DBMServiceBase {
         response->mutable_status()->set_message(status.GetMessage());
         break;
       }
+      case tkrzw_rpc::IterateRequest::OP_STEP: {
+        std::string key, value;
+        const Status status = (*iter)->Step(
+            request.omit_key() ? nullptr : &key, request.omit_value() ? nullptr : &value);
+        response->mutable_status()->set_code(status.GetCode());
+        response->mutable_status()->set_message(status.GetMessage());
+        if (status == Status::SUCCESS) {
+          response->set_key(key);
+          response->set_value(value);
+        }
+        break;
+      }
       default: {
         return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown operation");
       }
@@ -1091,6 +1152,27 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       tkrzw_rpc::CompareExchangeMultiResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
     return CompareExchangeMultiImpl(context, request, response);
+  }
+
+  grpc::Status Rekey(
+      grpc::ServerContext* context, const tkrzw_rpc::RekeyRequest* request,
+      tkrzw_rpc::RekeyResponse* response) {
+    ScopedCounter sc(&num_active_calls_);
+    return RekeyImpl(context, request, response);
+  }
+
+  grpc::Status PopFirst(
+      grpc::ServerContext* context, const tkrzw_rpc::PopFirstRequest* request,
+      tkrzw_rpc::PopFirstResponse* response) {
+    ScopedCounter sc(&num_active_calls_);
+    return PopFirstImpl(context, request, response);
+  }
+
+  grpc::Status PushLast(
+      grpc::ServerContext* context, const tkrzw_rpc::PushLastRequest* request,
+      tkrzw_rpc::PushLastResponse* response) {
+    ScopedCounter sc(&num_active_calls_);
+    return PushLastImpl(context, request, response);
   }
 
   grpc::Status Count(

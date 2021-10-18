@@ -264,6 +264,52 @@ TEST_F(RemoteDBMTest, CompareExchangeMulti) {
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.CompareExchangeMulti(expected, desired));
 }
 
+TEST_F(RemoteDBMTest, Rekey) {
+  auto stub = std::make_unique<tkrzw_rpc::MockDBMServiceStub>();
+  tkrzw_rpc::RekeyRequest request;
+  request.set_old_key("old_key");
+  request.set_new_key("new_key");
+  request.set_overwrite(true);
+  request.set_copying(true);
+  tkrzw_rpc::RekeyResponse response;
+  EXPECT_CALL(*stub, Rekey(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  std::string value;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.Rekey("old_key", "new_key", true, true));
+}
+
+TEST_F(RemoteDBMTest, PopFirst) {
+  auto stub = std::make_unique<tkrzw_rpc::MockDBMServiceStub>();
+  tkrzw_rpc::PopFirstRequest request;
+  tkrzw_rpc::PopFirstResponse response;
+  response.set_key("key");
+  response.set_value("value");
+  EXPECT_CALL(*stub, PopFirst(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  std::string key, value;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.PopFirst(&key, &value));
+  EXPECT_EQ("key", key);
+  EXPECT_EQ("value", value);
+}
+
+TEST_F(RemoteDBMTest, PushLast) {
+  auto stub = std::make_unique<tkrzw_rpc::MockDBMServiceStub>();
+  tkrzw_rpc::PushLastRequest request;
+  request.set_value("value");
+  request.set_wtime(10);
+  tkrzw_rpc::PushLastResponse response;
+  EXPECT_CALL(*stub, PushLast(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  std::string value;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.PushLast("value", 10));
+}
+
 TEST_F(RemoteDBMTest, Count) {
   auto stub = std::make_unique<tkrzw_rpc::MockDBMServiceStub>();
   tkrzw_rpc::CountRequest request;

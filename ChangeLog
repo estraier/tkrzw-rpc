@@ -1,3 +1,12 @@
+2021-10-20  Mikio Hirabayashi  <hirarin@gmail.com>
+
+	- Release: 0.9.5
+	- Library version: 1.11.0
+
+	- Add Iterator::Step.
+	- Add RemoteDBM::Rekey.
+	- Add RemoteDBM::PopFirst and RemoteDBM::PushLast.
+
 2021-10-05  Mikio Hirabayashi  <hirarin@gmail.com>
 
 	- Release: 0.9.4

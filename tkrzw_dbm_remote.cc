@@ -97,6 +97,10 @@ class RemoteDBMImpl final {
   Status CompareExchangeMulti(
       const std::vector<std::pair<std::string_view, std::string_view>>& expected,
       const std::vector<std::pair<std::string_view, std::string_view>>& desired);
+  Status Rekey(std::string_view old_key, std::string_view new_key,
+               bool overwrite, bool copying);
+  Status PopFirst(std::string* key, std::string* value);
+  Status PushLast(std::string_view value, double wtime);
   Status Count(int64_t* count);
   Status GetFileSize(int64_t* file_size);
   Status Clear();
@@ -158,6 +162,7 @@ class RemoteDBMIteratorImpl final {
   Status Get(std::string* key, std::string* value);
   Status Set(std::string_view value);
   Status Remove();
+  Status Step(std::string* key, std::string* value);
 
  private:
   RemoteDBMImpl* dbm_;
@@ -555,6 +560,81 @@ Status RemoteDBMImpl::CompareExchangeMulti(
   }
   tkrzw_rpc::CompareExchangeMultiResponse response;
   grpc::Status status = stub_->CompareExchangeMulti(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMImpl::Rekey(std::string_view old_key, std::string_view new_key,
+                            bool overwrite, bool copying) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+  tkrzw_rpc::RekeyRequest request;
+  request.set_dbm_index(dbm_index_);
+  request.set_old_key(old_key.data(), old_key.size());
+  request.set_new_key(new_key.data(), new_key.size());
+  request.set_overwrite(overwrite);
+  request.set_copying(copying);
+  tkrzw_rpc::RekeyResponse response;
+  grpc::Status status = stub_->Rekey(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMImpl::PopFirst(std::string* key, std::string* value) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+  tkrzw_rpc::PopFirstRequest request;
+  request.set_dbm_index(dbm_index_);
+  if (key == nullptr) {
+    request.set_omit_key(true);
+  }
+  if (value == nullptr) {
+    request.set_omit_value(true);
+  }
+  tkrzw_rpc::PopFirstResponse response;
+  grpc::Status status = stub_->PopFirst(&context, request, &response);
+  if (!status.ok()) {
+    return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  if (response.status().code() == 0) {
+    if (key != nullptr) {
+      *key = response.key();
+    }
+    if (value != nullptr) {
+      *value = response.value();
+    }
+  }
+  return MakeStatusFromProto(response.status());
+}
+
+Status RemoteDBMImpl::PushLast(std::string_view value, double wtime) {
+  std::shared_lock<SpinSharedMutex> lock(mutex_);
+  if (stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
+  tkrzw_rpc::PushLastRequest request;
+  request.set_dbm_index(dbm_index_);
+  request.set_value(value.data(), value.size());
+  request.set_wtime(wtime);
+  tkrzw_rpc::PushLastResponse response;
+  grpc::Status status = stub_->PushLast(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
   }
@@ -1327,6 +1407,47 @@ Status RemoteDBMIteratorImpl::Remove() {
   return MakeStatusFromProto(response.status());
 }
 
+Status RemoteDBMIteratorImpl::Step(std::string* key, std::string* value) {
+  std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
+  if (dbm_->stub_ == nullptr) {
+    return Status(Status::PRECONDITION_ERROR, "not connected database");
+  }
+  if (!healthy_.load()) {
+    return Status(Status::PRECONDITION_ERROR, "unhealthy stream");
+  }
+  context_.set_deadline(std::chrono::system_clock::now() + std::chrono::microseconds(
+      static_cast<int64_t>(dbm_->timeout_ * 1000000)));
+  tkrzw_rpc::IterateRequest request;
+  request.set_dbm_index(dbm_->dbm_index_);
+  request.set_operation(tkrzw_rpc::IterateRequest::OP_STEP);
+  if (key == nullptr) {
+    request.set_omit_key(true);
+  }
+  if (value == nullptr) {
+    request.set_omit_value(true);
+  }
+  if (!stream_->Write(request)) {
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Write failed: ", message));
+  }
+  tkrzw_rpc::IterateResponse response;
+  if (!stream_->Read(&response)) {
+    healthy_.store(false);
+    const std::string message = GRPCStatusString(stream_->Finish());
+    return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
+  }
+  if (response.status().code() == 0) {
+    if (key != nullptr) {
+      *key = response.key();
+    }
+    if (value != nullptr) {
+      *value = response.value();
+    }
+  }
+  return MakeStatusFromProto(response.status());
+}
+
 RemoteDBMReplicatorImpl::RemoteDBMReplicatorImpl(RemoteDBMImpl* dbm)
     : dbm_(dbm), context_(), stream_(nullptr), healthy_(true), server_id_(-1) {
   if (healthy_.load()) {
@@ -1511,6 +1632,19 @@ Status RemoteDBM::CompareExchangeMulti(
   return impl_->CompareExchangeMulti(expected, desired);
 }
 
+Status RemoteDBM::Rekey(std::string_view old_key, std::string_view new_key,
+                        bool overwrite, bool copying) {
+  return impl_->Rekey(old_key, new_key, overwrite, copying);
+}
+
+Status RemoteDBM::PopFirst(std::string* key, std::string* value) {
+  return impl_->PopFirst(key, value);
+}
+
+Status RemoteDBM::PushLast(std::string_view value, double wtime) {
+  return impl_->PushLast(value, wtime);
+}
+
 Status RemoteDBM::Count(int64_t* count) {
   return impl_->Count(count);
 }
@@ -1656,6 +1790,10 @@ Status RemoteDBM::Iterator::Set(std::string_view value) {
 
 Status RemoteDBM::Iterator::Remove() {
   return impl_->Remove();
+}
+
+Status RemoteDBM::Iterator::Step(std::string* key, std::string* value) {
+  return impl_->Step(key, value);
 }
 
 RemoteDBM::ReplicateLog::ReplicateLog() : buffer_(nullptr) {}

@@ -260,6 +260,62 @@ message CompareExchangeMultiResponse {
   StatusProto status = 1;
 }
 
+// Request of the Rekey method.
+message RekeyRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The old key of the record.
+  bytes old_key = 2;
+  // The new key of the record.
+  bytes new_key = 3;
+  // Whether to overwrite the existing record.
+  bool overwrite = 4;
+  // Whether to retain the record of the old key.
+  bool copying = 5;
+}
+
+// Response of the Rekey method.
+message RekeyResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
+// Request of the PopFirst method.
+message PopFirstRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // Whether to omit the key in the response.
+  bool omit_key = 2;
+  // Whether to omit the value in the response.
+  bool omit_value = 3;
+}
+
+// Response of the PopFirst method.
+message PopFirstResponse {
+  // The result status.
+  StatusProto status = 1;
+  // The key of the record.
+  bytes key = 2;
+  // The value of the record.
+  bytes value = 3;
+}
+
+// Request of the PushLast method.
+message PushLastRequest {
+  // The index of the DBM object.  The origin is 0.
+  int32 dbm_index = 1;
+  // The value of the record.
+  bytes value = 2;
+  // The current wall time used to generate the key.
+  double wtime = 3;
+}
+
+// Response of the PushLast method.
+message PushLastResponse {
+  // The result status.
+  StatusProto status = 1;
+}
+
 // Request of the Count method.
 message CountRequest {
   // The index of the DBM object.  The origin is 0.
@@ -419,6 +475,8 @@ message IterateRequest {
     OP_SET = 9;
     // Removes the current record.
     OP_REMOVE = 10;
+    // Gets the current record and moves the iterator.
+    OP_STEP = 11;
   }
   // The index of the DBM object.  The origin is 0.
   int32 dbm_index = 1;
@@ -515,6 +573,9 @@ service DBMService {
   rpc CompareExchange(CompareExchangeRequest) returns (CompareExchangeResponse);
   rpc Increment(IncrementRequest) returns (IncrementResponse);
   rpc CompareExchangeMulti(CompareExchangeMultiRequest) returns (CompareExchangeMultiResponse);
+  rpc Rekey(RekeyRequest) returns (RekeyResponse);
+  rpc PopFirst(PopFirstRequest) returns (PopFirstResponse);
+  rpc PushLast(PushLastRequest) returns (PushLastResponse);
   rpc Count(CountRequest) returns (CountResponse);
   rpc GetFileSize(GetFileSizeRequest) returns (GetFileSizeResponse);
   rpc Clear(ClearRequest) returns (ClearResponse);

@@ -308,6 +308,16 @@ class RemoteDBM final {
      */
     Status Remove();
 
+    /**
+     * Gets the current record and moves the iterator to the next record.
+     * @param key The pointer to a string object to contain the record key.  If it is nullptr,
+     * the key data is ignored.
+     * @param value The pointer to a string object to contain the record value.  If it is nullptr,
+     * the value data is ignored.
+     * @return The result status.
+     */
+    Status Step(std::string* key = nullptr, std::string* value = nullptr);
+
    private:
     /**
      * Constructor.
@@ -717,6 +727,41 @@ class RemoteDBM final {
   Status CompareExchangeMulti(
       const std::vector<std::pair<std::string_view, std::string_view>>& expected,
       const std::vector<std::pair<std::string_view, std::string_view>>& desired);
+
+  /**
+   * Changes the key of a record.
+   * @param old_key The old key of the record.
+   * @param new_key The new key of the record.
+   * @param overwrite Whether to overwrite the existing record of the new key.
+   * @param copying Whether to retain the record of the old key.
+   * @return The result status.  If there's no matching record to the old key, NOT_FOUND_ERROR
+   * is returned.  If the overwrite flag is false and there is an existing record of the new key,
+   * DUPLICATION ERROR is returned.
+   */
+  Status Rekey(std::string_view old_key, std::string_view new_key,
+               bool overwrite = true, bool copying = false);
+
+  /**
+   * Gets the first record and removes it.
+   * @param key The pointer to a string object to contain the key of the first record.  If it
+   * is nullptr, it is ignored.
+   * @param value The pointer to a string object to contain the value of the first record.  If
+   * it is nullptr, it is ignored.
+   * @return The result status.
+   */
+  Status PopFirst(std::string* key = nullptr, std::string* value = nullptr);
+
+  /**
+   * Adds a record with a key of the current timestamp.
+   * @param value The value of the record.
+   * @param wtime The current wall time used to generate the key.  If it is negative, the system
+   * clock is used.
+   * @return The result status.
+   * @details The key is generated as an 8-bite big-endian binary string of the timestamp.  If
+   * there is an existing record matching the generated key, the key is regenerated and the
+   * attempt is repeated until it succeeds.
+   */
+  Status PushLast(std::string_view value, double wtime = -1);
 
   /**
    * Gets the number of records.

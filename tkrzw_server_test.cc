@@ -305,6 +305,27 @@ TEST_F(ServerTest, Basic) {
     EXPECT_EQ(105, response.current());
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Remove("num"));
   }
+  {
+    EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set("KEY1", "value1"));
+    tkrzw_rpc::RekeyRequest request;
+    request.set_old_key("KEY1");
+    request.set_new_key("KEY2");
+    request.set_overwrite(false);
+    request.set_copying(true);
+    tkrzw_rpc::RekeyResponse response;
+    grpc::Status status = server.Rekey(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ("value1", dbms[0]->GetSimple("KEY1", "*"));
+    EXPECT_EQ("value1", dbms[0]->GetSimple("KEY2", "*"));
+    request.set_overwrite(true);
+    request.set_copying(false);
+    status = server.Rekey(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ("*", dbms[0]->GetSimple("KEY1", "*"));
+    EXPECT_EQ("value1", dbms[0]->GetSimple("KEY2", "*"));
+  }
   for (int32_t i = 0; i < 30; i++) {
     const std::string expr = tkrzw::SPrintF("%08d", i);
     EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Set(expr, expr));
@@ -538,6 +559,72 @@ TEST_F(ServerTest, Iterator) {
   EXPECT_CALL(stream, Write(EqualsProto(response_get_remove), _)).WillOnce(Return(true));
   grpc::Status status = server.IterateImpl(&context, &stream);
   EXPECT_TRUE(status.ok());
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
+}
+
+TEST_F(ServerTest, Queue) {
+  tkrzw::TemporaryDirectory tmp_dir(true, "tkrzw-");
+  const std::string file_path = tmp_dir.MakeUniquePath();
+  std::vector<std::unique_ptr<tkrzw::ParamDBM>> dbms(1);
+  dbms[0] = std::make_unique<tkrzw::PolyDBM>();
+  const std::map<std::string, std::string> params =
+      {{"dbm", "TreeDBM"}, {"num_buckets", "10"}};
+  EXPECT_EQ(tkrzw::Status::SUCCESS,
+            dbms[0]->OpenAdvanced(file_path, true, tkrzw::File::OPEN_DEFAULT, params));
+  tkrzw::StreamLogger logger;
+  tkrzw::DBMServiceImpl server(dbms, &logger, 1, nullptr);
+  grpc::ServerContext context;
+  for (int32_t i = 0; i < 3; i++) {
+    tkrzw_rpc::PushLastRequest request;
+    request.set_value(tkrzw::ToString(i));
+    tkrzw_rpc::PushLastResponse response;
+    grpc::Status status = server.PushLast(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+  }
+  EXPECT_EQ(3, dbms[0]->CountSimple());
+  MockServerReaderWriter<tkrzw_rpc::IterateResponse, tkrzw_rpc::IterateRequest> stream;
+  tkrzw_rpc::IterateRequest request_first;
+  request_first.set_operation(tkrzw_rpc::IterateRequest::OP_FIRST);
+  tkrzw_rpc::IterateRequest request_step;
+  request_step.set_operation(tkrzw_rpc::IterateRequest::OP_STEP);
+  tkrzw_rpc::IterateResponse response_first;
+  tkrzw_rpc::IterateResponse response_step1;
+  response_step1.set_key(std::string("\0\0\0\0\0\0\0\0", 8));
+  response_step1.set_value("0");
+  tkrzw_rpc::IterateResponse response_step2;
+  response_step2.set_key(std::string("\0\0\0\0\0\0\0\1", 8));
+  response_step2.set_value("1");
+  tkrzw_rpc::IterateResponse response_step3;
+  response_step3.set_key(std::string("\0\0\0\0\0\0\0\2", 8));
+  response_step3.set_value("2");
+  EXPECT_CALL(stream, Read(_))
+      .WillOnce(DoAll(SetArgPointee<0>(request_first), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_step), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_step), Return(true)))
+      .WillOnce(DoAll(SetArgPointee<0>(request_step), Return(true)))
+      .WillOnce(Return(false));
+  EXPECT_CALL(stream, Write(EqualsProto(response_first), _)).WillRepeatedly(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_step1), _)).WillRepeatedly(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_step2), _)).WillRepeatedly(Return(true));
+  EXPECT_CALL(stream, Write(EqualsProto(response_step3), _)).WillRepeatedly(Return(true));
+  grpc::Status status = server.IterateImpl(&context, &stream);
+  EXPECT_TRUE(status.ok());
+  for (int32_t i = 0; i < 3; i++) {
+    tkrzw_rpc::PopFirstRequest request;
+    tkrzw_rpc::PopFirstResponse response;
+    grpc::Status status = server.PopFirst(&context, &request, &response);
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(0, response.status().code());
+    EXPECT_EQ(std::string("\0\0\0\0\0\0\0", 7) + char(i), response.key());
+    EXPECT_EQ(tkrzw::ToString(i), response.value());
+  }
+  EXPECT_EQ(0, dbms[0]->CountSimple());
+  tkrzw_rpc::PopFirstRequest request;
+  tkrzw_rpc::PopFirstResponse response;
+  status = server.PopFirst(&context, &request, &response);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(tkrzw::Status::NOT_FOUND_ERROR, response.status().code());
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbms[0]->Close());
 }
 
