@@ -67,6 +67,10 @@ static void PrintUsageAndDie() {
   P("  --clear : Clears the database occasionally.\n");
   P("  --rebuild : Rebuilds the database occasionally.\n");
   P("\n");
+  P("Options for the queue subcommand:\n");
+  P("  --notify : Sends notifications when queueing.\n");
+  P("  --retry num : The maximum wait time in seconds before retrying.\n");
+  P("\n");
   std::exit(1);
 }
 
@@ -600,7 +604,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   }
   status = dbm.Disconnect();
   if (status != Status::SUCCESS) {
-    EPrintL("disonnect failed: ", status);
+    EPrintL("Disonnect failed: ", status);
     has_error = true;
   }
   return has_error ? 1 : 0;
@@ -865,7 +869,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   PrintL();
   status = dbm.Disconnect();
   if (status != Status::SUCCESS) {
-    EPrintL("disonnect failed: ", status);
+    EPrintL("Disonnect failed: ", status);
     has_error = true;
   }
   return has_error ? 1 : 0;
@@ -876,6 +880,7 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
     {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0},
+    {"--notify", 0}, {"--retry", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -890,6 +895,8 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
   const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
   const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 1);
   const bool with_separate = CheckMap(cmd_args, "--separate");
+  const bool notify = CheckMap(cmd_args, "--notify");
+  const double retry_wait = GetDoubleArgument(cmd_args, "--retry", 0, 0);
   if (num_iterations < 1) {
     Die("Invalid number of iterations");
   }
@@ -926,22 +933,14 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
       }
       task_dbm = &stack_dbm;
     }
-    if (with_separate && id > 0) {
-      const Status status = task_dbm->Connect(address, timeout);
-      if (status != Status::SUCCESS) {
-        EPrintL("Connect failed: ", status);
-        return;
-      }
-      task_dbm = &stack_dbm;
-    }
     char* value_buf = new char[value_size];
     std::memset(value_buf, '0' + id % 10, value_size);
     bool midline = false;
     for (int32_t i = 0; !has_error && i < num_iterations; i++) {
       std::string_view value(value_buf, value_size);
-      const Status status = dbm.PushLast(value);
+      const Status status = task_dbm->PushLast(value, -1, notify);
       if (status != Status::SUCCESS) {
-        EPrintL("PushLastfailed: ", status);
+        EPrintL("PushLast failed: ", status);
         has_error = true;
         break;
       }
@@ -970,25 +969,17 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
       }
       task_dbm = &stack_dbm;
     }
-    if (with_separate && id > 0) {
-      const Status status = task_dbm->Connect(address, timeout);
-      if (status != Status::SUCCESS) {
-        EPrintL("Connect failed: ", status);
-        return;
-      }
-      task_dbm = &stack_dbm;
-    }
     int32_t count = 0;
     while (count < num_iterations && !has_error) {
       std::string key, value;
-      const Status status = dbm.PopFirst(&key, &value);
+      const Status status = task_dbm->PopFirst(&key, &value, retry_wait);
       if (status == Status::SUCCESS) {
         count++;
       } else {
-        if (status == Status::NOT_FOUND_ERROR) {
+        if (status == Status::NOT_FOUND_ERROR || status == Status::INFEASIBLE_ERROR) {
           std::this_thread::yield();
         } else {
-          EPrintL("PushLast failed: ", status);
+          EPrintL("PopFirst failed: ", status);
           has_error = true;
           break;
         }
@@ -1018,7 +1009,7 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
   PrintL();
   status = dbm.Disconnect();
   if (status != Status::SUCCESS) {
-    EPrintL("disonnect failed: ", status);
+    EPrintL("Disonnect failed: ", status);
     has_error = true;
   }
   return has_error ? 1 : 0;

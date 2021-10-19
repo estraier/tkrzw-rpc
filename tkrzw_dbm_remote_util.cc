@@ -46,6 +46,8 @@ static void PrintUsageAndDie() {
   P("    : Removes a record\n");
   P("  %s list [options]\n", progname);
   P("    : Lists up records and prints them.\n");
+  P("  %s queue [options] [value]\n", progname);
+  P("    : Enqueue or dequeue a record.\n");
   P("  %s clear [options]\n", progname);
   P("    : Removes all records.\n");
   P("  %s rebuild [options] [params]\n", progname);
@@ -78,6 +80,12 @@ static void PrintUsageAndDie() {
   P("  --items num : The number of items to print. (default: 10)\n");
   P("  --escape : C-style escape is applied to the TSV data.\n");
   P("  --keys : Prints keys only.\n");
+  P("\n");
+  P("Options for the queue subcommand:\n");
+  P("  --notify : Sends notifications when queueing.\n");
+  P("  --retry num : The maximum wait time in seconds before retrying.\n");
+  P("  --escape : C-style escape is applied to the output data.\n");
+  P("  --key : Prints the key too.\n");
   P("\n");
   P("Options for the sync subcommand:\n");
   P("  --hard : Does physical synchronization with the hardware.\n");
@@ -140,7 +148,11 @@ static int32_t ProcessEcho(int32_t argc, const char** args) {
   } else {
     EPrintL("Echo failed: ", status);
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -185,7 +197,11 @@ static int32_t ProcessInspect(int32_t argc, const char** args) {
   } else {
     EPrintL("Inspect failed: ", status);
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -242,7 +258,11 @@ static int32_t ProcessGet(int32_t argc, const char** args) {
       EPrintL("Get failed: ", status);
     }
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -330,7 +350,11 @@ static int32_t ProcessSet(int32_t argc, const char** args) {
       }
     }
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -381,7 +405,11 @@ static int32_t ProcessRemove(int32_t argc, const char** args) {
       EPrintL("Remove failed: ", status);
     }
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -489,7 +517,71 @@ static int32_t ProcessList(int32_t argc, const char** args) {
     }
   }
   iter.reset(nullptr);
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
+  return ok ? 0 : 1;
+}
+
+// Processes the queue subcommand.
+static int32_t ProcessQueue(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"--notify", 0}, {"--retry", 1}, {"--escape", 0}, {"--key", 0},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const bool notify = CheckMap(cmd_args, "--notify");
+  const double retry_wait = GetDoubleArgument(cmd_args, "--retry", 0, 0);
+  const bool with_escape = CheckMap(cmd_args, "--escape");
+  const bool key_also = CheckMap(cmd_args, "--key");
+  RemoteDBM dbm;
+  Status status = dbm.Connect(address, timeout);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  dbm.SetDBMIndex(dbm_index);
+  bool ok = true;
+  if (cmd_args[""].empty()) {
+    std::string key, value;
+    status = dbm.PopFirst(&key, &value, retry_wait);
+    if (status == Status::SUCCESS) {
+      const std::string& esc_key = SPrintF("%010.6f", StrToIntBigEndian(key) / 100000000.0);
+      const std::string& esc_value = with_escape ? StrEscapeC(value) : StrTrimForTSV(value, true);
+      if (key_also) {
+        PrintL(esc_key, "\t", esc_value);
+      } else {
+        PrintL(esc_value);
+      }
+    } else {
+      EPrintL("PopFirst failed: ", status);
+      ok = false;
+    }
+  } else {
+    for (const auto& value : cmd_args[""]) {
+      status = dbm.PushLast(value, -1, notify);
+      if (status != Status::SUCCESS) {
+        EPrintL("PushLast failed: ", status);
+        ok = false;
+        break;
+      }
+    }
+  }
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -521,7 +613,11 @@ static int32_t ProcessClear(int32_t argc, const char** args) {
   } else {
     EPrintL("Remove failed: ", status);
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -556,7 +652,11 @@ static int32_t ProcessRebuild(int32_t argc, const char** args) {
   } else {
     EPrintL("Remove failed: ", status);
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -592,7 +692,11 @@ static int32_t ProcessSync(int32_t argc, const char** args) {
   } else {
     EPrintL("Remove failed: ", status);
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -666,7 +770,11 @@ static int32_t ProcessSearch(int32_t argc, const char** args) {
   } else {
     EPrintL("Search failed: ", status);
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -697,7 +805,11 @@ static int32_t ProcessChangeMaster(int32_t argc, const char** args) {
     EPrintL("ChangeMaster failed: ", status);
     ok = false;
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -899,7 +1011,11 @@ static int32_t ProcessReplicate(int32_t argc, const char** args) {
       ok = false;
     }
   }
-  dbm.Disconnect();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disconnect failed: ", status);
+    ok = false;
+  }
   return ok ? 0 : 1;
 }
 
@@ -927,6 +1043,8 @@ int main(int argc, char** argv) {
       rv = tkrzw::ProcessRemove(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "list") == 0) {
       rv = tkrzw::ProcessList(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "queue") == 0) {
+      rv = tkrzw::ProcessQueue(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "clear") == 0) {
       rv = tkrzw::ProcessClear(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "rebuild") == 0) {

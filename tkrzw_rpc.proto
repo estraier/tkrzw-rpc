@@ -55,8 +55,10 @@ message EchoRequest {
 
 // Response of the Echo method.
 message EchoResponse {
+  // The result status.
+  StatusProto status = 1;
   // The echo message.
-  string echo = 1;
+  string echo = 2;
 }
 
 // Request of the Inspect method.
@@ -68,8 +70,10 @@ message InspectRequest {
 
 // Response of the Inspect method.
 message InspectResponse {
+  // The result status.
+  StatusProto status = 1;
   // Key-value pairs of the attributes.
-  repeated StringPair records = 1;
+  repeated StringPair records = 2;
 }
 
 // Request of the Get method.
@@ -288,6 +292,8 @@ message PopFirstRequest {
   bool omit_key = 2;
   // Whether to omit the value in the response.
   bool omit_value = 3;
+  // The wait time in seconds before retrying.
+  double retry_wait = 4;
 }
 
 // Response of the PopFirst method.
@@ -308,6 +314,8 @@ message PushLastRequest {
   bytes value = 2;
   // The current wall time used to generate the key.
   double wtime = 3;
+  // If true, notification signal is sent.
+  bool notify = 4;
 }
 
 // Response of the PushLast method.

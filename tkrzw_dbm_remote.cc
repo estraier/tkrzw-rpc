@@ -99,8 +99,8 @@ class RemoteDBMImpl final {
       const std::vector<std::pair<std::string_view, std::string_view>>& desired);
   Status Rekey(std::string_view old_key, std::string_view new_key,
                bool overwrite, bool copying);
-  Status PopFirst(std::string* key, std::string* value);
-  Status PushLast(std::string_view value, double wtime);
+  Status PopFirst(std::string* key, std::string* value, double retry_wait);
+  Status PushLast(std::string_view value, double wtime, bool notify);
   Status Count(int64_t* count);
   Status GetFileSize(int64_t* file_size);
   Status Clear();
@@ -589,7 +589,7 @@ Status RemoteDBMImpl::Rekey(std::string_view old_key, std::string_view new_key,
   return MakeStatusFromProto(response.status());
 }
 
-Status RemoteDBMImpl::PopFirst(std::string* key, std::string* value) {
+Status RemoteDBMImpl::PopFirst(std::string* key, std::string* value, double retry_wait) {
   std::shared_lock<SpinSharedMutex> lock(mutex_);
   if (stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
@@ -604,6 +604,9 @@ Status RemoteDBMImpl::PopFirst(std::string* key, std::string* value) {
   }
   if (value == nullptr) {
     request.set_omit_value(true);
+  }
+  if (retry_wait > 0) {
+    request.set_retry_wait(retry_wait);
   }
   tkrzw_rpc::PopFirstResponse response;
   grpc::Status status = stub_->PopFirst(&context, request, &response);
@@ -621,7 +624,7 @@ Status RemoteDBMImpl::PopFirst(std::string* key, std::string* value) {
   return MakeStatusFromProto(response.status());
 }
 
-Status RemoteDBMImpl::PushLast(std::string_view value, double wtime) {
+Status RemoteDBMImpl::PushLast(std::string_view value, double wtime, bool notify) {
   std::shared_lock<SpinSharedMutex> lock(mutex_);
   if (stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
@@ -633,6 +636,7 @@ Status RemoteDBMImpl::PushLast(std::string_view value, double wtime) {
   request.set_dbm_index(dbm_index_);
   request.set_value(value.data(), value.size());
   request.set_wtime(wtime);
+  request.set_notify(notify);
   tkrzw_rpc::PushLastResponse response;
   grpc::Status status = stub_->PushLast(&context, request, &response);
   if (!status.ok()) {
@@ -1637,12 +1641,12 @@ Status RemoteDBM::Rekey(std::string_view old_key, std::string_view new_key,
   return impl_->Rekey(old_key, new_key, overwrite, copying);
 }
 
-Status RemoteDBM::PopFirst(std::string* key, std::string* value) {
-  return impl_->PopFirst(key, value);
+Status RemoteDBM::PopFirst(std::string* key, std::string* value, double wait_time) {
+  return impl_->PopFirst(key, value, wait_time);
 }
 
-Status RemoteDBM::PushLast(std::string_view value, double wtime) {
-  return impl_->PushLast(value, wtime);
+Status RemoteDBM::PushLast(std::string_view value, double wtime, bool notify) {
+  return impl_->PushLast(value, wtime, notify);
 }
 
 Status RemoteDBM::Count(int64_t* count) {

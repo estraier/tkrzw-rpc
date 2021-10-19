@@ -747,21 +747,26 @@ class RemoteDBM final {
    * is nullptr, it is ignored.
    * @param value The pointer to a string object to contain the value of the first record.  If
    * it is nullptr, it is ignored.
+   * @param retry_wait The maximum wait time in seconds before retrying.  If it is zero, no retry
+   * is done.  If it is positive, retry is done and wait for the notifications of the next update
+   * for the time at most.
    * @return The result status.
    */
-  Status PopFirst(std::string* key = nullptr, std::string* value = nullptr);
+  Status PopFirst(
+      std::string* key = nullptr, std::string* value = nullptr, double retry_wait = 0);
 
   /**
    * Adds a record with a key of the current timestamp.
    * @param value The value of the record.
    * @param wtime The current wall time used to generate the key.  If it is negative, the system
    * clock is used.
+   * @param notify If true, notification signal is sent.
    * @return The result status.
    * @details The key is generated as an 8-bite big-endian binary string of the timestamp.  If
    * there is an existing record matching the generated key, the key is regenerated and the
    * attempt is repeated until it succeeds.
    */
-  Status PushLast(std::string_view value, double wtime = -1);
+  Status PushLast(std::string_view value, double wtime = -1, bool notify = false);
 
   /**
    * Gets the number of records.

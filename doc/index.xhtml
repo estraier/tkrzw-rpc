@@ -499,6 +499,8 @@ fi
 <dd>Removes a record.</dd>
 <dt><code>tkrzw_dbm_remote_util list [<var>options</var>]</code></dt>
 <dd>Lists up records and prints them.</dd>
+<dt><code>tkrzw_dbm_remote_util queue [<var>options</var>] [<var>value</var>]</code></dt>
+<dd>Enqueue or dequeue a record.</dd>
 <dt><code>tkrzw_dbm_remote_util clear [<var>options</var>]</code></dt>
 <dd>Removes all records.</dd>
 <dt><code>tkrzw_dbm_remote_util rebuild [<var>options</var>] [<var>params</var>]</code></dt>
@@ -530,6 +532,11 @@ fi
 <dd><code>--items <var>num</var></code> : The number of items to print. (default: 10)</dd>
 <dd><code>--escape</code> : C-style escape is applied to the TSV data.</dd>
 <dd><code>--keys</code> : Prints keys only.</dd>
+<dt>Options for the queue subcommand:</dt>
+<dd><code>--notify</code> : Sends notifications when queueing.</dd>
+<dd><code>--retry <var>num</var></code> : The maximum wait time in seconds before retrying.</dd>
+<dd><code>--escape</code> : C-style escape is applied to the output data.</dd>
+<dd><code>--key</code> : Prints the key too.</dd>
 <dt>Options for the sync subcommand:</dt>
 <dd><code>--hard</code> : Does physical synchronization with the hardware.</dd>
 <dt>Options for the search subcommand:</dt>
@@ -589,6 +596,8 @@ running_time=4872.382
 <dd>Checks echoing/setting/getting/removing performance in sequence.</dd>
 <dt><code>tkrzw_dbm_remote_perf wicked [<var>options</var>]</code></dt>
 <dd>Checks consistency with various operations.</dd>
+<dt><code>tkrzw_dbm_remote_perf queue [<var>options</var>]</code></dt>
+<dd>Checks queueing and dequeueing operations.</dd>
 </dl>
 
 <dl>
@@ -616,6 +625,9 @@ running_time=4872.382
 <dd><code>--iterator</code> : Uses iterators occasionally.</dd>
 <dd><code>--clear</code> : Clears the database occasionally.</dd>
 <dd><code>--rebuild</code> : Rebuilds the database occasionally.</dd>
+<dt>Options for the queue subcommand:</dt>
+<dd><code>--notify</code> : Sends notifications when queueing.</dd>
+<dd><code>--retry <var>num</var></code> : The maximum wait time in seconds before retrying.</dd>
 </dl>
 
 <p>The following is a sample usage to echo back 1 million messages, to store 1 million records of 8-byte keys and 8-byte values, to retrieve all of them, and to remove all of them in sequence.  The number of threads is 10 and each thread does 100 thousand operations.</p>
@@ -852,6 +864,68 @@ int main(int argc, char** argv) {
 <p>You can shared on-memory databases too.  If an on-memory database is associated with a file, the blocking time during the Synchronize method might be an issue on online services.  Sharding the database mitigates the issue.  For example, an on-memory tree database containing 100 million records takes 24 seconds for the Synchronize method.  You can divide it into 100 shards.  Then, one shard takes only 0.24 seconds, which is not a problem in many cases.</p>
 
 <p>The number of shards can be as large as you like.  The more the shards are, the better the concurrency performance is.  The downside of too many shard is that the iterator and the SearchModal method become slower.</p>
+
+<h3 id="tips_queue">Message Queue Service</h3>
+
+<p>Tkrzw-RPC can be used for a simple message queue service.  TreeDBM and BabyDBM organize records in the ascending order of the key.  The PushLast method generates a unique key from the current timestamp and store the given value.  The PopFirst method gets the first record and remove it atomically.  Combining the two methods, FIFO (First-In-First-Out) operations are realized.  Moreover, the two method support features for real-time processing.  The PopFirst method supports the retrying feature whereby the thread waits for the next record while there's no record in the database.  The PushLast method supports the notification feature which wakes up the waiting PopFirst methods.</p>
+
+<p>Let's see the actual behaviors of the FIFO operations.  First, run the server with a tree database.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --log_level debug --async casket.tkt
+]]></code></pre>
+
+<p>Call the PushLast method with values "one", "two", and "three".  The keys are generated imlicitly.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue "one" "two" "three"
+]]></code></pre>
+
+<p>Call the PopFirst methodd until the database becomes empty.  The "--key" option shows the key which were generated automatically from the time stamp.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util queue --key
+1634660135.479390   one
+$ ./tkrzw_dbm_remote_util queue --key
+1634660135.479715   two
+$ ./tkrzw_dbm_remote_util queue --key
+1634660135.480013   three
+$ ./tkrzw_dbm_remote_util queue --key
+PopFirst failed: NOT_FOUND_ERROR
+]]></code></pre>
+
+<p>Call the PopFirst methodd with the empty database and have it wait for 5 seconds.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util queue --key --retry 5
+PopFirst failed: NOT_FOUND_ERROR
+]]></code></pre>
+
+<p>Then, call the PopFirst methodd with the empty database and have it wait for 30 seconds.  This time, while the terminal for PopFirst is blocking, call PushLast on another terminal to add a new record.  Specify the "--notify" option to send notification to the waiting threads.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util queue --key --retry 30
+]]></code></pre>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util queue --notify "four"
+]]></code></pre>
+
+<p>You'll see "four" appear on the first terminal immediately after you run the command on the second terminal.  This style is called "long polling", which is seen with the "Comet" model of web applications.  You can do the same thing in C++ and other languages.</p>
+
+<pre><code class="language-cpp"><![CDATA[std::key, std::value;
+Status status = dbm.PopFirst(&key, &value, 30);
+if (status == Status::SUCCESS) {
+  std::cout << StrToIntBigEndian(key) << " : " << value << std::endl;
+} else {
+  std::cout << "PopFirst failed: " << status << std::endl;
+}
+]]></code></pre>
+
+<pre><code class="language-cpp"><![CDATA[
+Status status = dbm.PushLast("hello", -1, true);
+if (status != Status::SUCCESS) {
+  std::cout << "PopFirst failed: " << status << std::endl;
+}
+]]></code></pre>
+
+<p>While the PopFirst operation is blocking to wait for the next record, it occupies the thread on the server in the synchronous mode.  Thus, it is recommended to run the server in the asynchronous mode where the blocking operation is done in the background.  If you dare to use the synchronous mode, the number of worker threads should be more than the number of clients calling PopFirst.</p>
+
+<p>Note that the records fetched by PopFirst are removed implicitly regardless of whether the consumer tasks succeed the operatios.  In other words, there's no retrying feature for failed consumers.  If you want such mechanisms, choose other message queueing services with more complex features or write you own service with Tkrzw.</p>
 
 <h2 id="replication">Asynchronous Replication</h2>
 

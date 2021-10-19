@@ -156,6 +156,8 @@ check-remotedbm-util :
 	$(RUNENV) ./tkrzw_dbm_remote_util search --mode "begin" "t"
 	$(RUNENV) ./tkrzw_dbm_remote_util get "two"
 	$(RUNENV) ./tkrzw_dbm_remote_util clear
+	$(RUNENV) ./tkrzw_dbm_remote_util queue --notify "hop" "step" "jump"
+	$(RUNENV) ./tkrzw_dbm_remote_util queue --retry 1
 
 check-remotedbm-perf :
 	$(RUNENV) ./tkrzw_dbm_remote_util clear

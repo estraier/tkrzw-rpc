@@ -61,10 +61,18 @@ class DBMServiceBase {
       const std::vector<std::unique_ptr<ParamDBM>>& dbms,
       Logger* logger, int32_t server_id, MessageQueue* mq,
       const ReplicationParameters& repl_params = {})
-      : num_active_calls_(0), dbms_(dbms), logger_(logger), server_id_(server_id),
-        start_time_(GetWallTime()), num_standby_calls_(0), mq_(mq),
-        repl_params_(repl_params), thread_repl_manager_(),
-        repl_max_timestamp_(0), repl_alive_(false), refresh_repl_manager_(true), mutex_() {}
+      : num_active_calls_(0), first_signal_brokers_(), key_signal_brokers_(),
+        dbms_(dbms), logger_(logger), server_id_(server_id),
+        start_time_(GetWallTime()), num_standby_calls_(0),
+        mq_(mq), repl_params_(repl_params), thread_repl_manager_(),
+        repl_max_timestamp_(0), repl_alive_(false), refresh_repl_manager_(true), mutex_() {
+    first_signal_brokers_.resize(dbms_.size());
+    key_signal_brokers_.resize(dbms_.size());
+    for (size_t i = 0; i < dbms_.size(); i++) {
+      first_signal_brokers_[i] = std::make_unique<SignalBroker>();
+      key_signal_brokers_[i] = std::make_unique<SlottedKeySignalBroker<std::string>>(8);
+    }
+  }
 
   virtual ~DBMServiceBase() = default;
 
@@ -242,6 +250,7 @@ class DBMServiceBase {
       grpc::ServerContext* context, const tkrzw_rpc::EchoRequest* request,
       tkrzw_rpc::EchoResponse* response) {
     LogRequest(context, "Echo", request);
+    response->mutable_status()->set_code(Status::SUCCESS);
     response->set_echo(request->message());
     return grpc::Status::OK;
   }
@@ -253,6 +262,7 @@ class DBMServiceBase {
     if (request->dbm_index() >= static_cast<int32_t>(dbms_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
+    response->mutable_status()->set_code(Status::SUCCESS);
     if (request->dbm_index() >= 0) {
       auto& dbm = *dbms_[request->dbm_index()];
       for (const auto& record : dbm.Inspect()) {
@@ -557,6 +567,9 @@ class DBMServiceBase {
     }
     auto& dbm = *dbms_[request->dbm_index()];
     const Status status = dbm.PushLast(request->value(), request->wtime());
+    if (request->notify() && status == Status::SUCCESS) {
+      first_signal_brokers_[request->dbm_index()]->Send();
+    }
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
     return grpc::Status::OK;
@@ -1039,6 +1052,8 @@ class DBMServiceBase {
   }
 
   std::atomic_int32_t num_active_calls_;
+  std::vector<std::unique_ptr<SignalBroker>> first_signal_brokers_;
+  std::vector<std::unique_ptr<SlottedKeySignalBroker<std::string>>> key_signal_brokers_;
 
  protected:
   const std::vector<std::unique_ptr<ParamDBM>>& dbms_;
@@ -1062,6 +1077,30 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       Logger* logger, int32_t server_id, MessageQueue* mq,
       const ReplicationParameters& repl_params = {})
       : DBMServiceBase(dbms, logger, server_id, mq, repl_params) {}
+
+  template<typename PROC, typename REQUEST, typename RESPONSE>
+  grpc::Status RetryWaitFirst(PROC proc, grpc::ServerContext* context,
+                              const REQUEST* request, RESPONSE* response) {
+    if (request->dbm_index() >= static_cast<int32_t>(first_signal_brokers_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    const double deadline = GetWallTime() + request->retry_wait();
+    while (true) {
+      SignalBroker::Waiter waiter(first_signal_brokers_[request->dbm_index()].get());
+      const grpc::Status status = (this->*proc)(context, request, response);
+      if (!status.ok() || response->status().code() != Status::NOT_FOUND_ERROR) {
+        return status;
+      }
+      const double time_diff = deadline - GetWallTime();
+      if (time_diff <= 0 || !waiter.Wait(time_diff)) {
+        response->mutable_status()->set_code(Status::INFEASIBLE_ERROR);
+        response->mutable_status()->set_message("timeout during retry");
+        break;
+      }
+      response->Clear();
+    }
+    return grpc::Status::OK;
+  }
 
   grpc::Status Echo(
       grpc::ServerContext* context, const tkrzw_rpc::EchoRequest* request,
@@ -1165,6 +1204,9 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       grpc::ServerContext* context, const tkrzw_rpc::PopFirstRequest* request,
       tkrzw_rpc::PopFirstResponse* response) {
     ScopedCounter sc(&num_active_calls_);
+    if (request->retry_wait() > 0) {
+      return RetryWaitFirst(&tkrzw::DBMServiceImpl::PopFirstImpl, context, request, response);
+    }
     return PopFirstImpl(context, request, response);
   }
 
@@ -1405,6 +1447,110 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
   std::thread bg_thread_;
 };
 
+template<typename REQUEST, typename RESPONSE>
+class AsyncRetryWaitFirstDBMProcessor : public AsyncDBMProcessorInterface {
+ public:
+  enum ProcState {CREATE, PROCESS, FINISH};
+  typedef void (tkrzw_rpc::DBMService::AsyncService::*RequestCall)(
+      grpc::ServerContext*, REQUEST*, grpc::ServerAsyncResponseWriter<RESPONSE>*,
+      grpc::CompletionQueue*, grpc::ServerCompletionQueue*, void*);
+  typedef grpc::Status (DBMServiceBase::*Call)(
+      grpc::ServerContext*, const REQUEST*, RESPONSE*);
+
+  AsyncRetryWaitFirstDBMProcessor(
+      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue,
+      RequestCall request_call, Call call)
+      : AsyncDBMProcessorInterface(&service->num_active_calls_),
+        service_(service), queue_(queue), request_call_(request_call), call_(call),
+        context_(), responder_(&context_), proc_state_(CREATE), rpc_status_(grpc::Status::OK),
+        bg_thread_(), broker_(nullptr), alive_(true) {
+    Proceed();
+  }
+
+  ~AsyncRetryWaitFirstDBMProcessor() {
+    alive_.store(false);
+    if (broker_ != nullptr) {
+      broker_->Send();
+    }
+    if (bg_thread_.joinable()) {
+      bg_thread_.join();
+    }
+  }
+
+  void ProceedBackground() {
+    const double deadline = GetWallTime() + request_.retry_wait();
+    while (alive_.load()) {
+      const double time_diff = deadline - GetWallTime();
+      if (time_diff <= 0) {
+        response_.mutable_status()->set_code(Status::INFEASIBLE_ERROR);
+        response_.mutable_status()->set_message("timeout during retry");
+        rpc_status_ = grpc::Status::OK;
+        proc_state_ = FINISH;
+        responder_.Finish(response_, rpc_status_, this);
+        return;
+      }
+      SignalBroker::Waiter waiter(broker_);
+      if (waiter.Wait(time_diff) && alive_.load()) {
+        rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
+        if (request_.retry_wait() > 0 && rpc_status_.ok() &&
+            response_.status().code() == Status::NOT_FOUND_ERROR) {
+          continue;
+        }
+        proc_state_ = FINISH;
+        responder_.Finish(response_, rpc_status_, this);
+        return;
+      }
+    }
+  }
+
+  void Proceed() override {
+    if (proc_state_ == CREATE) {
+      proc_state_ = PROCESS;
+      (service_->*request_call_)(&context_, &request_, &responder_, queue_, queue_, this);
+    } else if (proc_state_ == PROCESS) {
+      new AsyncRetryWaitFirstDBMProcessor<REQUEST, RESPONSE>(
+          service_, queue_, request_call_, call_);
+      rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
+      if (request_.retry_wait() > 0 && rpc_status_.ok() &&
+          response_.status().code() == Status::NOT_FOUND_ERROR) {
+        broker_ = service_->first_signal_brokers_[request_.dbm_index()].get();
+        bg_thread_ = std::thread([&]{ ProceedBackground(); });
+      } else {
+        proc_state_ = FINISH;
+        responder_.Finish(response_, rpc_status_, this);
+      }
+    } else {
+      delete this;
+    }
+  }
+
+  void Cancel(bool is_shutdown) override {
+    if (is_shutdown) {
+      delete this;
+    } else if (proc_state_ == PROCESS) {
+      proc_state_ = FINISH;;
+      responder_.Finish(response_, rpc_status_, this);
+    } else {
+      delete this;
+    }
+  }
+
+ private:
+  DBMAsyncServiceImpl* service_;
+  grpc::ServerCompletionQueue* queue_;
+  RequestCall request_call_;
+  Call call_;
+  grpc::ServerContext context_;
+  REQUEST request_;
+  RESPONSE response_;
+  grpc::ServerAsyncResponseWriter<RESPONSE> responder_;
+  std::atomic<ProcState> proc_state_;
+  grpc::Status rpc_status_;
+  std::thread bg_thread_;
+  SignalBroker* broker_;
+  std::atomic_bool alive_;
+};
+
 class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, BEGIN, READ, WRITE, FINISH};
@@ -1546,8 +1692,7 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
         service_(service), queue_(queue),
         context_(), stream_(&context_), proc_state_(CREATE),
         reader_(nullptr), rpc_status_(grpc::Status::OK),
-        deadline_(std::chrono::system_clock::now()),
-        alarm_(), wait_time_(0), bg_thread_(), alive_(true), mutex_() {
+        deadline_(), alarm_(), wait_time_(0), bg_thread_(), alive_(true), mutex_() {
     Proceed();
   }
 
@@ -1696,7 +1841,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
     tkrzw_rpc::RekeyRequest, tkrzw_rpc::RekeyResponse>(
         this, queue, &DBMAsyncServiceImpl::RequestRekey,
         &DBMServiceBase::RekeyImpl);
-  new AsyncDBMProcessor<
+  new AsyncRetryWaitFirstDBMProcessor<
     tkrzw_rpc::PopFirstRequest, tkrzw_rpc::PopFirstResponse>(
         this, queue, &DBMAsyncServiceImpl::RequestPopFirst,
         &DBMServiceBase::PopFirstImpl);
