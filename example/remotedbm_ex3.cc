@@ -31,7 +31,9 @@ int main(int argc, char** argv) {
         for (int32_t i = 1; i <= 100; i++) {
           logger.LogCat(Logger::LEVEL_INFO, "PutLast: ", i);
           dbm.PushLast(ToString(i), -1, true).OrDie();
-          SleepThread(1);
+          if (i % 10 == 0) {
+            SleepThread(1);
+          }
         }
         dbm.Disconnect().OrDie();
       };
