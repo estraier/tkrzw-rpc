@@ -1379,7 +1379,7 @@ class AsyncDBMProcessor : public AsyncDBMProcessorInterface {
 };
 
 template<typename REQUEST, typename RESPONSE>
-class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
+class AsyncDBMProcessorBackground : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, PROCESS, FINISH};
   typedef void (tkrzw_rpc::DBMService::AsyncService::*RequestCall)(
@@ -1388,7 +1388,7 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
   typedef grpc::Status (DBMServiceBase::*Call)(
       grpc::ServerContext*, const REQUEST*, RESPONSE*);
 
-  AsyncBackgroundDBMProcessor(
+  AsyncDBMProcessorBackground(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue,
       RequestCall request_call, Call call)
       : AsyncDBMProcessorInterface(&service->num_active_calls_),
@@ -1398,7 +1398,7 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
     Proceed();
   }
 
-  ~AsyncBackgroundDBMProcessor() {
+  ~AsyncDBMProcessorBackground() {
     if (bg_thread_.joinable()) {
       bg_thread_.join();
     }
@@ -1409,7 +1409,7 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
       proc_state_ = PROCESS;
       (service_->*request_call_)(&context_, &request_, &responder_, queue_, queue_, this);
     } else if (proc_state_ == PROCESS) {
-      new AsyncBackgroundDBMProcessor<REQUEST, RESPONSE>(service_, queue_, request_call_, call_);
+      new AsyncDBMProcessorBackground<REQUEST, RESPONSE>(service_, queue_, request_call_, call_);
       auto task =
           [&]() {
             rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
@@ -1448,7 +1448,7 @@ class AsyncBackgroundDBMProcessor : public AsyncDBMProcessorInterface {
 };
 
 template<typename REQUEST, typename RESPONSE>
-class AsyncRetryWaitFirstDBMProcessor : public AsyncDBMProcessorInterface {
+class AsyncDBMProcessorRetryWaitFirst : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, PROCESS, FINISH};
   typedef void (tkrzw_rpc::DBMService::AsyncService::*RequestCall)(
@@ -1457,49 +1457,19 @@ class AsyncRetryWaitFirstDBMProcessor : public AsyncDBMProcessorInterface {
   typedef grpc::Status (DBMServiceBase::*Call)(
       grpc::ServerContext*, const REQUEST*, RESPONSE*);
 
-  AsyncRetryWaitFirstDBMProcessor(
+  AsyncDBMProcessorRetryWaitFirst(
       DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue,
       RequestCall request_call, Call call)
       : AsyncDBMProcessorInterface(&service->num_active_calls_),
         service_(service), queue_(queue), request_call_(request_call), call_(call),
         context_(), responder_(&context_), proc_state_(CREATE), rpc_status_(grpc::Status::OK),
-        bg_thread_(), broker_(nullptr), alive_(true) {
+        bg_thread_() {
     Proceed();
   }
 
-  ~AsyncRetryWaitFirstDBMProcessor() {
-    alive_.store(false);
-    if (broker_ != nullptr) {
-      broker_->Send();
-    }
+  ~AsyncDBMProcessorRetryWaitFirst() {
     if (bg_thread_.joinable()) {
       bg_thread_.join();
-    }
-  }
-
-  void ProceedBackground() {
-    const double deadline = GetWallTime() + request_.retry_wait();
-    while (alive_.load()) {
-      const double time_diff = deadline - GetWallTime();
-      if (time_diff <= 0) {
-        response_.mutable_status()->set_code(Status::INFEASIBLE_ERROR);
-        response_.mutable_status()->set_message("timeout during retry");
-        rpc_status_ = grpc::Status::OK;
-        proc_state_ = FINISH;
-        responder_.Finish(response_, rpc_status_, this);
-        return;
-      }
-      SignalBroker::Waiter waiter(broker_);
-      if (waiter.Wait(time_diff) && alive_.load()) {
-        rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
-        if (request_.retry_wait() > 0 && rpc_status_.ok() &&
-            response_.status().code() == Status::NOT_FOUND_ERROR) {
-          continue;
-        }
-        proc_state_ = FINISH;
-        responder_.Finish(response_, rpc_status_, this);
-        return;
-      }
     }
   }
 
@@ -1508,13 +1478,31 @@ class AsyncRetryWaitFirstDBMProcessor : public AsyncDBMProcessorInterface {
       proc_state_ = PROCESS;
       (service_->*request_call_)(&context_, &request_, &responder_, queue_, queue_, this);
     } else if (proc_state_ == PROCESS) {
-      new AsyncRetryWaitFirstDBMProcessor<REQUEST, RESPONSE>(
+      new AsyncDBMProcessorRetryWaitFirst<REQUEST, RESPONSE>(
           service_, queue_, request_call_, call_);
       rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
-      if (request_.retry_wait() > 0 && rpc_status_.ok() &&
-          response_.status().code() == Status::NOT_FOUND_ERROR) {
-        broker_ = service_->first_signal_brokers_[request_.dbm_index()].get();
-        bg_thread_ = std::thread([&]{ ProceedBackground(); });
+      if (rpc_status_.ok() && response_.status().code() == Status::NOT_FOUND_ERROR &&
+          request_.retry_wait() > 0) {
+        auto task =
+            [&]() {
+              const double deadline = GetWallTime() + request_.retry_wait();
+              while (true) {
+                SignalBroker::Waiter waiter(
+                    service_->first_signal_brokers_[request_.dbm_index()].get());
+                rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
+                if (!rpc_status_.ok() || response_.status().code() != Status::NOT_FOUND_ERROR) {
+                  break;
+                }
+                const double time_diff = deadline - GetWallTime();
+                if (time_diff <= 0 || !waiter.Wait(time_diff)) {
+                  break;
+                }
+                response_.Clear();
+              }
+              proc_state_ = FINISH;
+              responder_.Finish(response_, rpc_status_, this);
+            };
+        bg_thread_ = std::thread(task);
       } else {
         proc_state_ = FINISH;
         responder_.Finish(response_, rpc_status_, this);
@@ -1544,11 +1532,9 @@ class AsyncRetryWaitFirstDBMProcessor : public AsyncDBMProcessorInterface {
   REQUEST request_;
   RESPONSE response_;
   grpc::ServerAsyncResponseWriter<RESPONSE> responder_;
-  std::atomic<ProcState> proc_state_;
+  ProcState proc_state_;
   grpc::Status rpc_status_;
   std::thread bg_thread_;
-  SignalBroker* broker_;
-  std::atomic_bool alive_;
 };
 
 class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
@@ -1841,7 +1827,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
     tkrzw_rpc::RekeyRequest, tkrzw_rpc::RekeyResponse>(
         this, queue, &DBMAsyncServiceImpl::RequestRekey,
         &DBMServiceBase::RekeyImpl);
-  new AsyncRetryWaitFirstDBMProcessor<
+  new AsyncDBMProcessorRetryWaitFirst<
     tkrzw_rpc::PopFirstRequest, tkrzw_rpc::PopFirstResponse>(
         this, queue, &DBMAsyncServiceImpl::RequestPopFirst,
         &DBMServiceBase::PopFirstImpl);
@@ -1858,13 +1844,13 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncDBMProcessor<tkrzw_rpc::ClearRequest, tkrzw_rpc::ClearResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestClear,
       &DBMServiceBase::ClearImpl);
-  new AsyncBackgroundDBMProcessor<tkrzw_rpc::RebuildRequest, tkrzw_rpc::RebuildResponse>(
+  new AsyncDBMProcessorBackground<tkrzw_rpc::RebuildRequest, tkrzw_rpc::RebuildResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestRebuild,
       &DBMServiceBase::RebuildImpl);
   new AsyncDBMProcessor<tkrzw_rpc::ShouldBeRebuiltRequest, tkrzw_rpc::ShouldBeRebuiltResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestShouldBeRebuilt,
       &DBMServiceBase::ShouldBeRebuiltImpl);
-  new AsyncBackgroundDBMProcessor<tkrzw_rpc::SynchronizeRequest, tkrzw_rpc::SynchronizeResponse>(
+  new AsyncDBMProcessorBackground<tkrzw_rpc::SynchronizeRequest, tkrzw_rpc::SynchronizeResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestSynchronize,
       &DBMServiceBase::SynchronizeImpl);
   new AsyncDBMProcessor<tkrzw_rpc::SearchRequest, tkrzw_rpc::SearchResponse>(
