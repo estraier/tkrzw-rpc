@@ -9,7 +9,7 @@ SHELL = /bin/sh
 
 # Targets
 MYBINS = helloworld \
-  remotedbm_ex1 remotedbm_ex2
+  remotedbm_ex1 remotedbm_ex2 remotedbm_ex3
 
 # Building binaries
 CXX = g++
@@ -61,6 +61,9 @@ remotedbm_ex1 : remotedbm_ex1.o
 	$(LDENV) $(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(LIBS)
 
 remotedbm_ex2 : remotedbm_ex2.o
+	$(LDENV) $(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(LIBS)
+
+remotedbm_ex3 : remotedbm_ex3.o
 	$(LDENV) $(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(LIBS)
 
 # END OF FILE
