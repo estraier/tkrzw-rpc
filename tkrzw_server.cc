@@ -144,8 +144,11 @@ std::shared_ptr<grpc::ServerCredentials> MakeSSLCredentials(const std::string& c
   if (cert_path.empty()) {
     Die("The server certificate unspecified");
   }
+  const std::string& root_path = SearchMap(params, "root", "");
+  if (root_path.empty()) {
+    Die("The root certificate unspecified");
+  }
   grpc::SslServerCredentialsOptions ssl_opts;
-  ssl_opts.client_certificate_request = GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE;
   grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp;
   pkcp.private_key = ReadFileSimple(key_path);
   if (pkcp.private_key.empty()) {
@@ -156,15 +159,12 @@ std::shared_ptr<grpc::ServerCredentials> MakeSSLCredentials(const std::string& c
     Die("The server certificate missing");
   }
   ssl_opts.pem_key_cert_pairs.emplace_back(pkcp);
-  const std::string& root_path = SearchMap(params, "root", "");
-  if (!cert_path.empty()) {
-    ssl_opts.pem_root_certs = ReadFileSimple(root_path);
-    if (pkcp.cert_chain.empty()) {
-      Die("The root certificate missing");
-    }
-    ssl_opts.client_certificate_request =
-        GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY;
+  ssl_opts.pem_root_certs = ReadFileSimple(root_path);
+  if (pkcp.cert_chain.empty()) {
+    Die("The root certificate missing");
   }
+  ssl_opts.client_certificate_request =
+      GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY;
   return SslServerCredentials(ssl_opts);
 }
 

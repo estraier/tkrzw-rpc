@@ -446,8 +446,9 @@ class RemoteDBM final {
    * unlimited.
    * @param auth_config The authentication configuration.  It it is empty, no authentication is
    * done.  If it begins with "ssl:", the SSL authentication is done.  Key-value parameters in
-   * "key=value,key=value,..." format comes next.  For SSL, "key" and "cert" parameters  specify
-   * the paths of the private key file and the certificate file respectively.
+   * "key=value,key=value,..." format comes next.  For SSL, "key", "cert", and "root" parameters
+   * specify the paths of the client private key file, the client certificate file, and the root
+   * CA certificate file respectively.
    * @return The result status.
    */
   Status Connect(const std::string& address, double timeout = -1,

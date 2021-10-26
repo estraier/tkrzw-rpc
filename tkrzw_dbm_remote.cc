@@ -227,25 +227,28 @@ Status RemoteDBMImpl::Connect(
       grpc::SslCredentialsOptions ssl_opts;
       const auto& params = StrSplitIntoMap(auth_config.substr(4), ",", "=");
       const std::string& key_path = SearchMap(params, "key", "");
-      if (!key_path.empty()) {
-        ssl_opts.pem_private_key = ReadFileSimple(key_path);
-        if (ssl_opts.pem_private_key.empty()) {
-          return Status(Status::INVALID_ARGUMENT_ERROR, "client private key missing");
-        }
+      if (key_path.empty()) {
+        return Status(Status::INVALID_ARGUMENT_ERROR, "client private key unspecified");
       }
       const std::string& cert_path = SearchMap(params, "cert", "");
-      if (!cert_path.empty()) {
-        ssl_opts.pem_cert_chain = ReadFileSimple(cert_path);
-        if (ssl_opts.pem_cert_chain.empty()) {
-          return Status(Status::INVALID_ARGUMENT_ERROR, "client certificate missing");
-        }
+      if (cert_path.empty()) {
+        return Status(Status::INVALID_ARGUMENT_ERROR, "client private key unspecified");
       }
       const std::string& root_path = SearchMap(params, "root", "");
-      if (!root_path.empty()) {
-        ssl_opts.pem_root_certs = ReadFileSimple(root_path);
-        if (ssl_opts.pem_root_certs.empty()) {
-          return Status(Status::INVALID_ARGUMENT_ERROR, "root certificate missing");
-        }
+      if (root_path.empty()) {
+        return Status(Status::INVALID_ARGUMENT_ERROR, "root certificate unspecified");
+      }
+      ssl_opts.pem_private_key = ReadFileSimple(key_path);
+      if (ssl_opts.pem_private_key.empty()) {
+        return Status(Status::INVALID_ARGUMENT_ERROR, "client private key missing");
+      }
+      ssl_opts.pem_cert_chain = ReadFileSimple(cert_path);
+      if (ssl_opts.pem_cert_chain.empty()) {
+        return Status(Status::INVALID_ARGUMENT_ERROR, "client certificate missing");
+      }
+      ssl_opts.pem_root_certs = ReadFileSimple(root_path);
+      if (ssl_opts.pem_root_certs.empty()) {
+        return Status(Status::INVALID_ARGUMENT_ERROR, "root certificate missing");
       }
       credentials = grpc::SslCredentials(ssl_opts);
     } else {

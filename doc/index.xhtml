@@ -407,6 +407,7 @@ world
 <dt>Options:</dt>
 <dd><code>--version</code> : Prints the version number and exit.</dd>
 <dd><code>--address <var>str</var></code> : The address/hostname and the port of the server (default: 0.0.0.0:1978)</dd>
+<dd><code>--auth <var>configs</var></code> : Enables authentication with the configuration.</dd>
 <dd><code>--async</code> : Uses the asynchronous API on ths server.</dd>
 <dd><code>--threads <var>num</var></code> : The maximum number of worker threads. (default: 1)</dd>
 <dd><code>--log_file <var>str</var></code> : The file path of the log file. (default: /dev/stdout)</dd>
@@ -522,6 +523,7 @@ fi
 <dd><code>--version</code> : Prints the version number and exits.</dd>
 <dd><code>--address</code> : The address and the port of the service (default: localhost:1978)</dd>
 <dd><code>--timeout</code> : The timeout in seconds for connection and each operation.</dd>
+<dd><code>--auth <var>configs</var></code> : Enables authentication with the configuration.</dd>
 <dd><code>--index</code> : The index of the DBM to access. (default: 0)</dd>
 <dd><code>--multi</code> : Calls xxxMulti methods for get, set, and remove subcommands.</dd>
 <dt>Options for the set subcommand:</dt>
@@ -608,6 +610,7 @@ running_time=4872.382
 <dt>Common options:</dt>
 <dd><code>--address</code> : The address and the port of the service (default: localhost:1978)</dd>
 <dd><code>--timeout</code> : The timeout in seconds for connection and each operation.</dd>
+<dd><code>--auth <var>configs</var></code> : Enables authentication with the configuration.</dd>
 <dd><code>--index</code> : The index of the DBM to access. (default: 0)</dd>
 <dd><code>--iter <var>num</var></code> : The number of iterations. (default: 10000)</dd>
 <dd><code>--size <var>num</var></code> : The size of each record value. (default: 8)</dd>
@@ -930,6 +933,31 @@ if (status != Status::SUCCESS) {
 <p>While the PopFirst operation is blocking to wait for the next record, it occupies the thread on the server in the synchronous mode.  Thus, it is recommended to run the server in the asynchronous mode where the blocking operation is done in the background.  If you dare to use the synchronous mode, the number of worker threads should be more than the number of clients calling PopFirst.</p>
 
 <p>Note that the records fetched by PopFirst are removed implicitly regardless of whether the consumer tasks succeed the operatios.  In other words, there's no retrying feature for failed consumers.  If you want such mechanisms, choose other message queueing services with more complex features or write you own service with Tkrzw.</p>
+
+<h3 id="tips_auth_ssl">SSL Authentication and Encryption</h3>
+
+<p>gRPC supports networking over SSL to authenticate peers and protect their communications by encription.  To enable SSL, each of the server and clients uses three files: the private key, the certificate of itself, and the certificate of the root CA.  With SSL enabled, the server accepts the client only if the certificate sent from the client is verified by the root CA certificate specified on the server.  Data transmitted between the server and the client are encrypted by the public key of the sender and decripted by the private key of the receiver.</p>
+
+<p>To enable SSL on the server side, specify "--auth" option which leads an expression in "ssl:key=...,cert=...,root=..." to specify the paths of the three PEM files for the private key, the certificate of the server, and the certificate of the root CA.  Note that the CN property of the server certificate must match the actual host name of the server.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_server --address "localhost:1978" \
+  --auth "ssl:key=localhost-key.pem,cert=localhost-cert.pem,root=root-cert.pem"
+]]></code></pre>
+
+<p>To enable SSL on the client utility, specify "--auth" option as with the server.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util inspect --address "localhost:1978" \
+  --auth "ssl:key=client-key.pem,cert=client-cert.pem,root=root-cert.pem"
+]]></code></pre>
+
+<p>The same thing can be said with the Connect method of the client API.</p>
+
+<pre><code class="language-cpp"><![CDATA[RemoteDBM dbm;
+dbm.Connect("localhost:1978", -1,
+  "ssl:key=client-key.pem,cert=client-cert.pem,root=root-cert.pem");
+]]></code></pre>
+
+<p>Password authentication is discouraged these days because of relatively high risks of leaking.  If you want to limit clients only to the trustable ones, you should prepare certifications for them by your own CA with OpenSSL.  You install the certification files to the trustable clients and set the CA certificate to the server.</p>
 
 <h2 id="replication">Asynchronous Replication</h2>
 

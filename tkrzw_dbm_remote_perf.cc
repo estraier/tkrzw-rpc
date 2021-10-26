@@ -43,6 +43,7 @@ static void PrintUsageAndDie() {
   P("Common options:\n");
   P("  --address : The address and the port of the service (default: localhost:1978)\n");
   P("  --timeout : The timeout in seconds for connection and each operation.\n");
+  P("  --auth configs : Enables authentication with the configuration.\n");
   P("  --index : The index of the DBM to access. (default: 0)\n");
   P("  --iter num : The number of iterations. (default: 10000)\n");
   P("  --size num : The size of each record value. (default: 8)\n");
@@ -77,7 +78,7 @@ static void PrintUsageAndDie() {
 // Processes the sequence subcommand.
 static int32_t ProcessSequence(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--auth", 1}, {"--index", 1},
     {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0},
     {"--random_seed", 1}, {"--random_key", 0}, {"--random_value", 0},
     {"--echo_only", 0}, {"--set_only", 0}, {"--get_only", 0},
@@ -92,6 +93,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   }
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const std::string auth_config = GetStringArgument(cmd_args, "--auth", 0, "");
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const int32_t num_iterations = GetIntegerArgument(cmd_args, "--iter", 0, 10000);
   const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
@@ -126,7 +128,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   }
   const int64_t start_mem_rss = GetMemoryUsage();
   RemoteDBM dbm;
-  Status status = dbm.Connect(address, timeout);
+  Status status = dbm.Connect(address, timeout, auth_config);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -144,7 +146,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     RemoteDBM stack_dbm;
     RemoteDBM* task_dbm = &dbm;
     if (with_separate && id > 0) {
-      const Status status = stack_dbm.Connect(address, timeout);
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
       if (status != Status::SUCCESS) {
         EPrintL("Connect failed: ", status);
         return;
@@ -238,7 +240,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     RemoteDBM stack_dbm;
     RemoteDBM* task_dbm = &dbm;
     if (with_separate && id > 0) {
-      const Status status = stack_dbm.Connect(address, timeout);
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
       if (status != Status::SUCCESS) {
         EPrintL("Connect failed: ", status);
         return;
@@ -345,7 +347,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     RemoteDBM stack_dbm;
     RemoteDBM* task_dbm = &dbm;
     if (with_separate && id > 0) {
-      const Status status = stack_dbm.Connect(address, timeout);
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
       if (status != Status::SUCCESS) {
         EPrintL("Connect failed: ", status);
         return;
@@ -442,7 +444,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     RemoteDBM stack_dbm;
     RemoteDBM* task_dbm = &dbm;
     if (with_separate && id > 0) {
-      const Status status = stack_dbm.Connect(address, timeout);
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
       if (status != Status::SUCCESS) {
         EPrintL("Connect failed: ", status);
         return;
@@ -515,7 +517,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
     RemoteDBM stack_dbm;
     RemoteDBM* task_dbm = &dbm;
     if (with_separate && id > 0) {
-      const Status status = stack_dbm.Connect(address, timeout);
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
       if (status != Status::SUCCESS) {
         EPrintL("Connect failed: ", status);
         return;
@@ -613,7 +615,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
 // Processes the wicked subcommand.
 static int32_t ProcessWicked(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--auth", 1}, {"--index", 1},
     {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0}, {"--random_seed", 1},
     {"--iterator", 0}, {"--sync", 0}, {"--clear", 0}, {"--rebuild", 0},
   };
@@ -625,6 +627,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   }
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const std::string auth_config = GetStringArgument(cmd_args, "--auth", 0, "");
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const int32_t num_iterations = GetIntegerArgument(cmd_args, "--iter", 0, 10000);
   const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
@@ -646,7 +649,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
   }
   const int64_t start_mem_rss = GetMemoryUsage();
   RemoteDBM dbm;
-  Status status = dbm.Connect(address, timeout);
+  Status status = dbm.Connect(address, timeout, auth_config);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -664,7 +667,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
     RemoteDBM stack_dbm;
     RemoteDBM* task_dbm = &dbm;
     if (with_separate && id > 0) {
-      const Status status = stack_dbm.Connect(address, timeout);
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
       if (status != Status::SUCCESS) {
         EPrintL("Connect failed: ", status);
         return;
@@ -878,7 +881,7 @@ static int32_t ProcessWicked(int32_t argc, const char** args) {
 // Processes the queue subcommand.
 static int32_t ProcessQueue(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--index", 1},
+    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--auth", 1}, {"--index", 1},
     {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0},
     {"--notify", 0}, {"--retry", 1},
   };
@@ -890,6 +893,7 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
   }
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
   const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const std::string auth_config = GetStringArgument(cmd_args, "--auth", 0, "");
   const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
   const int32_t num_iterations = GetIntegerArgument(cmd_args, "--iter", 0, 10000);
   const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
@@ -908,7 +912,7 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
   }
   const int64_t start_mem_rss = GetMemoryUsage();
   RemoteDBM dbm;
-  Status status = dbm.Connect(address, timeout);
+  Status status = dbm.Connect(address, timeout, auth_config);
   if (status != Status::SUCCESS) {
     EPrintL("Connect failed: ", status);
     return 1;
@@ -926,7 +930,7 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
     RemoteDBM stack_dbm;
     RemoteDBM* task_dbm = &dbm;
     if (with_separate && id > 0) {
-      const Status status = stack_dbm.Connect(address, timeout);
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
       if (status != Status::SUCCESS) {
         EPrintL("Connect failed: ", status);
         return;
@@ -962,7 +966,7 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
     RemoteDBM stack_dbm;
     RemoteDBM* task_dbm = &dbm;
     if (with_separate && id > 0) {
-      const Status status = stack_dbm.Connect(address, timeout);
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
       if (status != Status::SUCCESS) {
         EPrintL("Connect failed: ", status);
         return;

@@ -1,3 +1,10 @@
+2021-10-26  Mikio Hirabayashi  <hirarin@gmail.com>
+
+	- Release: 0.9.5
+	- Library version: 1.11.0
+
+	- Support SSL authentication.
+
 2021-10-20  Mikio Hirabayashi  <hirarin@gmail.com>
 
 	- Release: 0.9.5
