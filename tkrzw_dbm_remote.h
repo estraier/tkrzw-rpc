@@ -444,9 +444,14 @@ class RemoteDBM final {
    * sockets, it's like "unix:/path/to/file".
    * @param timeout The timeout in seconds for connection and each operation.  Negative means
    * unlimited.
+   * @param auth_config The authentication configuration.  It it is empty, no authentication is
+   * done.  If it begins with "ssl:", the SSL authentication is done.  Key-value parameters in
+   * "key=value,key=value,..." format comes next.  For SSL, "key" and "cert" parameters  specify
+   * the paths of the private key file and the certificate file respectively.
    * @return The result status.
    */
-  Status Connect(const std::string& address, double timeout = -1);
+  Status Connect(const std::string& address, double timeout = -1,
+                 const std::string& auth_config = "");
 
   /**
    * Disconnects the connection to the server.

@@ -36,12 +36,13 @@ static void PrintUsageAndDie() {
   P("%s: RPC server of Tkrzw\n", progname);
   P("\n");
   P("Usage:\n");
-  P("  %s [options] [db_configs]\n", progname);
+  P("  %s [options] [db_configs...]\n", progname);
   P("\n");
   P("Options:\n");
   P("  --version : Prints the version number and exits.\n");
   P("  --address str : The address/hostname and the port of the server"
     " (default: 0.0.0.0:1978)\n");
+  P("  --auth configs : Enables authentication with the configuration.\n");
   P("  --async : Uses the asynchronous API on ths server.\n");
   P("  --threads num : The maximum number of worker threads. (default: 1)\n");
   P("  --log_file str : The file path of the log file. (default: /dev/stdout)\n");
@@ -132,10 +133,45 @@ void ShutdownServer(int signum) {
   }
 }
 
+// Makes SSL credentials.
+std::shared_ptr<grpc::ServerCredentials> MakeSSLCredentials(const std::string& config_expr) {
+  const auto& params = StrSplitIntoMap(config_expr, ",", "=");
+  const std::string& key_path = SearchMap(params, "key", "");
+  if (key_path.empty()) {
+    Die("The server private key unspecified");
+  }
+  const std::string& cert_path = SearchMap(params, "cert", "");
+  if (cert_path.empty()) {
+    Die("The server certificate unspecified");
+  }
+  grpc::SslServerCredentialsOptions ssl_opts;
+  ssl_opts.client_certificate_request = GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE;
+  grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp;
+  pkcp.private_key = ReadFileSimple(key_path);
+  if (pkcp.private_key.empty()) {
+    Die("The server private key missing");
+  }
+  pkcp.cert_chain = ReadFileSimple(cert_path);
+  if (pkcp.cert_chain.empty()) {
+    Die("The server certificate missing");
+  }
+  ssl_opts.pem_key_cert_pairs.emplace_back(pkcp);
+  const std::string& root_path = SearchMap(params, "root", "");
+  if (!cert_path.empty()) {
+    ssl_opts.pem_root_certs = ReadFileSimple(root_path);
+    if (pkcp.cert_chain.empty()) {
+      Die("The root certificate missing");
+    }
+    ssl_opts.client_certificate_request =
+        GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY;
+  }
+  return SslServerCredentials(ssl_opts);
+}
+
 // Processes the command.
 static int32_t Process(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
-    {"--version", 0}, {"--address", 1}, {"--async", 0}, {"--threads", 1},
+    {"--version", 0}, {"--address", 1}, {"--auth", 1}, {"--async", 0}, {"--threads", 1},
     {"--log_file", 1}, {"--log_level", 1}, {"--log_date", 1}, {"--log_td", 1},
     {"--server_id", 1}, {"--ulog_prefix", 1}, {"--ulog_max_file_size", 1},
     {"--repl_master", 1}, {"--repl_ts_file", 1}, {"--repl_ts_from_dbm", 0},
@@ -154,6 +190,7 @@ static int32_t Process(int32_t argc, const char** args) {
     return 0;
   }
   const std::string address = GetStringArgument(cmd_args, "--address", 0, "0.0.0.0:1978");
+  const std::string auth_configs = GetStringArgument(cmd_args, "--auth", 0, "");
   const bool with_async = CheckMap(cmd_args, "--async");
   const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 1);
   const std::string log_file = GetStringArgument(cmd_args, "--log_file", 0, "/dev/stdout");
@@ -194,6 +231,16 @@ static int32_t Process(int32_t argc, const char** args) {
     if (status != Status::SUCCESS) {
       EPrintL("DaemonizeProcess failed: ", status);
       return 1;
+    }
+  }
+  std::shared_ptr<grpc::ServerCredentials> credentials;
+  if (auth_configs.empty()) {
+    credentials = grpc::InsecureServerCredentials();
+  } else {
+    if (StrBeginsWith(auth_configs, "ssl:")) {
+      credentials = MakeSSLCredentials(auth_configs.substr(4));
+    } else {
+      Die("unknown authentication mode");
     }
   }
   StreamLogger logger;
@@ -286,7 +333,7 @@ static int32_t Process(int32_t argc, const char** args) {
                 "Building the ", (with_async > 0 ? "async" : "sync"),
                 " server: address=", address, ", id=", server_id);
   grpc::ServerBuilder builder;
-  builder.AddListeningPort(address, grpc::InsecureServerCredentials());
+  builder.AddListeningPort(address, credentials);
   std::unique_ptr<grpc::Service> service;
   std::vector<std::unique_ptr<grpc::ServerCompletionQueue>> async_queues;
   if (with_async) {

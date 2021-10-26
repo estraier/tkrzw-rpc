@@ -75,7 +75,7 @@ class RemoteDBMImpl final {
   RemoteDBMImpl();
   ~RemoteDBMImpl();
   void InjectStub(void* stub);
-  Status Connect(const std::string& address, double timeout);
+  Status Connect(const std::string& address, double timeout, const std::string& auth_config);
   Status Disconnect();
   Status SetDBMIndex(int32_t dbm_index);
   Status Echo(std::string_view message, std::string* echo);
@@ -210,7 +210,8 @@ void RemoteDBMImpl::InjectStub(void* stub) {
   stub_.reset(reinterpret_cast<tkrzw_rpc::DBMService::StubInterface*>(stub));
 }
 
-Status RemoteDBMImpl::Connect(const std::string& address, double timeout) {
+Status RemoteDBMImpl::Connect(
+    const std::string& address, double timeout, const std::string& auth_config) {
   std::lock_guard<SpinSharedMutex> lock(mutex_);
   if (stub_ != nullptr) {
     return Status(Status::PRECONDITION_ERROR, "connected database");
@@ -218,7 +219,40 @@ Status RemoteDBMImpl::Connect(const std::string& address, double timeout) {
   if (timeout < 0) {
     timeout = INT32MAX;
   }
-  auto channel = grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
+  std::shared_ptr<grpc::ChannelCredentials> credentials;
+  if (auth_config.empty()) {
+    credentials = grpc::InsecureChannelCredentials();
+  } else {
+    if (StrBeginsWith(auth_config, "ssl:")) {
+      grpc::SslCredentialsOptions ssl_opts;
+      const auto& params = StrSplitIntoMap(auth_config.substr(4), ",", "=");
+      const std::string& key_path = SearchMap(params, "key", "");
+      if (!key_path.empty()) {
+        ssl_opts.pem_private_key = ReadFileSimple(key_path);
+        if (ssl_opts.pem_private_key.empty()) {
+          return Status(Status::INVALID_ARGUMENT_ERROR, "client private key missing");
+        }
+      }
+      const std::string& cert_path = SearchMap(params, "cert", "");
+      if (!cert_path.empty()) {
+        ssl_opts.pem_cert_chain = ReadFileSimple(cert_path);
+        if (ssl_opts.pem_cert_chain.empty()) {
+          return Status(Status::INVALID_ARGUMENT_ERROR, "client certificate missing");
+        }
+      }
+      const std::string& root_path = SearchMap(params, "root", "");
+      if (!root_path.empty()) {
+        ssl_opts.pem_root_certs = ReadFileSimple(root_path);
+        if (ssl_opts.pem_root_certs.empty()) {
+          return Status(Status::INVALID_ARGUMENT_ERROR, "root certificate missing");
+        }
+      }
+      credentials = grpc::SslCredentials(ssl_opts);
+    } else {
+      return Status(Status::INVALID_ARGUMENT_ERROR, "unknown authentication mode");
+    }
+  }
+  auto channel = grpc::CreateChannel(address, credentials);
   const auto deadline = std::chrono::system_clock::now() +
       std::chrono::microseconds(static_cast<int64_t>(timeout * 1000000));
   while (true) {
@@ -1565,8 +1599,9 @@ void RemoteDBM::InjectStub(void* stub) {
   impl_->InjectStub(stub);
 }
 
-Status RemoteDBM::Connect(const std::string& address, double timeout) {
-  return impl_->Connect(address, timeout);
+Status RemoteDBM::Connect(
+    const std::string& address, double timeout, const std::string& auth_config) {
+  return impl_->Connect(address, timeout, auth_config);
 }
 
 Status RemoteDBM::Disconnect() {
