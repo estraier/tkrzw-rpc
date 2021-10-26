@@ -14,6 +14,9 @@
 #ifndef _TKRZW_SERVER_IMPL_H
 #define _TKRZW_SERVER_IMPL_H
 
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <cassert>
 #include <cstdarg>
 #include <cstdint>
@@ -275,6 +278,9 @@ class DBMServiceBase {
       out_record->set_first("version");
       out_record->set_second(RPC_PACKAGE_VERSION);
       out_record = response->add_records();
+      out_record->set_first("process_id");
+      out_record->set_second(ToString(getpid()));
+      out_record = response->add_records();
       out_record->set_first("num_dbms");
       out_record->set_second(ToString(dbms_.size()));
       for (int32_t i = 0; i < static_cast<int32_t>(dbms_.size()); i++) {
@@ -307,9 +313,13 @@ class DBMServiceBase {
       out_record = response->add_records();
       out_record->set_first("num_active_calls");
       out_record->set_second(ToString(num_active_calls_.load() - num_standby_calls_));
+      const double current_time = GetWallTime();
+      out_record = response->add_records();
+      out_record->set_first("current_time");
+      out_record->set_second(SPrintF("%.3f", current_time));
       out_record = response->add_records();
       out_record->set_first("running_time");
-      out_record->set_second(SPrintF("%.3f", GetWallTime() - start_time_));
+      out_record->set_second(SPrintF("%.3f", current_time - start_time_));
     }
     return grpc::Status::OK;
   }
