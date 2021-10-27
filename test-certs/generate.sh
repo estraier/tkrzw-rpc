@@ -1,6 +1,9 @@
 #! /bin/bash
 
-cat > ca.conf <<__EOF
+function make_ca {
+    rm -rf root-ca
+    mkdir -p root-ca
+    cat > root-ca/openssl.conf <<__EOF
 [ ca ]
 default_ca = ca_default
 [ ca_default ]
@@ -26,29 +29,47 @@ organizationalUnitName = optional
 commonName = supplied
 emailAddress = optional
 __EOF
-
-rm -f *.pem
-
-openssl req -x509 -newkey rsa:2048 -nodes -keyout root-key.pem \
-  -sha256 -days 10000 -subj "/CN=root.dbmx.net" -out root-cert.pem
-
-function make_cert {
-  name="$1"
-  rm -rf root-ca
-  mkdir -p root-ca
-  touch root-ca/index.txt
-  echo 01 > root-ca/serial.txt
-  openssl genrsa -out "${name}-key-pkcs1.pem" 2048
-  openssl pkcs8 -topk8 -nocrypt -in "${name}-key-pkcs1.pem" -out "${name}-key.pem"
-  openssl req -new -key "${name}-key.pem" -subj "/CN=${name}" -out "${name}-csr.pem"
-  openssl ca --batch -in "${name}-csr.pem" -out "${name}-cert.pem" \
-    -keyfile root-key.pem -cert root-cert.pem -md sha256 -days 10000 \
-    -policy generic_policy -config ca.conf
-  rm -rf root-ca
-  rm -f "${name}-key-pkcs1.pem" "${name}-csr.pem"
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout root-key.pem \
+            -sha256 -days 10000 -subj "/CN=root.dbmx.net" -out root-cert.pem
+    touch root-ca/index.txt
+    echo 01 > root-ca/serial.txt
 }
 
-make_cert localhost
-make_cert client
+function make_agent {
+    name="$1"
+    openssl genrsa -out "${name}-key-pkcs1.pem" 2048
+    openssl pkcs8 -topk8 -nocrypt -in "${name}-key-pkcs1.pem" -out "${name}-key.pem"
+    openssl pkey -pubout -in "${name}-key.pem" > "${name}-pubkey.pem"
+    openssl req -new -key "${name}-key.pem" -subj "/CN=${name}" -out "${name}-csr.pem"
+    openssl ca --batch -in "${name}-csr.pem" -out "${name}-cert.pem" \
+            -keyfile root-key.pem -cert root-cert.pem -md sha256 -days 10000 \
+            -policy generic_policy -config root-ca/openssl.conf
+    rm -f "${name}-key-pkcs1.pem" "${name}-csr.pem"
+}
 
-rm ca.conf
+case "$1" in
+    dist)
+        rm -f *.pem
+        make_ca
+        make_agent localhost
+        make_agent client
+        rm -rf root-ca
+        ;;
+    clean)
+        rm -f *.pem
+        rm -rf root-ca
+        ;;
+    ca)
+        make_ca
+        ;;
+    agent)
+        if [ -z "$2" ] ; then
+            echo "Usage: $0: dist/ca/make [client_cn ...]"
+        else
+            make_agent "$2"
+        fi
+        ;;
+    *)
+        echo "Usage: $0: dist/ca/make [client_cn ...]"
+        ;;
+esac
