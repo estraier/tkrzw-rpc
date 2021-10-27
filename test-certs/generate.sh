@@ -38,13 +38,14 @@ function make_cert {
   mkdir -p root-ca
   touch root-ca/index.txt
   echo 01 > root-ca/serial.txt
-  openssl genrsa -out "${name}-key.pem" 2048
+  openssl genrsa -out "${name}-key-pkcs1.pem" 2048
+  openssl pkcs8 -topk8 -nocrypt -in "${name}-key-pkcs1.pem" -out "${name}-key.pem"
   openssl req -new -key "${name}-key.pem" -subj "/CN=${name}" -out "${name}-csr.pem"
   openssl ca --batch -in "${name}-csr.pem" -out "${name}-cert.pem" \
     -keyfile root-key.pem -cert root-cert.pem -md sha256 -days 10000 \
     -policy generic_policy -config ca.conf
   rm -rf root-ca
-  rm -f "${name}-csr.pem"
+  rm -f "${name}-key-pkcs1.pem" "${name}-csr.pem"
 }
 
 make_cert localhost
