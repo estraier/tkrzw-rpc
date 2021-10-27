@@ -936,7 +936,7 @@ if (status != Status::SUCCESS) {
 
 <h3 id="tips_auth_ssl">SSL Authentication and Encryption</h3>
 
-<p>gRPC supports networking over SSL to authenticate peers and protect their communications by encription.  To enable SSL, each of the server and clients uses three files: the private key, the certificate of itself, and the certificate of the root CA.  With SSL enabled, the server accepts the client only if the certificate sent from the client is verified by the root CA certificate specified on the server.  Data transmitted between the server and the client are encrypted by the public key of the sender and decripted by the private key of the receiver.</p>
+<p>gRPC supports networking over SSL to authenticate peers and protect their communications by encription.  To enable SSL, each of the server and clients uses three files: the private key, the certificate of itself, and the certificate of the root CA.  With SSL enabled, the server accepts the client only if the certificate sent from the client is verified by the root CA certificate specified on the server.  Data transmitted between the server and the client are encrypted by the public key of the sender and decrypted by the private key of the receiver.</p>
 
 <p>To enable SSL on the server side, specify "--auth" option which leads an expression in "ssl:key=...,cert=...,root=..." to specify the paths of the three PEM files for the private key, the certificate of the server, and the certificate of the root CA.  Note that the CN property of the server certificate must match the actual host name of the server.</p>
 
