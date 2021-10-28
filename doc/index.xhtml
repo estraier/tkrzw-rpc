@@ -936,28 +936,28 @@ if (status != Status::SUCCESS) {
 
 <h3 id="tips_auth_ssl">SSL Authentication and Encryption</h3>
 
-<p>gRPC supports networking over SSL to authenticate peers and protect their communications by encription.  To enable SSL, each of the server and clients uses three files: the private key, the certificate of itself, and the certificate of the root CA.  With SSL enabled, the server accepts the client only if the certificate sent from the client is verified by the root CA certificate specified on the server.  Data transmitted between the server and the client are encrypted by the public key of the sender and decrypted by the private key of the receiver.</p>
+<p>gRPC supports networking over SSL to authenticate peers and protect their communications by encryption.  To enable SSL, each of the server and clients uses three files: the private key, the certificate of itself, and the certificate of the root CA.  With SSL enabled, the server accepts the client only if the certificate sent from the client is verified by the root CA certificate specified on the server.  Data transmitted between the server and the client are encrypted by the public key of the sender and decrypted by the private key of the receiver.  Because the third party cannot see the encrypted communication, you can use the database service over public networks such as Internet.</p>
 
-<p>To enable SSL on the server side, specify "--auth" option which leads an expression in "ssl:key=...,cert=...,root=..." to specify the paths of the three PEM files for the private key, the certificate of the server, and the certificate of the root CA.  Note that the CN property of the server certificate must match the actual host name of the server.</p>
+<p>To enable SSL on the server side, specify "--auth" option which leads an expression in "ssl:key=...,cert=...,root=..." forat to specify the paths of the three PEM files for the server private key, the certificate of the server, and the certificate of the root CA.  Note that the CN property of the server certificate must match the actual host name (FQDN) of the server.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_server --address "localhost:1978" \
   --auth "ssl:key=localhost-key.pem,cert=localhost-cert.pem,root=root-cert.pem"
 ]]></code></pre>
 
-<p>To enable SSL on the client utility, specify "--auth" option as with the server.</p>
+<p>To enable SSL on the client utility, specify "--auth" option as with the server, to specify the client private key, the certificate of the client, and the certificate of the root CA.</p>
 
 <pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util inspect --address "localhost:1978" \
   --auth "ssl:key=client-key.pem,cert=client-cert.pem,root=root-cert.pem"
 ]]></code></pre>
 
-<p>The same thing can be said with the Connect method of the client API.</p>
+<p>The same thing can be said with the Connect method of the client API.  Other languages than C++ also support the authentication option in the same format.</p>
 
 <pre><code class="language-cpp"><![CDATA[RemoteDBM dbm;
 dbm.Connect("localhost:1978", -1,
   "ssl:key=client-key.pem,cert=client-cert.pem,root=root-cert.pem");
 ]]></code></pre>
 
-<p>Password authentication is discouraged these days because of relatively high risks of leaking.  If you want to limit clients only to the trustable ones, you should prepare certifications for them by your own CA with OpenSSL.  You install the certification files to the trustable clients and set the CA certificate to the server.</p>
+<p>Password authentication is discouraged these days because of relatively high risk of leaking.  If you want to limit clients only to the trustable ones, you should prepare certifications for them by your own CA with OpenSSL etc.  You install the certification files to the trustable clients and set the CA certificate to the server.</p>
 
 <h2 id="replication">Asynchronous Replication</h2>
 
