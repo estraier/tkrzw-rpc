@@ -215,11 +215,35 @@ TEST_F(RemoteDBMTest, CompareExchange) {
   request.set_desired_existence(true);
   request.set_desired_value("desired");
   tkrzw_rpc::CompareExchangeResponse response;
+  response.set_found(true);
   EXPECT_CALL(*stub, CompareExchange(_, EqualsProto(request), _)).WillOnce(
       DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
   tkrzw::RemoteDBM dbm;
   dbm.InjectStub(stub.release());
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.CompareExchange("key", "expected", "desired"));
+}
+
+TEST_F(RemoteDBMTest, CompareExchangeAdvanced) {
+  auto stub = std::make_unique<tkrzw_rpc::MockDBMServiceStub>();
+  tkrzw_rpc::CompareExchangeRequest request;
+  request.set_key("key");
+  request.set_expected_existence(true);
+  request.set_expect_any_value(true);
+  request.set_desire_no_update(true);
+  request.set_get_actual(true);
+  tkrzw_rpc::CompareExchangeResponse response;
+  response.set_actual("actual");
+  response.set_found(true);
+  EXPECT_CALL(*stub, CompareExchange(_, EqualsProto(request), _)).WillOnce(
+      DoAll(SetArgPointee<2>(response), Return(grpc::Status::OK)));
+  tkrzw::RemoteDBM dbm;
+  dbm.InjectStub(stub.release());
+  std::string actual;
+  bool found = false;
+  EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.CompareExchange(
+      "key", tkrzw::DBM::ANY_DATA, tkrzw::DBM::ANY_DATA, &actual, &found));
+  EXPECT_TRUE(found);
+  EXPECT_EQ("actual", actual);
 }
 
 TEST_F(RemoteDBMTest, Increment) {

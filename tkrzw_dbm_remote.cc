@@ -92,7 +92,7 @@ class RemoteDBMImpl final {
   Status AppendMulti(
       const std::map<std::string_view, std::string_view>& records, std::string_view delim);
   Status CompareExchange(std::string_view key, std::string_view expected,
-                         std::string_view desired);
+                         std::string_view desired, std::string* actual, bool* found);
   Status Increment(std::string_view key, int64_t increment, int64_t* current, int64_t initial);
   Status CompareExchangeMulti(
       const std::vector<std::pair<std::string_view, std::string_view>>& expected,
@@ -134,7 +134,8 @@ class RemoteDBMStreamImpl final {
   Status Append(std::string_view key, std::string_view value, std::string_view delim,
                 bool ignore_result);
   Status CompareExchange(
-      std::string_view key, std::string_view expected, std::string_view desired);
+      std::string_view key, std::string_view expected, std::string_view desired,
+      std::string* actual, bool* found);
   Status Increment(std::string_view key, int64_t increment,
                    int64_t* current, int64_t initial, bool ignore_result);
 
@@ -514,8 +515,9 @@ Status RemoteDBMImpl::AppendMulti(
   return MakeStatusFromProto(response.status());
 }
 
-Status RemoteDBMImpl::CompareExchange(std::string_view key, std::string_view expected,
-                                      std::string_view desired) {
+Status RemoteDBMImpl::CompareExchange(
+    std::string_view key, std::string_view expected,
+    std::string_view desired, std::string* actual, bool* found) {
   std::shared_lock<SpinSharedMutex> lock(mutex_);
   if (stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
@@ -527,17 +529,35 @@ Status RemoteDBMImpl::CompareExchange(std::string_view key, std::string_view exp
   request.set_dbm_index(dbm_index_);
   request.set_key(key.data(), key.size());
   if (expected.data() != nullptr) {
-    request.set_expected_existence(true);
-    request.set_expected_value(expected.data(), expected.size());
+    if (expected.data() == DBM::ANY_DATA.data()) {
+      request.set_expected_existence(true);
+      request.set_expect_any_value(true);
+    } else {
+      request.set_expected_existence(true);
+      request.set_expected_value(expected.data(), expected.size());
+    }
   }
   if (desired.data() != nullptr) {
-    request.set_desired_existence(true);
-    request.set_desired_value(desired.data(), desired.size());
+    if (desired.data() == DBM::ANY_DATA.data()) {
+      request.set_desire_no_update(true);
+    } else {
+      request.set_desired_existence(true);
+      request.set_desired_value(desired.data(), desired.size());
+    }
+  }
+  if (actual != nullptr) {
+    request.set_get_actual(true);
   }
   tkrzw_rpc::CompareExchangeResponse response;
   grpc::Status status = stub_->CompareExchange(&context, request, &response);
   if (!status.ok()) {
     return Status(Status::NETWORK_ERROR, GRPCStatusString(status));
+  }
+  if (actual != nullptr) {
+    *actual = response.actual();
+  }
+  if (found != nullptr) {
+    *found = response.found();
   }
   return MakeStatusFromProto(response.status());
 }
@@ -583,8 +603,13 @@ Status RemoteDBMImpl::CompareExchangeMulti(
     auto* req_record = request.add_expected();
     req_record->set_key(std::string(record.first));
     if (record.second.data() != nullptr) {
-      req_record->set_existence(true);
-      req_record->set_value(std::string(record.second));
+      if (record.second.data() == DBM::ANY_DATA.data()) {
+        req_record->set_existence(true);
+        req_record->set_any_value(true);
+      } else {
+        req_record->set_existence(true);
+        req_record->set_value(std::string(record.second));
+      }
     }
   }
   for (const auto& record : desired) {
@@ -1055,7 +1080,8 @@ Status RemoteDBMStreamImpl::Append(
 }
 
 Status RemoteDBMStreamImpl::CompareExchange(
-    std::string_view key, std::string_view expected, std::string_view desired) {
+    std::string_view key, std::string_view expected, std::string_view desired,
+    std::string* actual, bool* found) {
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
@@ -1070,12 +1096,24 @@ Status RemoteDBMStreamImpl::CompareExchange(
   request->set_dbm_index(dbm_->dbm_index_);
   request->set_key(key.data(), key.size());
   if (expected.data() != nullptr) {
-    request->set_expected_existence(true);
-    request->set_expected_value(expected.data(), expected.size());
+    if (expected.data() == DBM::ANY_DATA.data()) {
+      request->set_expected_existence(true);
+      request->set_expect_any_value(true);
+    } else {
+      request->set_expected_existence(true);
+      request->set_expected_value(expected.data(), expected.size());
+    }
   }
   if (desired.data() != nullptr) {
-    request->set_desired_existence(true);
-    request->set_desired_value(desired.data(), desired.size());
+    if (desired.data() == DBM::ANY_DATA.data()) {
+      request->set_desire_no_update(true);
+    } else {
+      request->set_desired_existence(true);
+      request->set_desired_value(desired.data(), desired.size());
+    }
+  }
+  if (actual != nullptr) {
+    request->set_get_actual(true);
   }
   if (!stream_->Write(stream_request)) {
     healthy_.store(false);
@@ -1089,6 +1127,12 @@ Status RemoteDBMStreamImpl::CompareExchange(
     return Status(Status::NETWORK_ERROR, StrCat("Read failed: ", message));
   }
   const tkrzw_rpc::CompareExchangeResponse& response = stream_response.compare_exchange_response();
+  if (actual != nullptr) {
+    *actual = response.actual();
+  }
+  if (found != nullptr) {
+    *found = response.found();
+  }
   return MakeStatusFromProto(response.status());
 }
 
@@ -1659,8 +1703,8 @@ Status RemoteDBM::AppendMulti(
 }
 
 Status RemoteDBM::CompareExchange(std::string_view key, std::string_view expected,
-                                  std::string_view desired) {
-  return impl_->CompareExchange(key, expected, desired);
+                                  std::string_view desired, std::string* actual, bool* found) {
+  return impl_->CompareExchange(key, expected, desired, actual, found);
 }
 
 Status RemoteDBM::Increment(
@@ -1772,8 +1816,9 @@ Status RemoteDBM::Stream::Append(
 }
 
 Status RemoteDBM::Stream::CompareExchange(
-    std::string_view key, std::string_view expected, std::string_view desired) {
-  return impl_->CompareExchange(key, expected, desired);
+    std::string_view key, std::string_view expected, std::string_view desired,
+    std::string* actual, bool* found) {
+  return impl_->CompareExchange(key, expected, desired, actual, found);
 }
 
 Status RemoteDBM::Stream::Increment(

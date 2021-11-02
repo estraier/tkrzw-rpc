@@ -443,6 +443,7 @@ TEST_F(ServerTest, Stream) {
   tkrzw_rpc::StreamResponse response_compare_exchange;
   auto* compare_exchange_res = response_compare_exchange.mutable_compare_exchange_response();
   compare_exchange_res->mutable_status()->set_code(tkrzw::Status::INFEASIBLE_ERROR);
+  compare_exchange_res->set_found(true);
   tkrzw_rpc::StreamResponse response_increment;
   auto* increment_res = response_increment.mutable_increment_response();
   increment_res->set_current(105);

@@ -35,6 +35,8 @@ static void PrintUsageAndDie() {
   P("Usage:\n");
   P("  %s sequence [options]\n", progname);
   P("    : Checks echoing/setting/getting/removing performance in sequence.\n");
+  P("  %s parallel [options]\n", progname);
+  P("    : Checks setting/getting/removing performance in parallel.\n");
   P("  %s wicked [options]\n", progname);
   P("    : Checks consistency with various operations.\n");
   P("  %s queue [options]\n", progname);
@@ -62,6 +64,11 @@ static void PrintUsageAndDie() {
   P("  --stream : Uses the stream API.\n");
   P("  --ignore_result : Ignores the result status of streaming updates.\n");
   P("  --multi num : Sets the size of a batch operation with xxxMulti methods.\n");
+  P("\n");
+  P("Options for the parallel subcommand:\n");
+  P("  --random_key : Uses random keys rather than sequential ones.\n");
+  P("  --random_value : Uses random length values rather than fixed ones.\n");
+  P("  --stream : Uses the stream API.\n");
   P("\n");
   P("Options for the wicked subcommand:\n");
   P("  --iterator : Uses iterators occasionally.\n");
@@ -612,6 +619,214 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
   return has_error ? 1 : 0;
 }
 
+// Processes the parallel subcommand.
+static int32_t ProcessParallel(int32_t argc, const char** args) {
+  const std::map<std::string, int32_t>& cmd_configs = {
+    {"", 0}, {"--address", 1}, {"--timeout", 1}, {"--auth", 1}, {"--index", 1},
+    {"--iter", 1}, {"--size", 1}, {"--threads", 1}, {"--separate", 0},
+    {"--random_seed", 1}, {"--random_key", 0}, {"--random_value", 0},
+    {"--stream", 0},
+  };
+  std::map<std::string, std::vector<std::string>> cmd_args;
+  std::string cmd_error;
+  if (!ParseCommandArguments(argc, args, cmd_configs, &cmd_args, &cmd_error)) {
+    EPrint("Invalid command: ", cmd_error, "\n\n");
+    PrintUsageAndDie();
+  }
+  const std::string address = GetStringArgument(cmd_args, "--address", 0, "localhost:1978");
+  const double timeout = GetDoubleArgument(cmd_args, "--timeout", 0, -1);
+  const std::string auth_config = GetStringArgument(cmd_args, "--auth", 0, "");
+  const int32_t dbm_index = GetIntegerArgument(cmd_args, "--index", 0, 0);
+  const int32_t num_iterations = GetIntegerArgument(cmd_args, "--iter", 0, 10000);
+  const int32_t value_size = GetIntegerArgument(cmd_args, "--size", 0, 8);
+  const int32_t num_threads = GetIntegerArgument(cmd_args, "--threads", 0, 1);
+  const bool with_separate = CheckMap(cmd_args, "--separate");
+  const int32_t random_seed = GetIntegerArgument(cmd_args, "--random_seed", 0, 0);
+  const bool is_random_key = CheckMap(cmd_args, "--random_key");
+  const bool is_random_value = CheckMap(cmd_args, "--random_value");
+  const bool with_stream = CheckMap(cmd_args, "--stream");
+  if (num_iterations < 1) {
+    Die("Invalid number of iterations");
+  }
+  if (value_size < 1) {
+    Die("Invalid size of a record");
+  }
+  if (num_threads < 1) {
+    Die("Invalid number of threads");
+  }
+  const int64_t start_mem_rss = GetMemoryUsage();
+  RemoteDBM dbm;
+  Status status = dbm.Connect(address, timeout, auth_config);
+  if (status != Status::SUCCESS) {
+    EPrintL("Connect failed: ", status);
+    return 1;
+  }
+  dbm.SetDBMIndex(dbm_index);
+  std::atomic_bool has_error(false);
+  status = dbm.Clear();
+  if (status != Status::SUCCESS) {
+    EPrintL("Clear failed: ", status);
+    has_error = true;
+  }
+  const int32_t dot_mod = std::max(num_iterations / 1000, 1);
+  const int32_t fold_mod = std::max(num_iterations / 20, 1);
+  auto task = [&](int32_t id) {
+    RemoteDBM stack_dbm;
+    RemoteDBM* task_dbm = &dbm;
+    if (with_separate && id > 0) {
+      const Status status = stack_dbm.Connect(address, timeout, auth_config);
+      if (status != Status::SUCCESS) {
+        EPrintL("Connect failed: ", status);
+        return;
+      }
+      task_dbm = &stack_dbm;
+    }
+    const uint32_t mt_seed = random_seed >= 0 ? random_seed : std::random_device()();
+    std::mt19937 mt(mt_seed + id);
+    std::uniform_int_distribution<int32_t> key_num_dist(0, num_iterations * num_threads - 1);
+    std::uniform_int_distribution<int32_t> value_size_dist(0, value_size);
+    std::uniform_int_distribution<int32_t> op_dist(0, INT32MAX);
+    constexpr uint32_t value_extra = 2039U;
+    char* value_buf = new char[value_size + value_extra];
+    for (int32_t i = 0; i < static_cast<int32_t>(value_size + value_extra); i++) {
+      value_buf[i] = 'a' + (id + i) % (i % 2 ? 26 : 8);
+    }
+    bool midline = false;
+    std::unique_ptr<tkrzw::RemoteDBM::Stream> stream;
+    for (int32_t i = 0; !has_error && i < num_iterations; i++) {
+      int32_t key_num = is_random_key ? key_num_dist(mt) : i * num_threads + id;
+      const std::string& key = SPrintF("%08d", key_num);
+      std::string_view value(value_buf, is_random_value ? value_size_dist(mt) : value_size);
+      if (with_stream) {
+        if (i % 100 == 0) {
+          stream = task_dbm->MakeStream();
+        }
+        if (op_dist(mt) % 5 == 0) {
+          std::string_view expected;
+          switch (op_dist(mt) % 3) {
+            case 0: expected = ""; break;
+            case 1: expected = tkrzw::DBM::ANY_DATA; break;
+          }
+          std::string_view desired;
+          switch (op_dist(mt) % 3) {
+            case 0: desired = ""; break;
+            case 1: desired = tkrzw::DBM::ANY_DATA; break;
+          }
+          std::string actual;
+          bool found = false;
+          const Status status = stream->CompareExchange(
+              key, expected, desired, &actual, &found);
+          if (status != Status::SUCCESS && status != Status::INFEASIBLE_ERROR) {
+            EPrintL("CompareExchange failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else if (op_dist(mt) % 5 == 0) {
+          const Status status = stream->Remove(key);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("Set failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else if (op_dist(mt) % 2 == 0) {
+          const Status status = stream->Set(key, value);
+          if (status != Status::SUCCESS) {
+            EPrintL("Set failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else {
+          const Status status = stream->Get(key);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("Set failed: ", status);
+            has_error = true;
+            break;
+          }
+        }
+      } else {
+        if (op_dist(mt) % 5 == 0) {
+          std::string_view expected;
+          switch (op_dist(mt) % 3) {
+            case 0: expected = ""; break;
+            case 1: expected = tkrzw::DBM::ANY_DATA; break;
+          }
+          std::string_view desired;
+          switch (op_dist(mt) % 3) {
+            case 0: desired = ""; break;
+            case 1: desired = tkrzw::DBM::ANY_DATA; break;
+          }
+          std::string actual;
+          bool found = false;
+          const Status status = task_dbm->CompareExchange(
+              key, expected, desired, &actual, &found);
+          if (status != Status::SUCCESS && status != Status::INFEASIBLE_ERROR) {
+            EPrintL("CompareExchange failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else if (op_dist(mt) % 5 == 0) {
+          const Status status = task_dbm->Remove(key);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("Set failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else if (op_dist(mt) % 2 == 0) {
+          const Status status = task_dbm->Set(key, value);
+          if (status != Status::SUCCESS) {
+            EPrintL("Set failed: ", status);
+            has_error = true;
+            break;
+          }
+        } else {
+          const Status status = task_dbm->Get(key);
+          if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
+            EPrintL("Set failed: ", status);
+            has_error = true;
+            break;
+          }
+        }
+      }
+      if (id == 0 && (i + 1) % dot_mod == 0) {
+        PutChar('.');
+        midline = true;
+        if ((i + 1) % fold_mod == 0) {
+          PrintF(" (%08d)\n", i + 1);
+          midline = false;
+        }
+      }
+    }
+    if (midline) {
+      PrintF(" (%08d)\n", num_iterations);
+    }
+    delete[] value_buf;
+  };
+  PrintF("Doing: num_iterations=%d value_size=%d num_threads=%d\n",
+         num_iterations, value_size, num_threads);
+  const double start_time = GetWallTime();
+  std::vector<std::thread> threads;
+  for (int32_t i = 0; i < num_threads; i++) {
+      threads.emplace_back(std::thread(task, i));
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  const double end_time = GetWallTime();
+  const double elapsed_time = end_time - start_time;
+  const int64_t num_records = dbm.CountSimple();
+  const int64_t mem_usage = GetMemoryUsage() - start_mem_rss;
+  PrintF("Done: elapsed_time=%.6f num_records=%lld qps=%.0f mem=%lld\n",
+         elapsed_time, num_records, num_iterations * num_threads / elapsed_time,
+         mem_usage);
+  PrintL();
+  status = dbm.Disconnect();
+  if (status != Status::SUCCESS) {
+    EPrintL("Disonnect failed: ", status);
+    has_error = true;
+  }
+  return has_error ? 1 : 0;
+}
+
 // Processes the wicked subcommand.
 static int32_t ProcessWicked(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
@@ -1031,6 +1246,8 @@ int main(int argc, char** argv) {
   try {
     if (std::strcmp(args[1], "sequence") == 0) {
       rv = tkrzw::ProcessSequence(argc - 1, args + 1);
+    } else if (std::strcmp(args[1], "parallel") == 0) {
+      rv = tkrzw::ProcessParallel(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "wicked") == 0) {
       rv = tkrzw::ProcessWicked(argc - 1, args + 1);
     } else if (std::strcmp(args[1], "queue") == 0) {

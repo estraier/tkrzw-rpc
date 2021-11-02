@@ -474,15 +474,28 @@ class DBMServiceBase {
     auto& dbm = *dbms_[request->dbm_index()];
     std::string_view expected;
     if (request->expected_existence()) {
-      expected = request->expected_value();
+      if (request->expect_any_value()) {
+        expected = DBM::ANY_DATA;
+      } else {
+        expected = request->expected_value();
+      }
     }
     std::string_view desired;
-    if (request->desired_existence()) {
+    if (request->desire_no_update()) {
+      desired = DBM::ANY_DATA;
+    } else if (request->desired_existence()) {
       desired = request->desired_value();
     }
-    const Status status = dbm.CompareExchange(request->key(), expected, desired);
+    std::string actual;
+    bool found = false;
+    const Status status = dbm.CompareExchange(
+        request->key(), expected, desired, request->get_actual() ? &actual : nullptr, &found);
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
+    if (!actual.empty()) {
+      response->set_actual(actual);
+    }
+    response->set_found(found);
     return grpc::Status::OK;
   }
 

@@ -600,6 +600,8 @@ running_time=4872.382
 <dl>
 <dt><code>tkrzw_dbm_remote_perf sequence [<var>options</var>]</code></dt>
 <dd>Checks echoing/setting/getting/removing performance in sequence.</dd>
+<dt><code>tkrzw_dbm_remote_perf parallel [<var>options</var>]</code></dt>
+<dd>Checks setting/getting/removing performance in parallel.</dd>
 <dt><code>tkrzw_dbm_remote_perf wicked [<var>options</var>]</code></dt>
 <dd>Checks consistency with various operations.</dd>
 <dt><code>tkrzw_dbm_remote_perf queue [<var>options</var>]</code></dt>
@@ -628,6 +630,10 @@ running_time=4872.382
 <dd><code>--stream</code> : Uses the stream API.</dd>
 <dd><code>--ignore_result</code> : Ignores the result status of streaming updates.</dd>
 <dd><code>--multi <var>num</var></code> : Sets the size of a batch operation with xxxMulti methods.</dd>
+<dt>Options for the parallel subcommand:</dt>
+<dd><code>--random_key</code> : Uses random keys rather than sequential ones.</dd>
+<dd><code>--random_value</code> : Uses random length values rather than fixed ones.</dd>
+<dd><code>--stream</code> : Uses the stream API.</dd>
 <dt>Options for the wicked subcommand:</dt>
 <dd><code>--iterator</code> : Uses iterators occasionally.</dd>
 <dd><code>--clear</code> : Clears the database occasionally.</dd>

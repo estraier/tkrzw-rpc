@@ -45,6 +45,8 @@ message RecordState {
   bytes key = 2;
   // The value.
   bytes value = 3;
+  // True to accept any value.
+  bool any_value = 4;
 }
 
 // Request of the Echo method.
@@ -216,16 +218,26 @@ message CompareExchangeRequest {
   bool expected_existence = 3;
   // The expected value.
   bytes expected_value = 4;
+  // True to expect any value.
+  bool expect_any_value = 5;
   // Whether the record is desired to exists.
-  bool desired_existence = 5;
+  bool desired_existence = 6;
   // The desired value.
-  bytes desired_value = 6;
+  bytes desired_value = 7;
+  // True to do no update.
+  bool desire_no_update = 8;
+  // True to get the actual value of the existing record.
+  bool get_actual = 9;
 }
 
 // Response of the CompareExchange method.
 message CompareExchangeResponse {
   // The result status.
   StatusProto status = 1;
+  // The actual value of the existing record.
+  bytes actual = 2;
+  // Whether there is an existing record.
+  bool found = 3;
 }
 
 // Request of the Increment method.
