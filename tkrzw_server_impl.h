@@ -529,9 +529,15 @@ class DBMServiceBase {
     std::vector<std::pair<std::string_view, std::string_view>> expected;
     expected.resize(request->expected_size());
     for (const auto& record : request->expected()) {
-      expected.emplace_back(std::make_pair(
-          std::string_view(record.key()),
-          record.existence() ? std::string_view(record.value()) : std::string_view()));
+      std::string_view value;
+      if (record.existence()) {
+        if (record.any_value()) {
+          value = DBM::ANY_DATA;
+        } else {
+          value = record.value();
+        }
+      }
+      expected.emplace_back(std::make_pair(std::string_view(record.key()), value));
     }
     std::vector<std::pair<std::string_view, std::string_view>> desired;
     desired.resize(request->desired_size());
