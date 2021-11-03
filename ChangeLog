@@ -1,14 +1,22 @@
+2021-10-30  Mikio Hirabayashi  <hirarin@gmail.com>
+
+	- Release: 0.9.7
+	- Library version: 1.14.0
+
+	- CompareExchange supports ANY_DATA.
+	- CompareExchangeAndGet is added.
+
 2021-10-26  Mikio Hirabayashi  <hirarin@gmail.com>
 
-	- Release: 0.9.5
-	- Library version: 1.11.0
+	- Release: 0.9.6
+	- Library version: 1.13.0
 
 	- Support SSL authentication.
 
 2021-10-20  Mikio Hirabayashi  <hirarin@gmail.com>
 
 	- Release: 0.9.5
-	- Library version: 1.11.0
+	- Library version: 1.12.0
 
 	- Add Iterator::Step.
 	- Add RemoteDBM::Rekey.
