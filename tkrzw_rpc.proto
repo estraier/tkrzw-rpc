@@ -228,6 +228,10 @@ message CompareExchangeRequest {
   bool desire_no_update = 8;
   // True to get the actual value of the existing record.
   bool get_actual = 9;
+  // The wait time in seconds before retrying.
+  double retry_wait = 10;
+  // True to send a signal to wake up retrying threads.
+  bool notify = 11;
 }
 
 // Response of the CompareExchange method.

@@ -92,7 +92,8 @@ class RemoteDBMImpl final {
   Status AppendMulti(
       const std::map<std::string_view, std::string_view>& records, std::string_view delim);
   Status CompareExchange(std::string_view key, std::string_view expected,
-                         std::string_view desired, std::string* actual, bool* found);
+                         std::string_view desired, std::string* actual, bool* found,
+                         double retry_wait, bool notify);
   Status Increment(std::string_view key, int64_t increment, int64_t* current, int64_t initial);
   Status CompareExchangeMulti(
       const std::vector<std::pair<std::string_view, std::string_view>>& expected,
@@ -135,7 +136,7 @@ class RemoteDBMStreamImpl final {
                 bool ignore_result);
   Status CompareExchange(
       std::string_view key, std::string_view expected, std::string_view desired,
-      std::string* actual, bool* found);
+      std::string* actual, bool* found, double retry_wait, bool notify);
   Status Increment(std::string_view key, int64_t increment,
                    int64_t* current, int64_t initial, bool ignore_result);
 
@@ -517,7 +518,7 @@ Status RemoteDBMImpl::AppendMulti(
 
 Status RemoteDBMImpl::CompareExchange(
     std::string_view key, std::string_view expected,
-    std::string_view desired, std::string* actual, bool* found) {
+    std::string_view desired, std::string* actual, bool* found, double retry_wait, bool notify) {
   std::shared_lock<SpinSharedMutex> lock(mutex_);
   if (stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
@@ -548,6 +549,10 @@ Status RemoteDBMImpl::CompareExchange(
   if (actual != nullptr) {
     request.set_get_actual(true);
   }
+  if (retry_wait > 0) {
+    request.set_retry_wait(retry_wait);
+  }
+  request.set_notify(notify);
   tkrzw_rpc::CompareExchangeResponse response;
   grpc::Status status = stub_->CompareExchange(&context, request, &response);
   if (!status.ok()) {
@@ -1081,7 +1086,7 @@ Status RemoteDBMStreamImpl::Append(
 
 Status RemoteDBMStreamImpl::CompareExchange(
     std::string_view key, std::string_view expected, std::string_view desired,
-    std::string* actual, bool* found) {
+    std::string* actual, bool* found, double retry_wait, bool notify) {
   std::shared_lock<SpinSharedMutex> lock(dbm_->mutex_);
   if (dbm_->stub_ == nullptr) {
     return Status(Status::PRECONDITION_ERROR, "not connected database");
@@ -1703,8 +1708,9 @@ Status RemoteDBM::AppendMulti(
 }
 
 Status RemoteDBM::CompareExchange(std::string_view key, std::string_view expected,
-                                  std::string_view desired, std::string* actual, bool* found) {
-  return impl_->CompareExchange(key, expected, desired, actual, found);
+                                  std::string_view desired, std::string* actual, bool* found,
+                                  double retry_wait, bool notify) {
+  return impl_->CompareExchange(key, expected, desired, actual, found, retry_wait, notify);
 }
 
 Status RemoteDBM::Increment(
@@ -1817,8 +1823,8 @@ Status RemoteDBM::Stream::Append(
 
 Status RemoteDBM::Stream::CompareExchange(
     std::string_view key, std::string_view expected, std::string_view desired,
-    std::string* actual, bool* found) {
-  return impl_->CompareExchange(key, expected, desired, actual, found);
+    std::string* actual, bool* found, double retry_wait, bool notify) {
+  return impl_->CompareExchange(key, expected, desired, actual, found, retry_wait, notify);
 }
 
 Status RemoteDBM::Stream::Increment(

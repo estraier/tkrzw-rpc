@@ -231,6 +231,8 @@ TEST_F(RemoteDBMTest, CompareExchangeAdvanced) {
   request.set_expect_any_value(true);
   request.set_desire_no_update(true);
   request.set_get_actual(true);
+  request.set_retry_wait(10);
+  request.set_notify(true);
   tkrzw_rpc::CompareExchangeResponse response;
   response.set_actual("actual");
   response.set_found(true);
@@ -241,7 +243,7 @@ TEST_F(RemoteDBMTest, CompareExchangeAdvanced) {
   std::string actual;
   bool found = false;
   EXPECT_EQ(tkrzw::Status::SUCCESS, dbm.CompareExchange(
-      "key", tkrzw::DBM::ANY_DATA, tkrzw::DBM::ANY_DATA, &actual, &found));
+      "key", tkrzw::DBM::ANY_DATA, tkrzw::DBM::ANY_DATA, &actual, &found, 10, true));
   EXPECT_TRUE(found);
   EXPECT_EQ("actual", actual);
 }

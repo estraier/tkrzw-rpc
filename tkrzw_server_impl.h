@@ -472,6 +472,7 @@ class DBMServiceBase {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
     auto& dbm = *dbms_[request->dbm_index()];
+    auto& broker = key_signal_brokers_[request->dbm_index()];
     std::string_view expected;
     if (request->expected_existence()) {
       if (request->expect_any_value()) {
@@ -496,6 +497,9 @@ class DBMServiceBase {
       response->set_actual(actual);
     }
     response->set_found(found);
+    if (request->notify() && status == Status::SUCCESS) {
+      broker->Send(request->key());
+    }
     return grpc::Status::OK;
   }
 
@@ -1107,30 +1111,6 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       const ReplicationParameters& repl_params = {})
       : DBMServiceBase(dbms, logger, server_id, mq, repl_params) {}
 
-  template<typename PROC, typename REQUEST, typename RESPONSE>
-  grpc::Status RetryWaitFirst(PROC proc, grpc::ServerContext* context,
-                              const REQUEST* request, RESPONSE* response) {
-    if (request->dbm_index() >= static_cast<int32_t>(first_signal_brokers_.size())) {
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
-    }
-    const double deadline = GetWallTime() + request->retry_wait();
-    while (true) {
-      SignalBroker::Waiter waiter(first_signal_brokers_[request->dbm_index()].get());
-      const grpc::Status status = (this->*proc)(context, request, response);
-      if (!status.ok() || response->status().code() != Status::NOT_FOUND_ERROR) {
-        return status;
-      }
-      const double time_diff = deadline - GetWallTime();
-      if (time_diff <= 0 || !waiter.Wait(time_diff)) {
-        response->mutable_status()->set_code(Status::INFEASIBLE_ERROR);
-        response->mutable_status()->set_message("timeout during retry");
-        break;
-      }
-      response->Clear();
-    }
-    return grpc::Status::OK;
-  }
-
   grpc::Status Echo(
       grpc::ServerContext* context, const tkrzw_rpc::EchoRequest* request,
       tkrzw_rpc::EchoResponse* response) override {
@@ -1205,7 +1185,29 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       grpc::ServerContext* context, const tkrzw_rpc::CompareExchangeRequest* request,
       tkrzw_rpc::CompareExchangeResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
-    return CompareExchangeImpl(context, request, response);
+    if (request->retry_wait() <= 0) {
+      return CompareExchangeImpl(context, request, response);
+    }
+    if (request->dbm_index() >= static_cast<int32_t>(key_signal_brokers_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    const double deadline = GetWallTime() + request->retry_wait();
+    while (true) {
+      SlottedKeySignalBroker<std::string>::Waiter waiter(
+          key_signal_brokers_[request->dbm_index()].get(), request->key());
+      const grpc::Status status = CompareExchangeImpl(context, request, response);
+      if (!status.ok() || response->status().code() != Status::INFEASIBLE_ERROR) {
+        return status;
+      }
+      const double time_diff = deadline - GetWallTime();
+      if (time_diff <= 0 || !waiter.Wait(time_diff)) {
+        response->mutable_status()->set_code(Status::INFEASIBLE_ERROR);
+        response->mutable_status()->set_message("timeout during retry");
+        break;
+      }
+      response->Clear();
+    }
+    return grpc::Status::OK;
   }
 
   grpc::Status Increment(
@@ -1233,10 +1235,28 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       grpc::ServerContext* context, const tkrzw_rpc::PopFirstRequest* request,
       tkrzw_rpc::PopFirstResponse* response) {
     ScopedCounter sc(&num_active_calls_);
-    if (request->retry_wait() > 0) {
-      return RetryWaitFirst(&tkrzw::DBMServiceImpl::PopFirstImpl, context, request, response);
+    if (request->retry_wait() <= 0) {
+      return PopFirstImpl(context, request, response);
     }
-    return PopFirstImpl(context, request, response);
+    if (request->dbm_index() >= static_cast<int32_t>(first_signal_brokers_.size())) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
+    }
+    const double deadline = GetWallTime() + request->retry_wait();
+    while (true) {
+      SignalBroker::Waiter waiter(first_signal_brokers_[request->dbm_index()].get());
+      const grpc::Status status = PopFirstImpl(context, request, response);
+      if (!status.ok() || response->status().code() != Status::NOT_FOUND_ERROR) {
+        return status;
+      }
+      const double time_diff = deadline - GetWallTime();
+      if (time_diff <= 0 || !waiter.Wait(time_diff)) {
+        response->mutable_status()->set_code(Status::INFEASIBLE_ERROR);
+        response->mutable_status()->set_message("timeout during retry");
+        break;
+      }
+      response->Clear();
+    }
+    return grpc::Status::OK;
   }
 
   grpc::Status PushLast(

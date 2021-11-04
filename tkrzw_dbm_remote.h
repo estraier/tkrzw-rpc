@@ -137,11 +137,15 @@ class RemoteDBM final {
      * record.  If it is nullptr, it is ignored.
      * @param found The pointer to a variable to contain whether there is an existing record.
      * If it is nullptr, it is ignored.
+     * @param retry_wait The maximum wait time in seconds before retrying.  If it is zero, no
+     * retry is done.  If it is positive, retry is done and wait for the notifications of the
+     * next update for the time at most.
+     * @param notify If true, a notification signal is sent to wake up retrying threads.
      * @return The result status.  If the condition doesn't meet, INFEASIBLE_ERROR is returned.
      */
     Status CompareExchange(std::string_view key, std::string_view expected,
                            std::string_view desired, std::string* actual = nullptr,
-                           bool* found = nullptr);
+                           bool* found = nullptr, double retry_wait = 0, bool notify = false);
 
     /**
      * Increments the numeric value of a record.
@@ -702,11 +706,15 @@ class RemoteDBM final {
    * record.  If it is nullptr, it is ignored.
    * @param found The pointer to a variable to contain whether there is an existing record.  If it
    * is nullptr, it is ignored.
+   * @param retry_wait The maximum wait time in seconds before retrying.  If it is zero, no retry
+   * is done.  If it is positive, retry is done and wait for the notifications of the next update
+   * for the time at most.
+   * @param notify If true, a notification signal is sent to wake up retrying threads.
    * @return The result status.  If the condition doesn't meet, INFEASIBLE_ERROR is returned.
    */
   Status CompareExchange(std::string_view key, std::string_view expected,
                          std::string_view desired, std::string* actual = nullptr,
-                         bool* found = nullptr);
+                         bool* found = nullptr, double retry_wait = 0, bool notify = false);
 
   /**
    * Increments the numeric value of a record.
