@@ -472,7 +472,6 @@ class DBMServiceBase {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
     auto& dbm = *dbms_[request->dbm_index()];
-    auto& broker = key_signal_brokers_[request->dbm_index()];
     std::string_view expected;
     if (request->expected_existence()) {
       if (request->expect_any_value()) {
@@ -497,9 +496,6 @@ class DBMServiceBase {
       response->set_actual(actual);
     }
     response->set_found(found);
-    if (request->notify() && status == Status::SUCCESS) {
-      broker->Send(request->key());
-    }
     return grpc::Status::OK;
   }
 
@@ -600,12 +596,19 @@ class DBMServiceBase {
     }
     auto& dbm = *dbms_[request->dbm_index()];
     const Status status = dbm.PushLast(request->value(), request->wtime());
-    if (request->notify() && status == Status::SUCCESS) {
-      first_signal_brokers_[request->dbm_index()]->Send();
-    }
     response->mutable_status()->set_code(status.GetCode());
     response->mutable_status()->set_message(status.GetMessage());
     return grpc::Status::OK;
+  }
+
+  grpc::Status PushLastAndNotify(
+      grpc::ServerContext* context, const tkrzw_rpc::PushLastRequest* request,
+      tkrzw_rpc::PushLastResponse* response) {
+    const grpc::Status status = PushLastImpl(context, request, response);
+    if (request->notify() && status.ok() && response->status().code() == 0) {
+      first_signal_brokers_[request->dbm_index()]->Send();
+    }
+    return status;
   }
 
   grpc::Status CountImpl(
@@ -1172,7 +1175,10 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       tkrzw_rpc::AppendResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
     return AppendImpl(context, request, response);
-  }
+  }      if (request->notify() && status.ok() && response->status().code() == 0) {
+        key_signal_brokers_[request->dbm_index()]->Send(request->key());
+      }
+
 
   grpc::Status AppendMulti(
       grpc::ServerContext* context, const tkrzw_rpc::AppendMultiRequest* request,
@@ -1186,18 +1192,23 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       tkrzw_rpc::CompareExchangeResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
     if (request->retry_wait() <= 0) {
-      return CompareExchangeImpl(context, request, response);
+      const grpc::Status status = CompareExchangeImpl(context, request, response);
+      if (request->notify() && status.ok() && response->status().code() == 0) {
+        key_signal_brokers_[request->dbm_index()]->Send(request->key());
+      }
+      return status;
     }
     if (request->dbm_index() >= static_cast<int32_t>(key_signal_brokers_.size())) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "dbm_index is out of range");
     }
     const double deadline = GetWallTime() + request->retry_wait();
+    grpc::Status status = grpc::Status::OK;
     while (true) {
       SlottedKeySignalBroker<std::string>::Waiter waiter(
           key_signal_brokers_[request->dbm_index()].get(), request->key());
-      const grpc::Status status = CompareExchangeImpl(context, request, response);
+      status = CompareExchangeImpl(context, request, response);
       if (!status.ok() || response->status().code() != Status::INFEASIBLE_ERROR) {
-        return status;
+        break;
       }
       const double time_diff = deadline - GetWallTime();
       if (time_diff <= 0 || !waiter.Wait(time_diff)) {
@@ -1207,7 +1218,10 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       }
       response->Clear();
     }
-    return grpc::Status::OK;
+    if (request->notify() && status.ok() && response->status().code() == 0) {
+      key_signal_brokers_[request->dbm_index()]->Send(request->key());
+    }
+    return status;
   }
 
   grpc::Status Increment(
@@ -1263,7 +1277,7 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       grpc::ServerContext* context, const tkrzw_rpc::PushLastRequest* request,
       tkrzw_rpc::PushLastResponse* response) {
     ScopedCounter sc(&num_active_calls_);
-    return PushLastImpl(context, request, response);
+    return PushLastAndNotify(context, request, response);
   }
 
   grpc::Status Count(
@@ -1883,7 +1897,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncDBMProcessor<
     tkrzw_rpc::PushLastRequest, tkrzw_rpc::PushLastResponse>(
         this, queue, &DBMAsyncServiceImpl::RequestPushLast,
-        &DBMServiceBase::PushLastImpl);
+        &DBMServiceBase::PushLastAndNotify);
   new AsyncDBMProcessor<tkrzw_rpc::CountRequest, tkrzw_rpc::CountResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestCount,
       &DBMServiceBase::CountImpl);

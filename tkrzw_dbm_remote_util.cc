@@ -87,6 +87,7 @@ static void PrintUsageAndDie() {
   P("  --retry num : The maximum wait time in seconds before retrying.\n");
   P("  --escape : C-style escape is applied to the output data.\n");
   P("  --key : Prints the key too.\n");
+  P("  --compex str : Calls CompareExchange with the key.\n");
   P("\n");
   P("Options for the sync subcommand:\n");
   P("  --hard : Does physical synchronization with the hardware.\n");
@@ -536,7 +537,7 @@ static int32_t ProcessList(int32_t argc, const char** args) {
 static int32_t ProcessQueue(int32_t argc, const char** args) {
   const std::map<std::string, int32_t>& cmd_configs = {
     {"--address", 1}, {"--timeout", 1}, {"--auth", 1}, {"--index", 1},
-    {"--notify", 0}, {"--retry", 1}, {"--escape", 0}, {"--key", 0},
+    {"--notify", 0}, {"--retry", 1}, {"--escape", 0}, {"--key", 0}, {"--compex", 1},
   };
   std::map<std::string, std::vector<std::string>> cmd_args;
   std::string cmd_error;
@@ -552,6 +553,8 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
   const double retry_wait = GetDoubleArgument(cmd_args, "--retry", 0, 0);
   const bool with_escape = CheckMap(cmd_args, "--escape");
   const bool key_also = CheckMap(cmd_args, "--key");
+  const std::string compex_key =
+      GetStringArgument(cmd_args, "--compex", 0, SkipDBM::REMOVING_VALUE);
   RemoteDBM dbm;
   Status status = dbm.Connect(address, timeout, auth_config);
   if (status != Status::SUCCESS) {
@@ -560,28 +563,61 @@ static int32_t ProcessQueue(int32_t argc, const char** args) {
   }
   dbm.SetDBMIndex(dbm_index);
   bool ok = true;
-  if (cmd_args[""].empty()) {
-    std::string key, value;
-    status = dbm.PopFirst(&key, &value, retry_wait);
-    if (status == Status::SUCCESS) {
-      const std::string& esc_key = SPrintF("%010.6f", StrToIntBigEndian(key) / 100000000.0);
-      const std::string& esc_value = with_escape ? StrEscapeC(value) : StrTrimForTSV(value, true);
-      if (key_also) {
-        PrintL(esc_key, "\t", esc_value);
+  if (compex_key != SkipDBM::REMOVING_VALUE) {
+    if (cmd_args[""].empty()) {
+      std::string value;
+      status = dbm.CompareExchange(
+          compex_key, DBM::ANY_DATA, std::string_view(), &value, nullptr, retry_wait, notify);
+      if (status == Status::SUCCESS) {
+        const std::string& esc_key =
+            with_escape ? StrEscapeC(compex_key) : StrTrimForTSV(compex_key, true);
+        const std::string& esc_value =
+            with_escape ? StrEscapeC(value) : StrTrimForTSV(value, true);
+        if (key_also) {
+          PrintL(esc_key, "\t", esc_value);
+        } else {
+          PrintL(esc_value);
+        }
       } else {
-        PrintL(esc_value);
+        EPrintL("CompareExchange failed: ", status);
+        ok = false;
       }
     } else {
-      EPrintL("PopFirst failed: ", status);
-      ok = false;
+      for (const auto& value : cmd_args[""]) {
+        status = dbm.CompareExchange(
+            compex_key, std::string_view(), value, nullptr, nullptr, retry_wait, notify);
+        if (status != Status::SUCCESS) {
+          EPrintL("CompareExchange failed: ", status);
+          ok = false;
+          break;
+        }
+      }
     }
   } else {
-    for (const auto& value : cmd_args[""]) {
-      status = dbm.PushLast(value, -1, notify);
-      if (status != Status::SUCCESS) {
-        EPrintL("PushLast failed: ", status);
+    if (cmd_args[""].empty()) {
+      std::string key, value;
+      status = dbm.PopFirst(&key, &value, retry_wait);
+      if (status == Status::SUCCESS) {
+        const std::string& esc_key = SPrintF("%010.6f", StrToIntBigEndian(key) / 100000000.0);
+        const std::string& esc_value =
+            with_escape ? StrEscapeC(value) : StrTrimForTSV(value, true);
+        if (key_also) {
+          PrintL(esc_key, "\t", esc_value);
+        } else {
+          PrintL(esc_value);
+        }
+      } else {
+        EPrintL("PopFirst failed: ", status);
         ok = false;
-        break;
+      }
+    } else {
+      for (const auto& value : cmd_args[""]) {
+        status = dbm.PushLast(value, -1, notify);
+        if (status != Status::SUCCESS) {
+          EPrintL("PushLast failed: ", status);
+          ok = false;
+          break;
+        }
       }
     }
   }
