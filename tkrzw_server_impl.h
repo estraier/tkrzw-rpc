@@ -1175,10 +1175,7 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
       tkrzw_rpc::AppendResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
     return AppendImpl(context, request, response);
-  }      if (request->notify() && status.ok() && response->status().code() == 0) {
-        key_signal_brokers_[request->dbm_index()]->Send(request->key());
-      }
-
+  }
 
   grpc::Status AppendMulti(
       grpc::ServerContext* context, const tkrzw_rpc::AppendMultiRequest* request,
@@ -1510,27 +1507,20 @@ class AsyncDBMProcessorBackground : public AsyncDBMProcessorInterface {
   std::thread bg_thread_;
 };
 
-template<typename REQUEST, typename RESPONSE>
-class AsyncDBMProcessorRetryWaitFirst : public AsyncDBMProcessorInterface {
+class AsyncDBMProcessorCompareExchange : public AsyncDBMProcessorInterface {
  public:
   enum ProcState {CREATE, PROCESS, FINISH};
-  typedef void (tkrzw_rpc::DBMService::AsyncService::*RequestCall)(
-      grpc::ServerContext*, REQUEST*, grpc::ServerAsyncResponseWriter<RESPONSE>*,
-      grpc::CompletionQueue*, grpc::ServerCompletionQueue*, void*);
-  typedef grpc::Status (DBMServiceBase::*Call)(
-      grpc::ServerContext*, const REQUEST*, RESPONSE*);
 
-  AsyncDBMProcessorRetryWaitFirst(
-      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue,
-      RequestCall request_call, Call call)
+  AsyncDBMProcessorCompareExchange(
+      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
       : AsyncDBMProcessorInterface(&service->num_active_calls_),
-        service_(service), queue_(queue), request_call_(request_call), call_(call),
-        context_(), responder_(&context_), proc_state_(CREATE), rpc_status_(grpc::Status::OK),
+        service_(service), queue_(queue), context_(), responder_(&context_),
+        proc_state_(CREATE), rpc_status_(grpc::Status::OK),
         bg_thread_() {
     Proceed();
   }
 
-  ~AsyncDBMProcessorRetryWaitFirst() {
+  ~AsyncDBMProcessorCompareExchange() {
     if (bg_thread_.joinable()) {
       bg_thread_.join();
     }
@@ -1539,11 +1529,96 @@ class AsyncDBMProcessorRetryWaitFirst : public AsyncDBMProcessorInterface {
   void Proceed() override {
     if (proc_state_ == CREATE) {
       proc_state_ = PROCESS;
-      (service_->*request_call_)(&context_, &request_, &responder_, queue_, queue_, this);
+      service_->RequestCompareExchange(&context_, &request_, &responder_, queue_, queue_, this);
     } else if (proc_state_ == PROCESS) {
-      new AsyncDBMProcessorRetryWaitFirst<REQUEST, RESPONSE>(
-          service_, queue_, request_call_, call_);
-      rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
+      new AsyncDBMProcessorCompareExchange(service_, queue_);
+      rpc_status_ = service_->CompareExchangeImpl(&context_, &request_, &response_);
+      if (rpc_status_.ok() && response_.status().code() == Status::INFEASIBLE_ERROR &&
+          request_.retry_wait() > 0) {
+        auto task =
+            [&]() {
+              const double deadline = GetWallTime() + request_.retry_wait();
+              while (true) {
+                SlottedKeySignalBroker<std::string>::Waiter waiter(
+                    service_->key_signal_brokers_[request_.dbm_index()].get(), request_.key());
+                rpc_status_ = service_->CompareExchangeImpl(&context_, &request_, &response_);
+                if (!rpc_status_.ok() || response_.status().code() != Status::INFEASIBLE_ERROR) {
+                  break;
+                }
+                const double time_diff = deadline - GetWallTime();
+                if (time_diff <= 0 || !waiter.Wait(time_diff)) {
+                  break;
+                }
+                response_.Clear();
+              }
+              if (request_.notify() && rpc_status_.ok() && response_.status().code() == 0) {
+                service_->key_signal_brokers_[request_.dbm_index()]->Send(request_.key());
+              }
+              proc_state_ = FINISH;
+              responder_.Finish(response_, rpc_status_, this);
+            };
+        bg_thread_ = std::thread(task);
+      } else {
+        if (request_.notify() && rpc_status_.ok() && response_.status().code() == 0) {
+          service_->key_signal_brokers_[request_.dbm_index()]->Send(request_.key());
+        }
+        proc_state_ = FINISH;
+        responder_.Finish(response_, rpc_status_, this);
+      }
+    } else {
+      delete this;
+    }
+  }
+
+  void Cancel(bool is_shutdown) override {
+    if (is_shutdown) {
+      delete this;
+    } else if (proc_state_ == PROCESS) {
+      proc_state_ = FINISH;;
+      responder_.Finish(response_, rpc_status_, this);
+    } else {
+      delete this;
+    }
+  }
+
+ private:
+  DBMAsyncServiceImpl* service_;
+  grpc::ServerCompletionQueue* queue_;
+  grpc::ServerContext context_;
+  tkrzw_rpc::CompareExchangeRequest request_;
+  tkrzw_rpc::CompareExchangeResponse response_;
+  grpc::ServerAsyncResponseWriter<tkrzw_rpc::CompareExchangeResponse> responder_;
+  ProcState proc_state_;
+  grpc::Status rpc_status_;
+  std::thread bg_thread_;
+};
+
+class AsyncDBMProcessorPopFirst : public AsyncDBMProcessorInterface {
+ public:
+  enum ProcState {CREATE, PROCESS, FINISH};
+
+  AsyncDBMProcessorPopFirst(
+      DBMAsyncServiceImpl* service, grpc::ServerCompletionQueue* queue)
+      : AsyncDBMProcessorInterface(&service->num_active_calls_),
+        service_(service), queue_(queue), context_(), responder_(&context_),
+        proc_state_(CREATE), rpc_status_(grpc::Status::OK),
+        bg_thread_() {
+    Proceed();
+  }
+
+  ~AsyncDBMProcessorPopFirst() {
+    if (bg_thread_.joinable()) {
+      bg_thread_.join();
+    }
+  }
+
+  void Proceed() override {
+    if (proc_state_ == CREATE) {
+      proc_state_ = PROCESS;
+      service_->RequestPopFirst(&context_, &request_, &responder_, queue_, queue_, this);
+    } else if (proc_state_ == PROCESS) {
+      new AsyncDBMProcessorPopFirst(service_, queue_);
+      rpc_status_ = service_->PopFirstImpl(&context_, &request_, &response_);
       if (rpc_status_.ok() && response_.status().code() == Status::NOT_FOUND_ERROR &&
           request_.retry_wait() > 0) {
         auto task =
@@ -1552,7 +1627,7 @@ class AsyncDBMProcessorRetryWaitFirst : public AsyncDBMProcessorInterface {
               while (true) {
                 SignalBroker::Waiter waiter(
                     service_->first_signal_brokers_[request_.dbm_index()].get());
-                rpc_status_ = (service_->*call_)(&context_, &request_, &response_);
+                rpc_status_ = service_->PopFirstImpl(&context_, &request_, &response_);
                 if (!rpc_status_.ok() || response_.status().code() != Status::NOT_FOUND_ERROR) {
                   break;
                 }
@@ -1589,12 +1664,10 @@ class AsyncDBMProcessorRetryWaitFirst : public AsyncDBMProcessorInterface {
  private:
   DBMAsyncServiceImpl* service_;
   grpc::ServerCompletionQueue* queue_;
-  RequestCall request_call_;
-  Call call_;
   grpc::ServerContext context_;
-  REQUEST request_;
-  RESPONSE response_;
-  grpc::ServerAsyncResponseWriter<RESPONSE> responder_;
+  tkrzw_rpc::PopFirstRequest request_;
+  tkrzw_rpc::PopFirstResponse response_;
+  grpc::ServerAsyncResponseWriter<tkrzw_rpc::PopFirstResponse> responder_;
   ProcState proc_state_;
   grpc::Status rpc_status_;
   std::thread bg_thread_;
@@ -1876,9 +1949,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
   new AsyncDBMProcessor<tkrzw_rpc::AppendMultiRequest, tkrzw_rpc::AppendMultiResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestAppendMulti,
       &DBMServiceBase::AppendMultiImpl);
-  new AsyncDBMProcessor<tkrzw_rpc::CompareExchangeRequest, tkrzw_rpc::CompareExchangeResponse>(
-      this, queue, &DBMAsyncServiceImpl::RequestCompareExchange,
-      &DBMServiceBase::CompareExchangeImpl);
+  new AsyncDBMProcessorCompareExchange(this, queue);
   new AsyncDBMProcessor<tkrzw_rpc::IncrementRequest, tkrzw_rpc::IncrementResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestIncrement,
       &DBMServiceBase::IncrementImpl);
@@ -1890,10 +1961,7 @@ inline void DBMAsyncServiceImpl::OperateQueue(
     tkrzw_rpc::RekeyRequest, tkrzw_rpc::RekeyResponse>(
         this, queue, &DBMAsyncServiceImpl::RequestRekey,
         &DBMServiceBase::RekeyImpl);
-  new AsyncDBMProcessorRetryWaitFirst<
-    tkrzw_rpc::PopFirstRequest, tkrzw_rpc::PopFirstResponse>(
-        this, queue, &DBMAsyncServiceImpl::RequestPopFirst,
-        &DBMServiceBase::PopFirstImpl);
+  new AsyncDBMProcessorPopFirst(this, queue);
   new AsyncDBMProcessor<
     tkrzw_rpc::PushLastRequest, tkrzw_rpc::PushLastResponse>(
         this, queue, &DBMAsyncServiceImpl::RequestPushLast,
