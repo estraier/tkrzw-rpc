@@ -45,6 +45,7 @@
 namespace tkrzw {
 
 static constexpr int64_t TIMESTAMP_FILE_SYNC_FREQ = 1000;
+static constexpr double MAX_WAIT_TIME = 5.0;
 
 struct ReplicationParameters {
   std::string master;
@@ -1201,6 +1202,9 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
     const double deadline = GetWallTime() + request->retry_wait();
     grpc::Status status = grpc::Status::OK;
     while (true) {
+      if (context->IsCancelled()) {
+        return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
+      }
       SlottedKeySignalBroker<std::string>::Waiter waiter(
           key_signal_brokers_[request->dbm_index()].get(), request->key());
       status = CompareExchangeImpl(context, request, response);
@@ -1208,11 +1212,10 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
         break;
       }
       const double time_diff = deadline - GetWallTime();
-      if (time_diff <= 0 || !waiter.Wait(time_diff)) {
-        response->mutable_status()->set_code(Status::INFEASIBLE_ERROR);
-        response->mutable_status()->set_message("timeout during retry");
+      if (time_diff <= 0) {
         break;
       }
+      waiter.Wait(std::min(MAX_WAIT_TIME, time_diff));
       response->Clear();
     }
     if (request->notify() && status.ok() && response->status().code() == 0) {
@@ -1254,17 +1257,19 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
     }
     const double deadline = GetWallTime() + request->retry_wait();
     while (true) {
+      if (context->IsCancelled()) {
+        return grpc::Status(grpc::StatusCode::CANCELLED, "cancelled");
+      }
       SignalBroker::Waiter waiter(first_signal_brokers_[request->dbm_index()].get());
       const grpc::Status status = PopFirstImpl(context, request, response);
       if (!status.ok() || response->status().code() != Status::NOT_FOUND_ERROR) {
         return status;
       }
       const double time_diff = deadline - GetWallTime();
-      if (time_diff <= 0 || !waiter.Wait(time_diff)) {
-        response->mutable_status()->set_code(Status::INFEASIBLE_ERROR);
-        response->mutable_status()->set_message("timeout during retry");
+      if (time_diff <= 0) {
         break;
       }
+      waiter.Wait(std::min(MAX_WAIT_TIME, time_diff));
       response->Clear();
     }
     return grpc::Status::OK;
@@ -1516,11 +1521,12 @@ class AsyncDBMProcessorCompareExchange : public AsyncDBMProcessorInterface {
       : AsyncDBMProcessorInterface(&service->num_active_calls_),
         service_(service), queue_(queue), context_(), responder_(&context_),
         proc_state_(CREATE), rpc_status_(grpc::Status::OK),
-        bg_thread_() {
+        bg_thread_(), alive_(true) {
     Proceed();
   }
 
   ~AsyncDBMProcessorCompareExchange() {
+    alive_.store(false);
     if (bg_thread_.joinable()) {
       bg_thread_.join();
     }
@@ -1538,7 +1544,7 @@ class AsyncDBMProcessorCompareExchange : public AsyncDBMProcessorInterface {
         auto task =
             [&]() {
               const double deadline = GetWallTime() + request_.retry_wait();
-              while (true) {
+              while (alive_.load()) {
                 SlottedKeySignalBroker<std::string>::Waiter waiter(
                     service_->key_signal_brokers_[request_.dbm_index()].get(), request_.key());
                 rpc_status_ = service_->CompareExchangeImpl(&context_, &request_, &response_);
@@ -1546,9 +1552,10 @@ class AsyncDBMProcessorCompareExchange : public AsyncDBMProcessorInterface {
                   break;
                 }
                 const double time_diff = deadline - GetWallTime();
-                if (time_diff <= 0 || !waiter.Wait(time_diff)) {
+                if (time_diff <= 0) {
                   break;
                 }
+                waiter.Wait(std::min(MAX_WAIT_TIME, time_diff));
                 response_.Clear();
               }
               if (request_.notify() && rpc_status_.ok() && response_.status().code() == 0) {
@@ -1591,6 +1598,7 @@ class AsyncDBMProcessorCompareExchange : public AsyncDBMProcessorInterface {
   ProcState proc_state_;
   grpc::Status rpc_status_;
   std::thread bg_thread_;
+  std::atomic_bool alive_;
 };
 
 class AsyncDBMProcessorPopFirst : public AsyncDBMProcessorInterface {
@@ -1602,11 +1610,12 @@ class AsyncDBMProcessorPopFirst : public AsyncDBMProcessorInterface {
       : AsyncDBMProcessorInterface(&service->num_active_calls_),
         service_(service), queue_(queue), context_(), responder_(&context_),
         proc_state_(CREATE), rpc_status_(grpc::Status::OK),
-        bg_thread_() {
+        bg_thread_(), alive_(true) {
     Proceed();
   }
 
   ~AsyncDBMProcessorPopFirst() {
+    alive_.store(false);
     if (bg_thread_.joinable()) {
       bg_thread_.join();
     }
@@ -1624,7 +1633,7 @@ class AsyncDBMProcessorPopFirst : public AsyncDBMProcessorInterface {
         auto task =
             [&]() {
               const double deadline = GetWallTime() + request_.retry_wait();
-              while (true) {
+              while (alive_.load()) {
                 SignalBroker::Waiter waiter(
                     service_->first_signal_brokers_[request_.dbm_index()].get());
                 rpc_status_ = service_->PopFirstImpl(&context_, &request_, &response_);
@@ -1632,9 +1641,10 @@ class AsyncDBMProcessorPopFirst : public AsyncDBMProcessorInterface {
                   break;
                 }
                 const double time_diff = deadline - GetWallTime();
-                if (time_diff <= 0 || !waiter.Wait(time_diff)) {
+                if (time_diff <= 0) {
                   break;
                 }
+                waiter.Wait(std::min(MAX_WAIT_TIME, time_diff));
                 response_.Clear();
               }
               proc_state_ = FINISH;
@@ -1671,6 +1681,7 @@ class AsyncDBMProcessorPopFirst : public AsyncDBMProcessorInterface {
   ProcState proc_state_;
   grpc::Status rpc_status_;
   std::thread bg_thread_;
+  std::atomic_bool alive_;
 };
 
 class AsyncDBMProcessorStream : public AsyncDBMProcessorInterface {
