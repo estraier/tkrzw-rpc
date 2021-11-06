@@ -895,28 +895,28 @@ int main(int argc, char** argv) {
 
 <p>Call the PopFirst methodd until the database becomes empty.  The "--key" option shows the key which were generated automatically from the time stamp.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util queue --key
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue --key
 1634660135.479390   one
-$ ./tkrzw_dbm_remote_util queue --key
+$ tkrzw_dbm_remote_util queue --key
 1634660135.479715   two
-$ ./tkrzw_dbm_remote_util queue --key
+$ tkrzw_dbm_remote_util queue --key
 1634660135.480013   three
-$ ./tkrzw_dbm_remote_util queue --key
+$ tkrzw_dbm_remote_util queue --key
 PopFirst failed: NOT_FOUND_ERROR
 ]]></code></pre>
 
 <p>Call the PopFirst methodd with the empty database and have it wait for 5 seconds.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util queue --key --retry 5
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue --key --retry 5
 PopFirst failed: NOT_FOUND_ERROR
 ]]></code></pre>
 
 <p>Then, call the PopFirst methodd with the empty database and have it wait for 30 seconds.  This time, while the terminal for PopFirst is blocking, call PushLast on another terminal to add a new record.  Specify the "--notify" option to send notification to the waiting threads.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util queue --key --retry 30
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue --key --retry 30
 ]]></code></pre>
 
-<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util queue --notify "four"
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue --notify "four"
 ]]></code></pre>
 
 <p>You'll see "four" appear on the first terminal immediately after you run the command on the second terminal.  This style is called "long polling", which is seen with the "Comet" model of web applications.  You can do the same thing in C++ and other languages.</p>
@@ -930,8 +930,7 @@ if (status == Status::SUCCESS) {
 }
 ]]></code></pre>
 
-<pre><code class="language-cpp"><![CDATA[
-Status status = dbm.PushLast("hello", -1, true);
+<pre><code class="language-cpp"><![CDATA[Status status = dbm.PushLast("hello", -1, true);
 if (status != Status::SUCCESS) {
   std::cout << "PushLast failed: " << status << std::endl;
 }
@@ -941,19 +940,90 @@ if (status != Status::SUCCESS) {
 
 <p>Note that the records fetched by PopFirst are removed implicitly regardless of whether the consumer tasks succeed the operatios.  In other words, there's no retrying feature for failed consumers.  If you want such mechanisms, choose other message queueing services with more complex features or write you own service with Tkrzw.</p>
 
+<h3 id="tips_compex_monitor">Monitoring Records with CompareExchange</h3>
+
+<p>The CompareExchange method supports monitoring and notification mechanisms.  For monitoring, you set the "retry_wait" parameter, which specifies the maximum time to wait before retrying the operation if the pre-condition is not met.  For notification, you specify the "notify" parameter true to wake up waiting threads for retrying.</p>
+
+<p>Let's say, you want to get the value of the record whose key is "abc" and remove it atomically.  And, the operation should be done immediately after the record is set by another process.  You write the following code.  Note that the default constructor of std::string_view refers to nullptr as its data.</p>
+
+<pre><code class="language-cpp"><![CDATA[std::string value;
+Status status = CompareExchange(
+  "abc",               // The key is "abc".
+  DBM::ANY_DATA,       // The pre-condition is that the record exists with any value.
+  std::string_view(),  // The post-condition is that the record doesn't exist.
+  &value,              // To store the value of the existing record.
+  nullptr,             // Not used here.
+  60,                  // To wait for 60 seconds at most.
+  false);              // Notification is not done.
+if (status.IsOK()) {
+  std::string << "SUCCESS:" << value << std::endl;
+} else {
+  std::string << "ERROR:" << status << std::endl;
+}
+]]></code></pre>
+
+<p>The following code adds the record of "abc" and notify it to wake up waiting threads for retrying.</p>
+
+<pre><code class="language-cpp"><![CDATA[Status status = CompareExchange(
+  "abc",               // The key is "abc".
+  std::string_view(),  // The pre-condition is that the record doesn't exist.
+  "hello",             // The post-condition is that the record has the value "hello".
+  nullptr,             // Not used here.
+  nullptr,             // Not used here.
+  0,                   // Waiting is not done.
+  true);               // Notification is done.
+if (!status.IsOK()) {
+  std::string << "ERROR:" << status << std::endl;
+}
+]]></code></pre>
+
+<p>CompareExchange can substitute any database operation including Get, Set, and Remove.  If you dont't want a update, set DBM::ANY_DATA as the post-condition.  If you overwrite an existing record, you set DBM::ANY_DATA as the pre-condition.  Therefore, monitoring and notification can be combined with various kinds of database operations.  Even retrying and notification can be done at the same time.</p>
+
+<p>Let's confirm how moniring and notification work with CompareExchange by using the command line utility.  First, run the server.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --log_level debug --async --threads 4
+]]></code></pre>
+
+<p>On another terminal, run the following command, which works as the consumer.  It tries to get the value of the record whose key is "abc" and remove it atomically.  The "--compex" option is to use CompareExchange and specifies the key of the record to monitor.  The "--notry" option specifies the maximum waiting time in seconds for retrying.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue --compex abc --retry 60
+]]></code></pre>
+
+<p>The above command blocks because there's no record of the key.  During the waiting period, open another terminal and run the following command, which works as the producer.  It adds the record whose key is "abc" and value is "hello".  It also notifies the update to wake up waiting threads for retrying.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue --compex abc --notify hello
+]]></code></pre>
+
+<p>Immediately after the update is done by the producer, the block of the consumer ends and the value "hello" of the record is printed.</p>
+
+<p>The producer command set "null" (default std::string_view) as the pre-condition.  Thus, if there's an existing record of the key "abc", the operation fails.  If you add the "--retry" option to the command, it retries to add the record until it succeeds or the deadline comes.  This realizes a pseudo-queue in the namespace of the key.  If you add the values "hop", "step", and "jump" for the key "abc" immediately after each is cosumed, you run the following command.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue --compex abc --notify --retry 60 hop step jump
+]]></code></pre>
+
+<p>Then, the consumer should do notification to wake up the retrying producer thread.</p>
+
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util queue --compex abc --notify --retry 60
+hop
+$ tkrzw_dbm_remote_util queue --compex abc --notify --retry 60
+step
+$ tkrzw_dbm_remote_util queue --compex abc --notify --retry 60
+jump
+]]></code></pre>
+
 <h3 id="tips_auth_ssl">SSL Authentication and Encryption</h3>
 
 <p>gRPC supports networking over SSL to authenticate peers and protect their communications by encryption.  To enable SSL, each of the server and clients uses three files: the private key, the certificate of itself, and the certificate of the root CA.  With SSL enabled, the server accepts the client only if the certificate sent from the client is verified by the root CA certificate specified on the server.  Data transmitted between the server and the client are encrypted by the public key of the sender and decrypted by the private key of the receiver.  Because the third party cannot see the encrypted communication, you can use the database service over public networks such as Internet.</p>
 
 <p>To enable SSL on the server side, specify "--auth" option which leads an expression in "ssl:key=...,cert=...,root=..." forat to specify the paths of the three PEM files for the server private key, the certificate of the server, and the certificate of the root CA.  Note that the CN property of the server certificate must match the actual host name (FQDN) of the server.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_server --address "localhost:1978" \
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_server --address "localhost:1978" \
   --auth "ssl:key=localhost-key.pem,cert=localhost-cert.pem,root=root-cert.pem"
 ]]></code></pre>
 
 <p>To enable SSL on the client utility, specify "--auth" option as with the server, to specify the client private key, the certificate of the client, and the certificate of the root CA.</p>
 
-<pre><code class="language-shell-session"><![CDATA[$ ./tkrzw_dbm_remote_util inspect --address "localhost:1978" \
+<pre><code class="language-shell-session"><![CDATA[$ tkrzw_dbm_remote_util inspect --address "localhost:1978" \
   --auth "ssl:key=client-key.pem,cert=client-cert.pem,root=root-cert.pem"
 ]]></code></pre>
 

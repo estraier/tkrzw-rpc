@@ -138,7 +138,7 @@ class RemoteDBM final {
      * @param found The pointer to a variable to contain whether there is an existing record.
      * If it is nullptr, it is ignored.
      * @param retry_wait The maximum wait time in seconds before retrying.  If it is zero, no
-     * retry is done.  If it is positive, retry is done and wait for the notifications of the
+     * retry is done.  If it is positive, retry is done after waiting for the notifications of the
      * next update for the time at most.
      * @param notify If true, a notification signal is sent to wake up retrying threads.
      * @return The result status.  If the condition doesn't meet, INFEASIBLE_ERROR is returned.
@@ -707,8 +707,8 @@ class RemoteDBM final {
    * @param found The pointer to a variable to contain whether there is an existing record.  If it
    * is nullptr, it is ignored.
    * @param retry_wait The maximum wait time in seconds before retrying.  If it is zero, no retry
-   * is done.  If it is positive, retry is done and wait for the notifications of the next update
-   * for the time at most.
+   * is done.  If it is positive, retry is done after waiting for the notifications of the next
+   * update for the time at most.
    * @param notify If true, a notification signal is sent to wake up retrying threads.
    * @return The result status.  If the condition doesn't meet, INFEASIBLE_ERROR is returned.
    */
@@ -777,8 +777,8 @@ class RemoteDBM final {
    * @param value The pointer to a string object to contain the value of the first record.  If
    * it is nullptr, it is ignored.
    * @param retry_wait The maximum wait time in seconds before retrying.  If it is zero, no retry
-   * is done.  If it is positive, retry is done and wait for the notifications of the next update
-   * for the time at most.
+   * is done.  If it is positive, retry is done after waiting for the notifications of the next
+   * update for the time at most.
    * @return The result status.
    */
   Status PopFirst(
