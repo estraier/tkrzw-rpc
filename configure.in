@@ -5,11 +5,11 @@
 #================================================================
 
 # Package name
-AC_INIT([tkrzw-rpc], [0.9.8])
+AC_INIT([tkrzw-rpc], [0.9.9])
 
 # Package information
 MYLIBVER=1
-MYLIBREV=15
+MYLIBREV=16
 MYLIBFMT=0
 
 # Targets
@@ -28,7 +28,7 @@ MYLDSOFLAGS="-shared -Wl,-soname,libtkrzw_rpc.so.\$(LIBVER)"
 MYLDFLAGS="-L. -L\$(LIBDIR) -L$HOME/lib -L/usr/local/lib"
 MYCMDLDFLAGS="-L. -L\$(LIBDIR)"
 MYCMDLIBS="-ltkrzw_rpc"
-MYTESTLIBS="-lgtest -lgmock -lpthread"
+MYTESTLIBS="-lgtest -lgmock -latomic -lpthread"
 MYLDLIBPATH=""
 MYLDLIBPATHENV="LD_LIBRARY_PATH"
 
@@ -207,6 +207,7 @@ test -n "$LDFLAGS" && MYLDFLAGS="$LDFLAGS $MYLDFLAGS"
 AC_CHECK_LIB(c, main)
 AC_CHECK_LIB(m, main)
 AC_CHECK_LIB(pthread, main)
+AC_CHECK_LIB(atomic, main)
 AC_CHECK_LIB(rt, main)
 AC_CHECK_LIB(stdc++, main)
 AC_CHECK_LIB(z, main)
