@@ -25,6 +25,14 @@ Then, run these commands.  The files are installed under "/usr/local".
   make
   sudo make install
 
+On FreeBSD tkrzw-rpc compiles and runs on LLVM, even tough it has not 
+been extensively tested. Like many *BSD platforms on FreeBSD "make" 
+defaults to bsdmake, so you might need to replace "make" with 
+"gmake" in the above instructions.
+Finally, you will need to install the following ports/packages 
+before compiling tkrzw-rpc:
+devel/protobuf, devel/protobuf-c, devel/abseil, devel/grpc.
+
 Thanks.
 
 == END OF FILE ==
