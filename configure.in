@@ -217,11 +217,11 @@ AC_CHECK_LIB(lzma, main)
 AC_CHECK_LIB(tkrzw, main)
 AC_CHECK_LIB(protobuf, main)
 AC_CHECK_LIB(gpr, main)
+AC_CHECK_LIB(absl_synchronization, main)
 AC_CHECK_LIB(grpc, main)
 AC_CHECK_LIB(grpc++, main)
 AC_CHECK_LIB(grpc++_reflection, main)
 AC_CHECK_LIB(tkrzw_rpc, main, AC_MSG_WARN([old version of Tkrzw-RPC was detected])) 
-AC_CHECK_LIB(absl_synchronization, main)
 MYLDLIBPATH="$LD_LIBRARY_PATH"
 
 # Necessary headers
