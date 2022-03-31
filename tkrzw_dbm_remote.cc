@@ -1916,7 +1916,7 @@ Status RemoteDBM::Replicator::Start(int64_t min_timestamp, int32_t server_id, do
 }
 
 Status RemoteDBM::Replicator::Read(int64_t* timestamp, ReplicateLog* op) {
-  assert(timestamp != nulptr && op != nullptr);
+  assert(timestamp != nullptr && op != nullptr);
   return impl_->Read(timestamp, op);
 }
 
