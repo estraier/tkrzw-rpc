@@ -1240,14 +1240,14 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
 
   grpc::Status Rekey(
       grpc::ServerContext* context, const tkrzw_rpc::RekeyRequest* request,
-      tkrzw_rpc::RekeyResponse* response) {
+      tkrzw_rpc::RekeyResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
     return RekeyImpl(context, request, response);
   }
 
   grpc::Status PopFirst(
       grpc::ServerContext* context, const tkrzw_rpc::PopFirstRequest* request,
-      tkrzw_rpc::PopFirstResponse* response) {
+      tkrzw_rpc::PopFirstResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
     if (request->retry_wait() <= 0) {
       return PopFirstImpl(context, request, response);
@@ -1277,7 +1277,7 @@ class DBMServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService::Serv
 
   grpc::Status PushLast(
       grpc::ServerContext* context, const tkrzw_rpc::PushLastRequest* request,
-      tkrzw_rpc::PushLastResponse* response) {
+      tkrzw_rpc::PushLastResponse* response) override {
     ScopedCounter sc(&num_active_calls_);
     return PushLastAndNotify(context, request, response);
   }
