@@ -1370,7 +1370,7 @@ class DBMAsyncServiceImpl : public DBMServiceBase, public tkrzw_rpc::DBMService:
       const ReplicationParameters& repl_params = {})
       : DBMServiceBase(dbms, logger, server_id, mq, repl_params) {}
 
-  void OperateQueue(grpc::ServerCompletionQueue* queue, const bool* is_shutdown);
+  void OperateQueue(grpc::ServerCompletionQueue* queue, const std::atomic_bool* is_shutdown);
   void ShutdownQueue(grpc::ServerCompletionQueue* queue);
 };
 
@@ -1928,7 +1928,7 @@ class AsyncDBMProcessorReplicate : public AsyncDBMProcessorInterface {
 };
 
 inline void DBMAsyncServiceImpl::OperateQueue(
-    grpc::ServerCompletionQueue* queue, const bool* is_shutdown) {
+    grpc::ServerCompletionQueue* queue, const std::atomic_bool* is_shutdown) {
   logger_->Log(Logger::LEVEL_INFO, "Starting a completion queue");
   new AsyncDBMProcessor<tkrzw_rpc::EchoRequest, tkrzw_rpc::EchoResponse>(
       this, queue, &DBMAsyncServiceImpl::RequestEcho,
@@ -2018,9 +2018,9 @@ inline void DBMAsyncServiceImpl::OperateQueue(
       }
     } else {
       if (proc != nullptr) {
-        proc->Cancel(*is_shutdown);
+        proc->Cancel(is_shutdown->load());
       }
-      if (*is_shutdown) {
+      if (is_shutdown->load()) {
         break;
       }
     }

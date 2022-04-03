@@ -1,5 +1,12 @@
 2021-11-04  Mikio Hirabayashi  <hirarin@gmail.com>
 
+	- Release: 0.9.9
+	- Library version: 1.16.0
+
+	- Fix a bug of deadlock when terminating the server.
+
+2021-11-04  Mikio Hirabayashi  <hirarin@gmail.com>
+
 	- Release: 0.9.8
 	- Library version: 1.15.0
 
