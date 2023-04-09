@@ -721,6 +721,7 @@ Status RemoteDBMImpl::Count(int64_t* count) {
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   tkrzw_rpc::CountRequest request;
+  request.set_dbm_index(dbm_index_);
   tkrzw_rpc::CountResponse response;
   grpc::Status status = stub_->Count(&context, request, &response);
   if (!status.ok()) {
@@ -741,6 +742,7 @@ Status RemoteDBMImpl::GetFileSize(int64_t* file_size) {
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   tkrzw_rpc::GetFileSizeRequest request;
+  request.set_dbm_index(dbm_index_);
   tkrzw_rpc::GetFileSizeResponse response;
   grpc::Status status = stub_->GetFileSize(&context, request, &response);
   if (!status.ok()) {
@@ -761,6 +763,7 @@ Status RemoteDBMImpl::Clear() {
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   tkrzw_rpc::ClearRequest request;
+  request.set_dbm_index(dbm_index_);
   tkrzw_rpc::ClearResponse response;
   grpc::Status status = stub_->Clear(&context, request, &response);
   if (!status.ok()) {
@@ -778,6 +781,7 @@ Status RemoteDBMImpl::Rebuild(const std::map<std::string, std::string>& params) 
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   tkrzw_rpc::RebuildRequest request;
+  request.set_dbm_index(dbm_index_);
   for (const auto& param : params) {
     auto* req_param = request.add_params();
     req_param->set_first(param.first);
@@ -800,6 +804,7 @@ Status RemoteDBMImpl::ShouldBeRebuilt(bool* tobe) {
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   tkrzw_rpc::ShouldBeRebuiltRequest request;
+  request.set_dbm_index(dbm_index_);
   tkrzw_rpc::ShouldBeRebuiltResponse response;
   grpc::Status status = stub_->ShouldBeRebuilt(&context, request, &response);
   if (!status.ok()) {
@@ -820,6 +825,7 @@ Status RemoteDBMImpl::Synchronize(bool hard, const std::map<std::string, std::st
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   tkrzw_rpc::SynchronizeRequest request;
+  request.set_dbm_index(dbm_index_);
   request.set_hard(hard);
   for (const auto& param : params) {
     auto* req_param = request.add_params();
@@ -844,6 +850,7 @@ Status RemoteDBMImpl::Search(std::string_view mode, std::string_view pattern,
   context.set_deadline(std::chrono::system_clock::now() +
                        std::chrono::microseconds(static_cast<int64_t>(timeout_ * 1000000)));
   tkrzw_rpc::SearchRequest request;
+  request.set_dbm_index(dbm_index_);
   request.set_mode(std::string(mode));
   request.set_pattern(pattern.data(), pattern.size());
   request.set_capacity(capacity);
