@@ -328,7 +328,7 @@ korea  seoul
 
 int main(int argc, char** argv) {
   tkrzw::RemoteDBM dbm;
-  dbm.Connect("localhost", 1978).OrDie();
+  dbm.Connect("localhost:1978").OrDie();
   dbm.Set("hello", "world").OrDie();
   std::cout << dbm.GetSimple("hello") << std::endl;
   dbm.Disconnect().OrDie();
