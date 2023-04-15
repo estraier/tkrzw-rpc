@@ -174,7 +174,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
           stream = task_dbm->MakeStream();
         }
         const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         std::string echo;
         const Status status = stream->Echo(key, &echo);
@@ -188,7 +188,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
           std::vector<std::string> keys;
           for (int32_t j = i; j < i + num_multi; j++) {
             const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
-            const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+            const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
             keys.emplace_back(std::string(key_buf, key_size));
           }
           std::string echo;
@@ -201,7 +201,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         }
       } else {
         const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         std::string echo;
         const Status status = task_dbm->Echo(key, &echo);
@@ -273,7 +273,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
           stream = task_dbm->MakeStream();
         }
         const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         const std::string_view value(
             value_buf + static_cast<uint32_t>(i) * (i + 1U) % value_extra,
@@ -289,7 +289,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
           std::map<std::string, std::string> records;
           for (int32_t j = i; j < i + num_multi; j++) {
             const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
-            const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+            const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
             const std::string_view value(
                 value_buf + static_cast<uint32_t>(j * (j + 1U)) % value_extra,
                 is_random_value ? value_size_dist(misc_mt) : value_size);
@@ -304,7 +304,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         }
       } else {
         const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         const std::string_view value(
             value_buf + static_cast<uint32_t>(i * (i + 1U)) % value_extra,
@@ -374,7 +374,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
           stream = task_dbm->MakeStream();
         }
         const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         std::string value;
         const Status status = stream->Get(key, &value);
@@ -389,7 +389,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
           std::vector<std::string> keys;
           for (int32_t j = i; j < i + num_multi; j++) {
             const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
-            const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+            const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
             keys.emplace_back(std::string(key_buf, key_size));
           }
           std::map<std::string, std::string> records;
@@ -403,7 +403,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         }
       } else {
         const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         std::string value;
         const Status status = task_dbm->Get(key, &value);
@@ -470,7 +470,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         iter = task_dbm->MakeIterator();
       }
       const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-      const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+      const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
       const std::string_view key(key_buf, key_size);
       Status status = iter->Jump(key);
       if (status != Status::SUCCESS &&
@@ -544,7 +544,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
           stream = task_dbm->MakeStream();
         }
         const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         const Status status = stream->Remove(key, ignore_result);
         if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
@@ -557,7 +557,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
           std::vector<std::string> keys;
           for (int32_t j = i; j < i + num_multi; j++) {
             const int32_t key_num = is_random_key ? key_num_dist(key_mt) : j * num_threads + id;
-            const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+            const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
             keys.emplace_back(std::string(key_buf, key_size));
           }
           const Status status = task_dbm->RemoveMulti(keys);
@@ -569,7 +569,7 @@ static int32_t ProcessSequence(int32_t argc, const char** args) {
         }
       } else {
         const int32_t key_num = is_random_key ? key_num_dist(key_mt) : i * num_threads + id;
-        const size_t key_size = std::sprintf(key_buf, "%08d", key_num);
+        const size_t key_size = std::snprintf(key_buf, sizeof(key_buf), "%08d", key_num);
         const std::string_view key(key_buf, key_size);
         const Status status = task_dbm->Remove(key);
         if (status != Status::SUCCESS && status != Status::NOT_FOUND_ERROR) {
